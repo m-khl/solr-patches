@@ -379,6 +379,7 @@ public class DataImporter {
       setStatus(Status.IDLE);
       config.clearCaches();
       DocBuilder.INSTANCE.set(null);
+      docBuilder.destroy();
     }
 
   }
@@ -410,6 +411,7 @@ public class DataImporter {
       setStatus(Status.IDLE);
       config.clearCaches();
       DocBuilder.INSTANCE.set(null);
+      docBuilder.destroy();
     }
 
   }

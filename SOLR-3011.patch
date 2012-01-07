@@ -1,0 +1,661 @@
+Index: b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DIHCacheSupport.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DIHCacheSupport.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DIHCacheSupport.java(working copy)
+@@ -205,7 +205,11 @@ public class DIHCacheSupport {
+     return r;
+   }
+   
+-  /**
++  public boolean doesKeyLookup() {
++    return cacheDoKeyLookup;
++}
++
++/**
+    * <p>
+    * Specify the class for the cache implementation
+    * </p>
+Index: b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DataImporter.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DataImporter.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DataImporter.java(working copy)
+@@ -379,6 +379,7 @@ public class DataImporter {
+       setStatus(Status.IDLE);
+       config.clearCaches();
+       DocBuilder.INSTANCE.set(null);
++      docBuilder.destroy();
+     }
+ 
+   }
+@@ -410,6 +411,7 @@ public class DataImporter {
+       setStatus(Status.IDLE);
+       config.clearCaches();
+       DocBuilder.INSTANCE.set(null);
++      docBuilder.destroy();
+     }
+ 
+   }
+Index: b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DocBuilder.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DocBuilder.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DocBuilder.java(working copy)
+@@ -20,6 +20,8 @@ package org.apache.solr.handler.dataimport;
+ import org.apache.solr.common.SolrException;
+ import org.apache.solr.common.SolrInputDocument;
+ import org.apache.solr.core.SolrCore;
++import org.apache.solr.handler.dataimport.DataConfig.Entity;
++
+ import static org.apache.solr.handler.dataimport.SolrWriter.LAST_INDEX_KEY;
+ import static org.apache.solr.handler.dataimport.DataImportHandlerException.*;
+ import org.apache.solr.schema.SchemaField;
+@@ -303,8 +305,8 @@ public class DocBuilder {
+       EntityRunner entityRunner = null;
+       try {
+         LOG.info("running multithreaded full-import");
+-        entityRunner =  new EntityRunner(root, null);
+-        entityRunner.run(null, Context.FULL_DUMP, null);
++        entityRunner = new EntityRunner(root,null,  createProcessor(root));
++        entityRunner.run(null,Context.FULL_DUMP,null, 0);
+       } catch (Exception e) {
+         throw new RuntimeException("Error in multi-threaded import", e);
+       } finally {
+@@ -387,7 +389,7 @@ public class DocBuilder {
+       iter.remove();
+     }
+   }
+-  Executor executorSvc = new ThreadPoolExecutor(
++  ThreadPoolExecutor executorSvc = new ThreadPoolExecutor(
+           0,
+           Integer.MAX_VALUE,
+           5, TimeUnit.SECONDS, // terminate idle threads after 5 sec
+@@ -398,8 +400,8 @@ public class DocBuilder {
+   public void addStatusMessage(String msg) {
+     statusMessages.put(msg, DataImporter.DATE_TIME_FORMAT.get().format(new Date()));
+   }
+-  EntityRunner createRunner(DataConfig.Entity entity, EntityRunner parent){
+-    return new EntityRunner(entity, parent);
++  EntityRunner createRunner(DataConfig.Entity entity, EntityRunner parent, EntityProcessor processor){
++    return new EntityRunner(entity, parent,  processor);
+   }
+ 
+   /**This class is a just a structure to hold runtime information of one entity
+@@ -409,58 +411,62 @@ public class DocBuilder {
+     final DataConfig.Entity entity;
+     private EntityProcessor entityProcessor;
+     private final List<ThreadedEntityProcessorWrapper> entityProcessorWrapper = new ArrayList<ThreadedEntityProcessorWrapper>();
+-    private DocWrapper docWrapper;
++   
+     private volatile boolean entityInitialized ;
+     String currentProcess;
+     final ThreadLocal<ThreadedEntityProcessorWrapper> currentEntityProcWrapper = new ThreadLocal<ThreadedEntityProcessorWrapper>();
+ 
+     private ContextImpl context;
+     final EntityRunner parent;
+-    final AtomicBoolean entityEnded = new AtomicBoolean(false);
+     private Exception exception;
+ 
+-    public EntityRunner(DataConfig.Entity entity, EntityRunner parent) {
++    public EntityRunner(DataConfig.Entity entity, EntityRunner parent, EntityProcessor processor) {
+       this.parent = parent;
+       this.entity = entity;
+-      if (entity.proc == null) {
+-        entityProcessor = new SqlEntityProcessor();
+-      } else {
+-        try {
+-          entityProcessor = (EntityProcessor) loadClass(entity.proc, dataImporter.getCore())
+-                  .newInstance();
+-        } catch (Exception e) {
+-          wrapAndThrow(SEVERE, e,
+-                  "Unable to load EntityProcessor implementation for entity:" + entity.name);
+-        } 
+-      }
++      this.entityProcessor = processor;
+       int threads = 1;
+-      if (entity.allAttributes.get("threads") != null) {
+-        threads = Integer.parseInt(entity.allAttributes.get("threads"));
++      String rootEntityThreads = DocBuilder.this.root.allAttributes.get("threads");
++      if (rootEntityThreads != null) {
++        threads = Integer.parseInt(rootEntityThreads);
++      }
++      
++      List<Entity> childrenEntities = entity.entities == null 
++          ? Collections.<Entity>emptyList() : entity.entities;
++          
++      Map<DataConfig.Entity ,DocBuilder.EntityRunner> childrenRunners = new LinkedHashMap<DataConfig.Entity ,DocBuilder.EntityRunner>(childrenEntities.size()); 
++      
++      for (DataConfig.Entity child :childrenEntities) {
++          childrenRunners.put(child,
++                  DocBuilder.this.createRunner(child, this, createProcessor(child) ));
+       }
++      
+       for (int i = 0; i < threads; i++) {
+-        entityProcessorWrapper.add(new ThreadedEntityProcessorWrapper(entityProcessor, DocBuilder.this, this, getVariableResolver()));
++        ThreadedEntityProcessorWrapper thepw = new ThreadedEntityProcessorWrapper(
++                entityProcessor, DocBuilder.this, this, getVariableResolver(),
++                childrenRunners, i);
++        entityProcessorWrapper.add(thepw);
+       }
+       context = new ThreadedContext(this, DocBuilder.this, getVariableResolver());
+     }
+ 
+ 
+-    public void run(DocWrapper docWrapper, final String currProcess, final EntityRow rows) throws Exception {
++    public void run(final DocWrapper docWrapper, final String currProcess, final EntityRow rows, int threadedWrapperNumber) throws Exception {
+       entityInitialized =  false;
+-      this.docWrapper = docWrapper;
+       this.currentProcess = currProcess;
+-      entityEnded.set(false);
+-      try {
+-        if(entityProcessorWrapper.size() <= 1){
+-          runAThread(entityProcessorWrapper.get(0), rows, currProcess);
++      
++      boolean singleWrapperOnly = entityProcessorWrapper.size() == 1;
++      if(singleWrapperOnly || !entity.isDocRoot){ // children are running in current thread 
++          ThreadedEntityProcessorWrapper currentWrapper
++            = entityProcessorWrapper.get(threadedWrapperNumber); 
++          runAThread(currentWrapper, docWrapper, rows, currProcess);
+         } else {
+           final CountDownLatch latch = new CountDownLatch(entityProcessorWrapper.size());
+-          for (final ThreadedEntityProcessorWrapper processorWrapper : entityProcessorWrapper) {
++        for (final ThreadedEntityProcessorWrapper processorWrapper : entityProcessorWrapper) {
+             Runnable runnable = new Runnable() {
+               public void run() {
+                 try {
+-                  runAThread(processorWrapper, rows, currProcess);
++                  runAThread(processorWrapper, docWrapper, rows, currProcess);
+                 }catch(Exception e) {
+-                  entityEnded.set(true);
+                   exception = e;
+                 } finally {
+                   latch.countDown();
+@@ -480,20 +486,17 @@ public class DocBuilder {
+             throw copy;
+           }
+         }
+-      } finally {
+-      }
+-
+-
+-    }
++      } 
+ 
+-    private void runAThread(ThreadedEntityProcessorWrapper epw, EntityRow rows, String currProcess) throws Exception {
++  private void runAThread(ThreadedEntityProcessorWrapper epw, final DocWrapper parentDocWrapper, EntityRow rows, String currProcess) throws Exception {
+       currentEntityProcWrapper.set(epw);
+       epw.threadedInit(context);
+       try {
+         Context.CURRENT_CONTEXT.set(context);
+         epw.init(rows);
+         initEntity();
+-        DocWrapper docWrapper = this.docWrapper;
++        epw.entityEnded.set(false);
++        DocWrapper docWrapper = parentDocWrapper;
+         for (; ;) {
+           if(DocBuilder.this.stop.get()) break;
+           try {
+@@ -517,7 +520,7 @@ public class DocBuilder {
+               if (entity.entities != null) {
+                 EntityRow nextRow = new EntityRow(arow, rows, entity.name);
+                 for (DataConfig.Entity e : entity.entities) {
+-                  epw.children.get(e).run(docWrapper,currProcess,nextRow);
++                  epw.children.get(e).run(docWrapper,currProcess,nextRow, epw.getNumber());
+                 }
+               }
+             }
+@@ -561,15 +564,18 @@ public class DocBuilder {
+             } else {
+               //if this is not the docRoot then the execution has happened in the same thread. so propogate up,
+               // it will be handled at the docroot
+-              entityEnded.set(true); 
++              epw.entityEnded.set(true); 
+               throw dihe;
+             }
+-            entityEnded.set(true);
++            epw.entityEnded.set(true);
+           }
+         }
++      } catch(RuntimeException r) {
++          epw.entityEnded.set(true);
++          throw r;
+       } finally {
+-        currentEntityProcWrapper.remove();
+-        Context.CURRENT_CONTEXT.remove();
++          currentEntityProcWrapper.remove();
++          Context.CURRENT_CONTEXT.remove();
+       }
+     }
+ 
+@@ -1159,6 +1165,25 @@ public class DocBuilder {
+     }
+   }
+ 
++  protected EntityProcessor createProcessor(DataConfig.Entity entity) {
++    EntityProcessor processor = null;
++      if (entity.proc == null) {
++        processor = new SqlEntityProcessor();
++      } else {
++        try {
++          processor = (EntityProcessor) loadClass(entity.proc, dataImporter.getCore())
++                  .newInstance();
++        } catch (Exception e) {
++          wrapAndThrow(SEVERE, e,
++                  "Unable to load EntityProcessor implementation for entity:" + entity.name);
++        } 
++      }
++    return processor;
++  }
+   public static final String LAST_INDEX_TIME = "last_index_time";
+   public static final String INDEX_START_TIME = "index_start_time";
++  
++  public void destroy(){
++    executorSvc.shutdown();
++  }
+ }
+Index: b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/EntityProcessor.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/EntityProcessor.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/EntityProcessor.java(working copy)
+@@ -113,4 +113,8 @@ public abstract class EntityProcessor {
+   public void close() {
+     //no-op
+   }
++  /**
++   * whether or not this processor does key lookup by the parent key values 
++   */
++  public abstract boolean isPaged();
+ }
+Index: b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/EntityProcessorBase.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/EntityProcessorBase.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/EntityProcessorBase.java(working copy)
+@@ -142,7 +142,10 @@ public class EntityProcessorBase extends EntityProcessor {
+   	cacheSupport = null;
+   }
+ 
+-  
++    @Override
++    public boolean isPaged() {
++        return cacheSupport!=null && cacheSupport.doesKeyLookup();
++    }
+ 
+   public static final String TRANSFORMER = "transformer";
+ 
+Index: b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/EntityProcessorWrapper.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/EntityProcessorWrapper.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/EntityProcessorWrapper.java(working copy)
+@@ -155,13 +155,38 @@ public class EntityProcessorWrapper extends EntityProcessor {
+     return r;
+   }
+ 
++  /**
++   * handles null-on-null invocation
++   * 
++   * call transformers via {@link transformRow}, then assigns the result into {@link rowcache}, and delegates to {@link getFromRowCache}
++   * */
+   @SuppressWarnings("unchecked")
+   protected Map<String, Object> applyTransformer(Map<String, Object> row) {
+     if(row == null) return null;
+-    if (transformers == null)
++    
++    List<Map<String, Object>> result = transformRow(row);
++    if(!result.isEmpty()){
++        rowcache = result;
++        return getFromRowCache();
++    } else {
++        return null;
++    }
++  }
++  /**
++   * Initialises transformers, applies them on the given row. returned collection is mutable
++   * @return several rows emitted by transformers. if there are no transformers, 
++   * returns single element list contains the given row; if transformer returns null,
++   * returns empty collection.
++   * **/
++  protected List<Map<String, Object>> transformRow(Map<String, Object> row) {
++    if (transformers == null){
+       loadTransformers();
+-    if (transformers == Collections.EMPTY_LIST)
+-      return row;
++    }
++    if (transformers == Collections.EMPTY_LIST){
++        List<Map<String, Object>> same = new ArrayList<Map<String, Object>>();
++        same.add(row);
++        return same;
++    }else{
+     Map<String, Object> transformedRow = row;
+     List<Map<String, Object>> rows = null;
+     boolean stopTransform = checkStopTransform(row);
+@@ -190,8 +215,11 @@ public class EntityProcessorWrapper extends EntityProcessor {
+         } else {
+           resolver.addNamespace(entityName, transformedRow);
+           Object o = t.transformRow(transformedRow, context);
+-          if (o == null)
+-            return null;
++          if (o == null){
++            //return null; - old line
++              transformedRow = null;
++              break;
++          }
+           if (o instanceof Map) {
+             Map oMap = (Map) o;
+             stopTransform = checkStopTransform(oMap);
+@@ -210,16 +238,19 @@ public class EntityProcessorWrapper extends EntityProcessor {
+           wrapAndThrow(DataImportHandlerException.SKIP, e);
+         }
+         // onError = continue
+-      }
++      } // catch
++    }// for each transformers
++    if(rows == null){ // legacy behavior 
++        List<Map<String, Object>> box = new ArrayList<Map<String, Object>>();
++        if(transformedRow!=null){
++            box.add(transformedRow);
++        }// otherwise give an empty box
++        return box;
++    }else{
++        return rows;
+     }
+-    if (rows == null) {
+-      return transformedRow;
+-    } else {
+-      rowcache = rows;
+-      return getFromRowCache();
+-    }
+-
+-  }
++    }// !transformers.isEmpty()
++}
+ 
+   private boolean checkStopTransform(Map oMap) {
+     return oMap.get("$stopTransform") != null
+@@ -294,4 +325,9 @@ public class EntityProcessorWrapper extends EntityProcessor {
+   public void close() {
+     delegate.close();
+   }
++  
++  @Override
++    public boolean isPaged() {
++        return false;
++    }
+ }
+Index: b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/ThreadedEntityProcessorWrapper.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/ThreadedEntityProcessorWrapper.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/ThreadedEntityProcessorWrapper.java(working copy)
+@@ -20,12 +20,12 @@ import static org.apache.solr.handler.dataimport.EntityProcessorBase.ON_ERROR;
+ import static org.apache.solr.handler.dataimport.EntityProcessorBase.ABORT;
+ import static org.apache.solr.handler.dataimport.DataImportHandlerException.wrapAndThrow;
+ import static org.apache.solr.handler.dataimport.DataImportHandlerException.SEVERE;
++
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+-import java.util.Map;
+-import java.util.HashMap;
+-import java.util.Collections;
++import java.util.*;
++import java.util.concurrent.atomic.AtomicBoolean;
+ 
+ /**
+  * Each Entity may have only a single EntityProcessor .  But the same entity can be run by
+@@ -37,26 +37,23 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
+   private static final Logger LOG = LoggerFactory.getLogger(ThreadedEntityProcessorWrapper.class);
+ 
+   final DocBuilder.EntityRunner entityRunner;
+-  /**For each child entity there is one EntityRunner
+-   */
++  /** single EntityRunner per children entity */
+   final Map<DataConfig.Entity ,DocBuilder.EntityRunner> children;
++  
++  final protected AtomicBoolean entityEnded = new AtomicBoolean(false);
++
++   final private int number;
+ 
+   public ThreadedEntityProcessorWrapper(EntityProcessor delegate, DocBuilder docBuilder,
+                                   DocBuilder.EntityRunner entityRunner,
+-                                  VariableResolverImpl resolver) {
++                                  VariableResolverImpl resolver,
++                                  Map<DataConfig.Entity ,DocBuilder.EntityRunner> childrenRunners,
++                                  int num) {
+     super(delegate, docBuilder);
+     this.entityRunner = entityRunner;
+     this.resolver = resolver;
+-    if (entityRunner.entity.entities == null) {
+-      children = Collections.emptyMap();
+-    } else {
+-      children = new HashMap<DataConfig.Entity, DocBuilder.EntityRunner>(entityRunner.entity.entities.size());
+-      for (DataConfig.Entity e : entityRunner.entity.entities) {
+-        DocBuilder.EntityRunner runner = docBuilder.createRunner(e, entityRunner);
+-        children.put(e, runner);
+-      }
+-    }
+-
++    this.children = childrenRunners;
++    this.number = num;
+   }
+ 
+   void threadedInit(Context context){
+@@ -76,42 +73,74 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
+     if (rowcache != null) {
+       return getFromRowCache();
+     }
+-    while (true) {
+-      Map<String, Object> arow = null;
++    
++    List<Map<String, Object>> transformedRows = new ArrayList<Map<String,Object>>();
++    boolean eof = false;
++    while (transformedRows.isEmpty() && !eof) { // looping while transformer bans raw rows
++        List<Map<String, Object>> rawRows = new ArrayList<Map<String, Object>>();
+       synchronized (delegate) {
+-        if(entityRunner.entityEnded.get()) return null;
+-        try {
+-          arow = delegate.nextRow();
+-        } catch (Exception e) {
+-          if (ABORT.equals(onError)) {
+-            wrapAndThrow(SEVERE, e);
+-          } else {
+-            //SKIP is not really possible. If this calls the nextRow() again the Entityprocessor would be in an inconistent state
+-            LOG.error("Exception in entity : " + entityName, e);
+-            return null;
++          Map<String, Object> arow = null;
++          // for paged case we need to loop through whole page, other wise single row is enough
++              for (int i = 0; delegate.isPaged() ? !eof : i==0; i++) {
++                  arow = pullRow();
++                  if (arow != null) {
++                      rawRows.add(arow);
++                  }else { // there is no row, eof
++                      eof = true;
++                  }
++              }
++      }
++      for(Map<String, Object> rawRow : rawRows){
++          // transforming emits N rows
++          List<Map<String, Object>> result = transformRow(rawRow);
++          if(!result.isEmpty() && result.get(0) != null){ // but post-transforming is applied only to the first one (legacy as-is)
++              delegate.postTransform(result.get(0));
++              transformedRows.addAll(result);
+           }
+-        }
+-        if (LOG.isDebugEnabled()) {
+-          LOG.debug("arow : " + arow);
+-        }
+-        if(arow == null) entityRunner.entityEnded.set(true);
+       }
+-      if (arow == null) {
++    }
++    if(!transformedRows.isEmpty()){
++        rowcache = transformedRows;
++        return getFromRowCache();
++    }else{ // caused by eof
+         return null;
++    }
++  }
++
++  /**
++   * pulls single row from {@link delegate}, checks and sets {@link entityRunner.entityEnded}.
++   * it expect to be called in synchronised(delegate) section
++   * @return row from delegate
++   * */
++  protected Map<String, Object> pullRow() {
++      Map<String, Object> arow = null;
++    if(entityEnded.get()) return null;
++    try {
++      arow = delegate.nextRow();
++    } catch (Exception e) {
++      if (ABORT.equals(onError)) {
++        wrapAndThrow(SEVERE, e);
+       } else {
+-        arow = applyTransformer(arow);
+-        if (arow != null) {
+-          delegate.postTransform(arow);
+-          return arow;
+-        }
++        //SKIP is not really possible. If this calls the nextRow() again the Entityprocessor would be in an inconistent state
++        LOG.error("Exception in entity : " + entityName, e);
++        return null;
+       }
+-    } 
++    }
++    if (LOG.isDebugEnabled()) {
++      LOG.debug("arow : " + arow);
++    }
++    if(arow == null) entityEnded.set(true);
++    return arow;
+   }
+ 
+   public void init(DocBuilder.EntityRow rows) {
+     for (DocBuilder.EntityRow row = rows; row != null; row = row.tail) resolver.addNamespace(row.name, row.row);
+   }
+ 
++  public int getNumber() {
++    return number;
++  }
++
+ 
+  
+ }
+Index: b/solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestEphemeralCache.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestEphemeralCache.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestEphemeralCache.java(working copy)
+@@ -10,7 +10,6 @@ import static org.hamcrest.CoreMatchers.*;
+ import org.junit.Assert;
+ import org.junit.Before;
+ import org.junit.BeforeClass;
+-import org.junit.Ignore;
+ import org.junit.Test;
+ 
+ public class TestEphemeralCache extends AbstractDataImportHandlerTestCase {
+@@ -69,7 +68,6 @@ public class TestEphemeralCache extends AbstractDataImportHandlerTestCase {
+         
+     }
+ 
+-    @Ignore
+     @Test
+     public void testTenThreads() throws Exception {
+         assertFullImport(dataConfig);
+Index: b/solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestThreaded.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestThreaded.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestThreaded.java(working copy)
+@@ -19,13 +19,17 @@ package org.apache.solr.handler.dataimport;
+ import org.junit.BeforeClass;
+ import org.junit.Test;
+ 
++import java.util.Iterator;
+ import java.util.List;
+ import java.util.ArrayList;
+ import java.util.Map;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
+ 
+ 
+ public class TestThreaded extends AbstractDataImportHandlerTestCase {
+-  @BeforeClass
++
++@BeforeClass
+   public static void beforeClass() throws Exception {
+     initCore("dataimport-solrconfig.xml", "dataimport-schema.xml");
+   }
+@@ -57,13 +61,79 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
+     assertQ(req("desc:hello"), "//*[@numFound='4']");
+   }
+ 
++  @Test
++  public void testCachedSingleThread_FullImport() throws Exception {
++      testCached(threads2replacement.replaceAll("threads=\"1\""));
++  }
++  
++  @Test
++  public void testCachedMultiThread_FullImport() throws Exception {
++      testCached(dataCachedConfig);
++  }
++  
++  @Test
++  public void testCachedTenThreads_FullImport() throws Exception {
++      testCached(threads2replacement.replaceAll("threads=\"10\""));
++  }
++  
++  @Test
++  public void testCachedThreadless_FullImport() throws Exception {
++      testCached(threads2replacement.replaceAll(""));
++  }
++  
++  @SuppressWarnings("unchecked")
++  public void testCached(String config) throws Exception {
++    List<Map> parentRow = new ArrayList();
++//    parentRow.add(createMap("id", "1"));
++    parentRow.add(createMap("id", "2"));
++    parentRow.add(createMap("id", "3"));
++    parentRow.add(createMap("id", "4"));
++    parentRow.add(createMap("id", "1"));
++    MockDataSource.setIterator("select * from x", (Iterator) parentRow.iterator());
++
++    List childRow = new ArrayList();
++    for(Map row : parentRow){
++        for(int i=0;i<4;i++){
++           childRow.add(createMap("xid", row.get("id"),
++                   "desc", Integer.toString(i)));
++        }
++    }
++
++    MockDataSource.setIterator("select * from y", childRow.iterator());
++
++    runFullImport(config);
++
++    assertQ(req("id:1"), "//*[@numFound='1']");
++    assertQ(req("*:*"), "//*[@numFound='4']");
++    assertQ(req("desc:0"), "//*[@numFound='4']");
++    assertQ(req("desc:1"), "//*[@numFound='4']");
++    assertQ(req("desc:2"), "//*[@numFound='4']");
++    assertQ(req("desc:3"), "//*[@numFound='4']");
++  }
++  
+   private static String dataConfig = "<dataConfig>\n"
+           +"<dataSource  type=\"MockDataSource\"/>\n"
+           + "       <document>\n"
+-          + "               <entity name=\"x\" threads=\"2\" query=\"select * from x\" deletedPkQuery=\"select id from x where last_modified > NOW AND deleted='true'\" deltaQuery=\"select id from x where last_modified > NOW\">\n"
++          + "               <entity name=\"x\" threads=\"10\" query=\"select * from x\" deletedPkQuery=\"select id from x where last_modified > NOW AND deleted='true'\" deltaQuery=\"select id from x where last_modified > NOW\">\n"
+           + "                       <field column=\"id\" />\n"
+           + "                       <entity name=\"y\" query=\"select * from y where y.A=${x.id}\">\n"
+           + "                               <field column=\"desc\" />\n"
+           + "                       </entity>\n" + "               </entity>\n"
+           + "       </document>\n" + "</dataConfig>";
++
++  private static final String threads2 = "threads=\"2\"";
++  
++  private static String dataCachedConfig = "<dataConfig>\n"
++      +"<dataSource  type=\"MockDataSource\"/>\n"
++      + "       <document>\n"
++      + "               <entity name=\"x\" "+threads2+" query=\"select * from x\" deletedPkQuery=\"select id from x where last_modified > NOW AND deleted='true'\" deltaQuery=\"select id from x where last_modified > NOW\" " +
++                         "processor=\"CachedSqlEntityProcessor\""+ ">\n"
++      + "                       <field column=\"id\" />\n"
++      + "                       <entity name=\"y\" query=\"select * from y\" where=\"xid=x.id\" " +
++      "processor=\"CachedSqlEntityProcessor\">\n"
++      + "                               <field column=\"desc\" />\n"
++      + "                       </entity>\n" + "               </entity>\n"
++      + "       </document>\n" + "</dataConfig>";
++
++private static final Matcher threads2replacement = Pattern.compile(threads2).matcher(dataCachedConfig);
+ }

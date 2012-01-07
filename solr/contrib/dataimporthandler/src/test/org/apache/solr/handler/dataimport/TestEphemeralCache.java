@@ -10,7 +10,6 @@ import static org.hamcrest.CoreMatchers.*;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 public class TestEphemeralCache extends AbstractDataImportHandlerTestCase {
@@ -69,7 +68,6 @@ public class TestEphemeralCache extends AbstractDataImportHandlerTestCase {
         
     }
 
-    @Ignore
     @Test
     public void testTenThreads() throws Exception {
         assertFullImport(dataConfig);
