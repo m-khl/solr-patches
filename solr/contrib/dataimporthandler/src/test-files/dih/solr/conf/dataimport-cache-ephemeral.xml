@@ -5,13 +5,14 @@
 			name="PARENT"
 			processor="SqlEntityProcessor"
 			cacheName="PARENT"
-			cachePk="id"			
-			query="SELECT * FROM PARENT"				
+			cacheImpl="DestroyCountCache"		
+			query="SELECT * FROM PARENT"
+			threads="10"				
 		>
 			<entity
 				name="CHILD_1"
 				processor="SqlEntityProcessor"
-				cacheImpl="SortedMapBackedCache"
+				cacheImpl="DestroyCountCache"
 				cacheName="CHILD"
 				cachePk="id"
 				cacheLookup="PARENT.id"
@@ -22,7 +23,7 @@
 			<entity
 				name="CHILD_2"
 				processor="SqlEntityProcessor"
-				cacheImpl="SortedMapBackedCache"
+				cacheImpl="DestroyCountCache"
 				cachePk="id"
 				cacheLookup="PARENT.id"
 				query="SELECT * FROM CHILD_2"				

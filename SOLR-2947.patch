@@ -1,0 +1,264 @@
+Index: solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DocBuilder.java
+===================================================================
+--- solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DocBuilder.java	(revision 1228293)
++++ solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DocBuilder.java	(working copy)
+@@ -297,20 +297,31 @@ public class DocBuilder {
+     addStatusMessage("Rolledback");
+   }
+ 
+-  @SuppressWarnings("unchecked")
+   private void doFullDump() {
+     addStatusMessage("Full Dump Started");
+-    if(dataImporter.getConfig().isMultiThreaded && !verboseDebug){
++    if (dataImporter.getConfig().isMultiThreaded && !verboseDebug) {
++      EntityRunner entityRunner = null;
+       try {
+         LOG.info("running multithreaded full-import");
+-        new EntityRunner(root,null).run(null,Context.FULL_DUMP,null);
++        entityRunner =  new EntityRunner(root, null);
++        entityRunner.run(null, Context.FULL_DUMP, null);
+       } catch (Exception e) {
+         throw new RuntimeException("Error in multi-threaded import", e);
++      } finally {
++        if (entityRunner != null) {
++          List<EntityRunner> closure = new ArrayList<EntityRunner>();
++          closure.add(entityRunner);
++          for (int i = 0; i < closure.size(); i++) {
++            closure.addAll(closure.get(i).children());
++          }
++          for (EntityRunner er : closure) {
++            er.entityProcessor.destroy();
++          }
++        }
+       }
+     } else {
+       buildDocument(getVariableResolver(), null, null, root, true, null);
+-    }
+-
++    }    
+   }
+ 
+   @SuppressWarnings("unchecked")
+@@ -470,7 +481,6 @@ public class DocBuilder {
+           }
+         }
+       } finally {
+-        entityProcessor.destroy();
+       }
+ 
+ 
+@@ -573,6 +583,11 @@ public class DocBuilder {
+         }
+       }
+     }
++    
++    Collection<EntityRunner> children(){
++        return entityProcessorWrapper.iterator().next().children.values();
++    } 
++    
+   }
+ 
+   /**A reverse linked list .
+Index: solr/contrib/dataimporthandler/src/test-files/dih/solr/conf/dataimport-cache-ephemeral.xml
+===================================================================
+--- solr/contrib/dataimporthandler/src/test-files/dih/solr/conf/dataimport-cache-ephemeral.xml	(revision 1228293)
++++ solr/contrib/dataimporthandler/src/test-files/dih/solr/conf/dataimport-cache-ephemeral.xml	(working copy)
+@@ -5,13 +5,14 @@
+ 			name="PARENT"
+ 			processor="SqlEntityProcessor"
+ 			cacheName="PARENT"
+-			cachePk="id"			
+-			query="SELECT * FROM PARENT"				
++			cacheImpl="DestroyCountCache"		
++			query="SELECT * FROM PARENT"
++			threads="10"				
+ 		>
+ 			<entity
+ 				name="CHILD_1"
+ 				processor="SqlEntityProcessor"
+-				cacheImpl="SortedMapBackedCache"
++				cacheImpl="DestroyCountCache"
+ 				cacheName="CHILD"
+ 				cachePk="id"
+ 				cacheLookup="PARENT.id"
+@@ -22,7 +23,7 @@
+ 			<entity
+ 				name="CHILD_2"
+ 				processor="SqlEntityProcessor"
+-				cacheImpl="SortedMapBackedCache"
++				cacheImpl="DestroyCountCache"
+ 				cachePk="id"
+ 				cacheLookup="PARENT.id"
+ 				query="SELECT * FROM CHILD_2"				
+Index: solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestEphemeralCache.java
+===================================================================
+--- solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestEphemeralCache.java	(revision 1228293)
++++ solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestEphemeralCache.java	(working copy)
+@@ -2,67 +2,119 @@ package org.apache.solr.handler.dataimport;
+ 
+ import java.math.BigDecimal;
+ import java.util.ArrayList;
++import java.util.IdentityHashMap;
+ import java.util.List;
++import java.util.Map;
+ 
++import static org.hamcrest.CoreMatchers.*;
++import org.junit.Assert;
++import org.junit.Before;
+ import org.junit.BeforeClass;
++import org.junit.Ignore;
++import org.junit.Test;
+ 
+ public class TestEphemeralCache extends AbstractDataImportHandlerTestCase {
+ 
+-	@BeforeClass
++	private final String dataConfig = loadDataConfig("dataimport-cache-ephemeral.xml");
++
++    @BeforeClass
+ 	public static void beforeClass() throws Exception {
+ 		initCore("dataimport-solrconfig.xml", "dataimport-schema.xml");
+ 	}
+ 
+-	public void testEphemeralCache() throws Exception {
+-		List parentRows = new ArrayList();
+-		parentRows.add(createMap("id", new BigDecimal("1"), "parent_s", "one"));
+-		parentRows.add(createMap("id", new BigDecimal("2"), "parent_s", "two"));
+-		parentRows.add(createMap("id", new BigDecimal("3"), "parent_s", "three"));
+-		parentRows.add(createMap("id", new BigDecimal("4"), "parent_s", "four"));
+-		parentRows.add(createMap("id", new BigDecimal("5"), "parent_s", "five"));
+-
+-		List child1Rows = new ArrayList();
+-    child1Rows.add(createMap("id", new BigDecimal("6"), "child1a_mult_s", "this is the number six."));
+-    child1Rows.add(createMap("id", new BigDecimal("5"), "child1a_mult_s", "this is the number five."));
+-    child1Rows.add(createMap("id", new BigDecimal("6"), "child1a_mult_s", "let's sing a song of six."));
+-    child1Rows.add(createMap("id", new BigDecimal("3"), "child1a_mult_s", "three"));
+-    child1Rows.add(createMap("id", new BigDecimal("3"), "child1a_mult_s", "III"));
+-    child1Rows.add(createMap("id", new BigDecimal("3"), "child1a_mult_s", "3"));
+-    child1Rows.add(createMap("id", new BigDecimal("3"), "child1a_mult_s", "|||"));
+-    child1Rows.add(createMap("id", new BigDecimal("1"), "child1a_mult_s", "one"));
+-    child1Rows.add(createMap("id", new BigDecimal("1"), "child1a_mult_s", "uno"));
+-    child1Rows.add(createMap("id", new BigDecimal("2"), "child1b_s", "CHILD1B", "child1a_mult_s", "this is the number two."));
+-
+-    List child2Rows = new ArrayList();
+-    child2Rows.add(createMap("id", new BigDecimal("6"), "child2a_mult_s", "Child 2 says, 'this is the number six.'"));
+-    child2Rows.add(createMap("id", new BigDecimal("5"), "child2a_mult_s", "Child 2 says, 'this is the number five.'"));
+-    child2Rows.add(createMap("id", new BigDecimal("6"), "child2a_mult_s", "Child 2 says, 'let's sing a song of six.'"));
+-    child2Rows.add(createMap("id", new BigDecimal("3"), "child2a_mult_s", "Child 2 says, 'three'"));
+-    child2Rows.add(createMap("id", new BigDecimal("3"), "child2a_mult_s", "Child 2 says, 'III'"));
+-    child2Rows.add(createMap("id", new BigDecimal("3"), "child2b_s", "CHILD2B", "child2a_mult_s", "Child 2 says, '3'"));
+-    child2Rows.add(createMap("id", new BigDecimal("3"), "child2a_mult_s", "Child 2 says, '|||'"));
+-    child2Rows.add(createMap("id", new BigDecimal("1"), "child2a_mult_s", "Child 2 says, 'one'"));
+-    child2Rows.add(createMap("id", new BigDecimal("1"), "child2a_mult_s", "Child 2 says, 'uno'"));
+-    child2Rows.add(createMap("id", new BigDecimal("2"), "child2a_mult_s", "Child 2 says, 'this is the number two.'"));
++	@Before
++	public void reset(){
++	    DestroyCountCache.destroyed.clear();
++	    
++	    setupMockData();
++	}
++	
++	
++    @SuppressWarnings("unchecked")
++    private void setupMockData() {
++        List parentRows = new ArrayList();
++        parentRows.add(createMap("id", new BigDecimal("1"), "parent_s", "one"));
++        parentRows.add(createMap("id", new BigDecimal("2"), "parent_s", "two"));
++        parentRows.add(createMap("id", new BigDecimal("3"), "parent_s", "three"));
++        parentRows.add(createMap("id", new BigDecimal("4"), "parent_s", "four"));
++        parentRows.add(createMap("id", new BigDecimal("5"), "parent_s", "five"));
+ 
+-    MockDataSource.setIterator("SELECT * FROM PARENT", parentRows.iterator());
+-    MockDataSource.setIterator("SELECT * FROM CHILD_1", child1Rows.iterator());
+-    MockDataSource.setIterator("SELECT * FROM CHILD_2", child2Rows.iterator());
++        List child1Rows = new ArrayList();
++        child1Rows.add(createMap("id", new BigDecimal("6"), "child1a_mult_s", "this is the number six."));
++        child1Rows.add(createMap("id", new BigDecimal("5"), "child1a_mult_s", "this is the number five."));
++        child1Rows.add(createMap("id", new BigDecimal("6"), "child1a_mult_s", "let's sing a song of six."));
++        child1Rows.add(createMap("id", new BigDecimal("3"), "child1a_mult_s", "three"));
++        child1Rows.add(createMap("id", new BigDecimal("3"), "child1a_mult_s", "III"));
++        child1Rows.add(createMap("id", new BigDecimal("3"), "child1a_mult_s", "3"));
++        child1Rows.add(createMap("id", new BigDecimal("3"), "child1a_mult_s", "|||"));
++        child1Rows.add(createMap("id", new BigDecimal("1"), "child1a_mult_s", "one"));
++        child1Rows.add(createMap("id", new BigDecimal("1"), "child1a_mult_s", "uno"));
++        child1Rows.add(createMap("id", new BigDecimal("2"), "child1b_s", "CHILD1B", "child1a_mult_s", "this is the number two."));
++        
++        List child2Rows = new ArrayList();
++        child2Rows.add(createMap("id", new BigDecimal("6"), "child2a_mult_s", "Child 2 says, 'this is the number six.'"));
++        child2Rows.add(createMap("id", new BigDecimal("5"), "child2a_mult_s", "Child 2 says, 'this is the number five.'"));
++        child2Rows.add(createMap("id", new BigDecimal("6"), "child2a_mult_s", "Child 2 says, 'let's sing a song of six.'"));
++        child2Rows.add(createMap("id", new BigDecimal("3"), "child2a_mult_s", "Child 2 says, 'three'"));
++        child2Rows.add(createMap("id", new BigDecimal("3"), "child2a_mult_s", "Child 2 says, 'III'"));
++        child2Rows.add(createMap("id", new BigDecimal("3"), "child2b_s", "CHILD2B", "child2a_mult_s", "Child 2 says, '3'"));
++        child2Rows.add(createMap("id", new BigDecimal("3"), "child2a_mult_s", "Child 2 says, '|||'"));
++        child2Rows.add(createMap("id", new BigDecimal("1"), "child2a_mult_s", "Child 2 says, 'one'"));
++        child2Rows.add(createMap("id", new BigDecimal("1"), "child2a_mult_s", "Child 2 says, 'uno'"));
++        child2Rows.add(createMap("id", new BigDecimal("2"), "child2a_mult_s", "Child 2 says, 'this is the number two.'"));
++        
++        MockDataSource.setIterator("SELECT * FROM PARENT", parentRows.iterator());
++        MockDataSource.setIterator("SELECT * FROM CHILD_1", child1Rows.iterator());
++        MockDataSource.setIterator("SELECT * FROM CHILD_2", child2Rows.iterator());
++        
++    }
+ 
+-    runFullImport(loadDataConfig("dataimport-cache-ephemeral.xml"));
++    @Ignore
++    @Test
++    public void testTenThreads() throws Exception {
++        assertFullImport(dataConfig);
++        
++    }
++    
++    @Test
++    public void testThreadless() throws Exception {
++        assertFullImport(dataConfig.replaceAll("threads=\"10\"", ""));
++    }
+ 
+-    assertQ(req("*:*"),                                       "//*[@numFound='5']");
+-    assertQ(req("id:1"),                                      "//*[@numFound='1']");
+-    assertQ(req("id:6"),                                      "//*[@numFound='0']");
+-    assertQ(req("parent_s:four"),                             "//*[@numFound='1']");
+-    assertQ(req("child1a_mult_s:this\\ is\\ the\\ numbe*"),   "//*[@numFound='2']");
+-    assertQ(req("child2a_mult_s:Child\\ 2\\ say*"),           "//*[@numFound='4']");
+-    assertQ(req("child1b_s:CHILD1B"),                         "//*[@numFound='1']");
+-    assertQ(req("child2b_s:CHILD2B"),                         "//*[@numFound='1']");
+-    assertQ(req("child1a_mult_s:one"),                        "//*[@numFound='1']");
+-    assertQ(req("child1a_mult_s:uno"),                        "//*[@numFound='1']");
+-    assertQ(req("child1a_mult_s:(uno OR one)"),               "//*[@numFound='1']");
++    @Test
++    public void testSingleThread() throws Exception {
++        assertFullImport(dataConfig.replaceAll("threads=\"10\"", "threads=\"1\""));
++    }
++    
++    private void assertFullImport(String dataConfig) throws Exception {
++        runFullImport(dataConfig);
+ 
+-	}
++        assertQ(req("*:*"),                                       "//*[@numFound='5']");
++        assertQ(req("id:1"),                                      "//*[@numFound='1']");
++        assertQ(req("id:6"),                                      "//*[@numFound='0']");
++        assertQ(req("parent_s:four"),                             "//*[@numFound='1']");
++        assertQ(req("child1a_mult_s:this\\ is\\ the\\ numbe*"),   "//*[@numFound='2']");
++        assertQ(req("child2a_mult_s:Child\\ 2\\ say*"),           "//*[@numFound='4']");
++        assertQ(req("child1b_s:CHILD1B"),                         "//*[@numFound='1']");
++        assertQ(req("child2b_s:CHILD2B"),                         "//*[@numFound='1']");
++        assertQ(req("child1a_mult_s:one"),                        "//*[@numFound='1']");
++        assertQ(req("child1a_mult_s:uno"),                        "//*[@numFound='1']");
++        assertQ(req("child1a_mult_s:(uno OR one)"),               "//*[@numFound='1']");
++        
++        assertThat(DestroyCountCache.destroyed.size(), is(3));
++    }
++}
+ 
++class DestroyCountCache extends SortedMapBackedCache{
++    static Map<DIHCache,DIHCache> destroyed = new IdentityHashMap<DIHCache, DIHCache>();
++    
++    @Override
++    public void destroy() {
++        super.destroy();
++        Assert.assertThat(destroyed.put(this, this), nullValue());
++    }
++    
++    public DestroyCountCache() {
++    }
++    
+ }
