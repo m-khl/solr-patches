@@ -20,12 +20,12 @@ import static org.apache.solr.handler.dataimport.EntityProcessorBase.ON_ERROR;
 import static org.apache.solr.handler.dataimport.EntityProcessorBase.ABORT;
 import static org.apache.solr.handler.dataimport.DataImportHandlerException.wrapAndThrow;
 import static org.apache.solr.handler.dataimport.DataImportHandlerException.SEVERE;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Collections;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Each Entity may have only a single EntityProcessor .  But the same entity can be run by
@@ -37,26 +37,23 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
   private static final Logger LOG = LoggerFactory.getLogger(ThreadedEntityProcessorWrapper.class);
 
   final DocBuilder.EntityRunner entityRunner;
-  /**For each child entity there is one EntityRunner
-   */
+  /** single EntityRunner per children entity */
   final Map<DataConfig.Entity ,DocBuilder.EntityRunner> children;
+  
+  final protected AtomicBoolean entityEnded = new AtomicBoolean(false);
+
+   final private int number;
 
   public ThreadedEntityProcessorWrapper(EntityProcessor delegate, DocBuilder docBuilder,
                                   DocBuilder.EntityRunner entityRunner,
-                                  VariableResolverImpl resolver) {
+                                  VariableResolverImpl resolver,
+                                  Map<DataConfig.Entity ,DocBuilder.EntityRunner> childrenRunners,
+                                  int num) {
     super(delegate, docBuilder);
     this.entityRunner = entityRunner;
     this.resolver = resolver;
-    if (entityRunner.entity.entities == null) {
-      children = Collections.emptyMap();
-    } else {
-      children = new HashMap<DataConfig.Entity, DocBuilder.EntityRunner>(entityRunner.entity.entities.size());
-      for (DataConfig.Entity e : entityRunner.entity.entities) {
-        DocBuilder.EntityRunner runner = docBuilder.createRunner(e, entityRunner);
-        children.put(e, runner);
-      }
-    }
-
+    this.children = childrenRunners;
+    this.number = num;
   }
 
   void threadedInit(Context context){
@@ -76,40 +73,72 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
     if (rowcache != null) {
       return getFromRowCache();
     }
-    while (true) {
-      Map<String, Object> arow = null;
+    
+    List<Map<String, Object>> transformedRows = new ArrayList<Map<String,Object>>();
+    boolean eof = false;
+    while (transformedRows.isEmpty() && !eof) { // looping while transformer bans raw rows
+        List<Map<String, Object>> rawRows = new ArrayList<Map<String, Object>>();
       synchronized (delegate) {
-        if(entityRunner.entityEnded.get()) return null;
-        try {
-          arow = delegate.nextRow();
-        } catch (Exception e) {
-          if (ABORT.equals(onError)) {
-            wrapAndThrow(SEVERE, e);
-          } else {
-            //SKIP is not really possible. If this calls the nextRow() again the Entityprocessor would be in an inconistent state
-            LOG.error("Exception in entity : " + entityName, e);
-            return null;
+          Map<String, Object> arow = null;
+          // for paged case we need to loop through whole page, other wise single row is enough
+              for (int i = 0; delegate.isPaged() ? !eof : i==0; i++) {
+                  arow = pullRow();
+                  if (arow != null) {
+                      rawRows.add(arow);
+                  }else { // there is no row, eof
+                      eof = true;
+                  }
+              }
+      }
+      for(Map<String, Object> rawRow : rawRows){
+          // transforming emits N rows
+          List<Map<String, Object>> result = transformRow(rawRow);
+          if(!result.isEmpty() && result.get(0) != null){ // but post-transforming is applied only to the first one (legacy as-is)
+              delegate.postTransform(result.get(0));
+              transformedRows.addAll(result);
           }
-        }
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("arow : " + arow);
-        }
-        if(arow == null) entityRunner.entityEnded.set(true);
       }
-      if (arow == null) {
+    }
+    if(!transformedRows.isEmpty()){
+        rowcache = transformedRows;
+        return getFromRowCache();
+    }else{ // caused by eof
         return null;
+    }
+  }
+
+  /**
+   * pulls single row from {@link delegate}, checks and sets {@link entityRunner.entityEnded}.
+   * it expect to be called in synchronised(delegate) section
+   * @return row from delegate
+   * */
+  protected Map<String, Object> pullRow() {
+      Map<String, Object> arow = null;
+    if(entityEnded.get()) return null;
+    try {
+      arow = delegate.nextRow();
+    } catch (Exception e) {
+      if (ABORT.equals(onError)) {
+        wrapAndThrow(SEVERE, e);
       } else {
-        arow = applyTransformer(arow);
-        if (arow != null) {
-          delegate.postTransform(arow);
-          return arow;
-        }
+        //SKIP is not really possible. If this calls the nextRow() again the Entityprocessor would be in an inconistent state
+        LOG.error("Exception in entity : " + entityName, e);
+        return null;
       }
-    } 
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("arow : " + arow);
+    }
+    if(arow == null) entityEnded.set(true);
+    return arow;
   }
 
   public void init(DocBuilder.EntityRow rows) {
     for (DocBuilder.EntityRow row = rows; row != null; row = row.tail) resolver.addNamespace(row.name, row.row);
+  }
+
+  public int getNumber() {
+    return number;
   }
 
 

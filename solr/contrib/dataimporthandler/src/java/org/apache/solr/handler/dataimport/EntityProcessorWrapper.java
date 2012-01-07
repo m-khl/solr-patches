@@ -155,13 +155,38 @@ public class EntityProcessorWrapper extends EntityProcessor {
     return r;
   }
 
+  /**
+   * handles null-on-null invocation
+   * 
+   * call transformers via {@link transformRow}, then assigns the result into {@link rowcache}, and delegates to {@link getFromRowCache}
+   * */
   @SuppressWarnings("unchecked")
   protected Map<String, Object> applyTransformer(Map<String, Object> row) {
     if(row == null) return null;
-    if (transformers == null)
+    
+    List<Map<String, Object>> result = transformRow(row);
+    if(!result.isEmpty()){
+        rowcache = result;
+        return getFromRowCache();
+    } else {
+        return null;
+    }
+  }
+  /**
+   * Initialises transformers, applies them on the given row. returned collection is mutable
+   * @return several rows emitted by transformers. if there are no transformers, 
+   * returns single element list contains the given row; if transformer returns null,
+   * returns empty collection.
+   * **/
+  protected List<Map<String, Object>> transformRow(Map<String, Object> row) {
+    if (transformers == null){
       loadTransformers();
-    if (transformers == Collections.EMPTY_LIST)
-      return row;
+    }
+    if (transformers == Collections.EMPTY_LIST){
+        List<Map<String, Object>> same = new ArrayList<Map<String, Object>>();
+        same.add(row);
+        return same;
+    }else{
     Map<String, Object> transformedRow = row;
     List<Map<String, Object>> rows = null;
     boolean stopTransform = checkStopTransform(row);
@@ -190,8 +215,11 @@ public class EntityProcessorWrapper extends EntityProcessor {
         } else {
           resolver.addNamespace(entityName, transformedRow);
           Object o = t.transformRow(transformedRow, context);
-          if (o == null)
-            return null;
+          if (o == null){
+            //return null; - old line
+              transformedRow = null;
+              break;
+          }
           if (o instanceof Map) {
             Map oMap = (Map) o;
             stopTransform = checkStopTransform(oMap);
@@ -210,16 +238,19 @@ public class EntityProcessorWrapper extends EntityProcessor {
           wrapAndThrow(DataImportHandlerException.SKIP, e);
         }
         // onError = continue
-      }
+      } // catch
+    }// for each transformers
+    if(rows == null){ // legacy behavior 
+        List<Map<String, Object>> box = new ArrayList<Map<String, Object>>();
+        if(transformedRow!=null){
+            box.add(transformedRow);
+        }// otherwise give an empty box
+        return box;
+    }else{
+        return rows;
     }
-    if (rows == null) {
-      return transformedRow;
-    } else {
-      rowcache = rows;
-      return getFromRowCache();
-    }
-
-  }
+    }// !transformers.isEmpty()
+}
 
   private boolean checkStopTransform(Map oMap) {
     return oMap.get("$stopTransform") != null
@@ -294,4 +325,9 @@ public class EntityProcessorWrapper extends EntityProcessor {
   public void close() {
     delegate.close();
   }
+  
+  @Override
+    public boolean isPaged() {
+        return false;
+    }
 }

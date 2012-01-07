@@ -205,7 +205,11 @@ public class DIHCacheSupport {
     return r;
   }
   
-  /**
+  public boolean doesKeyLookup() {
+    return cacheDoKeyLookup;
+}
+
+/**
    * <p>
    * Specify the class for the cache implementation
    * </p>
