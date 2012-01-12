@@ -58,7 +58,9 @@ public class DocBuilder {
 
   public Statistics importStatistics = new Statistics();
 
-  DIHWriter writer;
+  private DIHWriter writer;
+  private final DIHWriter.Factory writerFactory;
+  private String writerClassStr;
 
   DataImporter.RequestParams requestParameters;
 
@@ -77,39 +79,60 @@ public class DocBuilder {
   private DataImporter.RequestParams reqParams;
   
     @SuppressWarnings("unchecked")
-  public DocBuilder(DataImporter dataImporter, SolrWriter solrWriter, DIHPropertiesWriter propWriter, DataImporter.RequestParams reqParams) {
+  public DocBuilder(DataImporter dataImporter, DIHWriter.Factory solrWriterFactory, DIHPropertiesWriter propWriter, DataImporter.RequestParams reqParams) {
     INSTANCE.set(this);
     this.dataImporter = dataImporter;
     this.reqParams = reqParams;
     this.propWriter = propWriter;
+    this.writerFactory = solrWriterFactory;
+    
     DataImporter.QUERY_COUNT.set(importStatistics.queryCount);
     requestParameters = reqParams;
     verboseDebug = requestParameters.debug && requestParameters.verbose;
     functionsNamespace = EvaluatorBag.getFunctionsNamespace(this.dataImporter.getConfig().functions, this);
     persistedProperties = propWriter.readIndexerProperties();
     
-    String writerClassStr = null;
-    if(reqParams!=null && reqParams.requestParams != null) {
-    	writerClassStr = (String) reqParams.requestParams.get(PARAM_WRITER_IMPL);
-    }
-    if(writerClassStr != null && !writerClassStr.equals(DEFAULT_WRITER_NAME) && !writerClassStr.equals(DocBuilder.class.getPackage().getName() + "." + DEFAULT_WRITER_NAME)) {
-    	try {
-    		Class<DIHWriter> writerClass = loadClass(writerClassStr, dataImporter.getCore());
-    		this.writer = writerClass.newInstance();
-    	} catch (Exception e) {
-    		throw new DataImportHandlerException(DataImportHandlerException.SEVERE, "Unable to load Writer implementation:" + writerClassStr, e);
-    	}
-   	} else {
-    	writer = solrWriter;
-    }
-    ContextImpl ctx = new ContextImpl(null, null, null, null, reqParams.requestParams, null, this);
-    writer.init(ctx);
+    writerClassStr = (reqParams!=null && reqParams.requestParams != null) ? 
+            (String) reqParams.requestParams.get(PARAM_WRITER_IMPL) : null;
+
   }
 
+    /**
+     * lazily creates writers, purposed for single thread usage
+     * */
+    DIHWriter getWriter() {
+        if(writer==null){
+            DIHWriter w = createWriter();
+            writer = w;
+        }
+        return writer;
+    }
+    
+    /**
+     * creates writer via {@link writerClassStr} or {@link writerFactory}
+     * don't changes any fields
+     * */
+    protected DIHWriter createWriter() {
+        DIHWriter w;
+        if(writerClassStr != null && !writerClassStr.equals(DEFAULT_WRITER_NAME) && !writerClassStr.equals(DocBuilder.class.getPackage().getName() + "." + DEFAULT_WRITER_NAME)) {
+            try {
+                    Class<DIHWriter> writerClass = loadClass(writerClassStr, dataImporter.getCore());
+                    w = writerClass.newInstance();
+            } catch (Exception e) {
+                    throw new DataImportHandlerException(DataImportHandlerException.SEVERE, "Unable to load Writer implementation:" + writerClassStr, e);
+            }
+        } else {
+            w = writerFactory.create();
+        }
+        ContextImpl ctx = new ContextImpl(null, null, null, null, reqParams.requestParams, null, this);
+        w.init(ctx);
+        return w;
+    }
 
 
 
-  DebugLogger getDebugLogger(){
+
+DebugLogger getDebugLogger(){
     if (debugLogger == null) {
       debugLogger = new DebugLogger();
     }
@@ -263,8 +286,8 @@ public class DocBuilder {
 			throw new RuntimeException(e);
 		} finally
 		{
-			if (writer != null) {
-	      writer.close();
+			if (getWriter() != null) {
+	      getWriter().close();
 	    }
 			if(requestParameters.debug) {
 				requestParameters.debugVerboseOutput = getDebugLogger().output;	
@@ -279,7 +302,7 @@ public class DocBuilder {
             + importStatistics.docCount + " documents. Deleted "
             + importStatistics.deletedDocCount + " documents.");
     if(requestParameters.commit) {
-      writer.commit(requestParameters.optimize);
+      getWriter().commit(requestParameters.optimize);
       addStatusMessage("Committed");
       if (requestParameters.optimize)
         addStatusMessage("Optimized");
@@ -294,7 +317,7 @@ public class DocBuilder {
   }
 
   void rollback() {
-    writer.rollback();
+    getWriter().rollback();
     statusMessages.put("", "Indexing failed. Rolled back all changes.");
     addStatusMessage("Rolledback");
   }
@@ -311,6 +334,7 @@ public class DocBuilder {
         throw new RuntimeException("Error in multi-threaded import", e);
       } finally {
         if (entityRunner != null) {
+          // destroy all real entity processors
           List<EntityRunner> closure = new ArrayList<EntityRunner>();
           closure.add(entityRunner);
           for (int i = 0; i < closure.size(); i++) {
@@ -318,6 +342,10 @@ public class DocBuilder {
           }
           for (EntityRunner er : closure) {
             er.entityProcessor.destroy();
+          }
+          // also destroy threadEPwrapers of root entity, to close its' writers
+          for (ThreadedEntityProcessorWrapper threadedRootWrapper : entityRunner.entityProcessorWrapper) {
+            threadedRootWrapper.destroy();
           }
         }
       }
@@ -332,7 +360,7 @@ public class DocBuilder {
     VariableResolverImpl resolver = getVariableResolver();
 
     if (document.deleteQuery != null) {
-      writer.deleteByQuery(document.deleteQuery);
+      getWriter().deleteByQuery(document.deleteQuery);
     }
 
     addStatusMessage("Identifying Delta");
@@ -349,7 +377,7 @@ public class DocBuilder {
       // Make sure that documents are not re-created
     }
     deletedKeys = null;
-    writer.setDeltaKeys(allPks);
+    getWriter().setDeltaKeys(allPks);
 
     statusMessages.put("Total Changed Documents", allPks.size());
     VariableResolverImpl vri = getVariableResolver();
@@ -384,7 +412,7 @@ public class DocBuilder {
         LOG.warn("no key was available for deleted pk query. keyName = " + keyName);
         continue;
       }
-      writer.deleteDoc(key);
+      getWriter().deleteDoc(key);
       importStatistics.deletedDocCount.incrementAndGet();
       iter.remove();
     }
@@ -441,7 +469,7 @@ public class DocBuilder {
       }
       
       for (int i = 0; i < threads; i++) {
-        ThreadedEntityProcessorWrapper thepw = new ThreadedEntityProcessorWrapper(
+        ThreadedEntityProcessorWrapper thepw = ThreadedEntityProcessorWrapper.create(
                 entityProcessor, DocBuilder.this, this, getVariableResolver(),
                 childrenRunners, i);
         entityProcessorWrapper.add(thepw);
@@ -532,7 +560,7 @@ public class DocBuilder {
                 if (LOG.isDebugEnabled()) {
                   LOG.debug("adding a doc "+docWrapper);
                 }
-                boolean result = writer.upload(docWrapper);
+                boolean result = epw.getWriter().upload(docWrapper);
                 if(reqParams.debug) {
                 	reqParams.debugDocuments.add(docWrapper);
                 }
@@ -729,7 +757,7 @@ public class DocBuilder {
             if (stop.get())
               return;
             if (!doc.isEmpty()) {
-              boolean result = writer.upload(doc);
+              boolean result = getWriter().upload(doc);
               if(reqParams.debug) {
               	reqParams.debugDocuments.add(doc);
               }
@@ -802,11 +830,11 @@ public class DocBuilder {
       if (value instanceof Collection) {
         Collection collection = (Collection) value;
         for (Object o : collection) {
-          writer.deleteDoc(o.toString());
+          getWriter().deleteDoc(o.toString());
           importStatistics.deletedDocCount.incrementAndGet();
         }
       } else {
-        writer.deleteDoc(value);
+        getWriter().deleteDoc(value);
         importStatistics.deletedDocCount.incrementAndGet();
       }
     }    
@@ -815,11 +843,11 @@ public class DocBuilder {
       if (value instanceof Collection) {
         Collection collection = (Collection) value;
         for (Object o : collection) {
-          writer.deleteByQuery(o.toString());
+          getWriter().deleteByQuery(o.toString());
           importStatistics.deletedDocCount.incrementAndGet();
         }
       } else {
-        writer.deleteByQuery(value.toString());
+        getWriter().deleteByQuery(value.toString());
         importStatistics.deletedDocCount.incrementAndGet();
       }
     }
@@ -1157,10 +1185,10 @@ public class DocBuilder {
     delQuery = getVariableResolver().replaceTokens(delQuery);
     if (requestParameters.clean) {
       if (delQuery == null && !completeCleanDone.get()) {
-        writer.doDeleteAll();
+        getWriter().doDeleteAll();
         completeCleanDone.set(true);
       } else if (delQuery != null) {
-        writer.deleteByQuery(delQuery);
+        getWriter().deleteByQuery(delQuery);
       }
     }
   }
@@ -1182,6 +1210,7 @@ public class DocBuilder {
   }
   public static final String LAST_INDEX_TIME = "last_index_time";
   public static final String INDEX_START_TIME = "index_start_time";
+
   
   public void destroy(){
     executorSvc.shutdown();

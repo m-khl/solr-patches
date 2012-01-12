@@ -1,0 +1,662 @@
+Index: b/solr/contrib/dataimporthandler-extras/src/test/org/apache/solr/handler/dataimport/TestMailEntityProcessor.java
+===================================================================
+--- a/solr/contrib/dataimporthandler-extras/src/test/org/apache/solr/handler/dataimport/TestMailEntityProcessor.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler-extras/src/test/org/apache/solr/handler/dataimport/TestMailEntityProcessor.java(working copy)
+@@ -182,7 +182,7 @@ public class TestMailEntityProcessor extends AbstractDataImportHandlerTestCase {
+     return conf.replace("someconfig", attribs.toString());
+   }
+ 
+-  static class SolrWriterImpl extends SolrWriter {
++  static class SolrWriterImpl extends SolrWriter implements DIHWriter.Factory {
+     List<SolrInputDocument> docs = new ArrayList<SolrInputDocument>();
+     Boolean deleteAllCalled;
+     Boolean commitCalled;
+@@ -206,5 +206,10 @@ public class TestMailEntityProcessor extends AbstractDataImportHandlerTestCase {
+     public void commit(boolean b) {
+       commitCalled = Boolean.TRUE;
+     }
++
++    @Override
++    public DIHWriter create() {
++        return this;
++    }
+   }
+ }
+Index: b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/ContextImpl.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/ContextImpl.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/ContextImpl.java(working copy)
+@@ -231,14 +231,14 @@ public class ContextImpl extends Context {
+   @Override
+   public void deleteDoc(String id) {
+     if(docBuilder != null){
+-      docBuilder.writer.deleteDoc(id);
++      docBuilder.getWriter().deleteDoc(id);
+     }
+   }
+ 
+   @Override
+   public void deleteDocByQuery(String query) {
+     if(docBuilder != null){
+-      docBuilder.writer.deleteByQuery(query);
++      docBuilder.getWriter().deleteByQuery(query);
+     } 
+   }
+ 
+Index: b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DIHWriter.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DIHWriter.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DIHWriter.java(working copy)
+@@ -101,5 +101,9 @@ public interface DIHWriter {
+ 	 * @param deltaKeys
+ 	 */
+ 	public void setDeltaKeys(Set<Map<String, Object>> deltaKeys) ;
++	
++	public interface Factory{
++	    public DIHWriter create();
++	}
+ 
+ }
+Index: b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DataImportHandler.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DataImportHandler.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DataImportHandler.java(working copy)
+@@ -124,11 +124,11 @@ public class DataImportHandler extends RequestHandlerBase implements
+ 
+   @Override
+   @SuppressWarnings("unchecked")
+-  public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp)
++  public void handleRequestBody(final SolrQueryRequest req, final SolrQueryResponse rsp)
+           throws Exception {
+     rsp.setHttpCaching(false);
+-    SolrParams params = req.getParams();
+-    DataImporter.RequestParams requestParams = new DataImporter.RequestParams(getParamsMap(params));
++    final SolrParams params = req.getParams();
++    final DataImporter.RequestParams requestParams = new DataImporter.RequestParams(getParamsMap(params));
+     String command = requestParams.command;
+     Iterable<ContentStream> streams = req.getContentStreams();
+     if(streams != null){
+@@ -189,17 +189,23 @@ public class DataImportHandler extends RequestHandlerBase implements
+       if (DataImporter.FULL_IMPORT_CMD.equals(command)
+               || DataImporter.DELTA_IMPORT_CMD.equals(command) ||
+               IMPORT_CMD.equals(command)) {
+-
+-        UpdateRequestProcessorChain processorChain =
+-                req.getCore().getUpdateProcessingChain(SolrPluginUtils.resolveUpdateChainParam(params, LOG));
+-        UpdateRequestProcessor processor = processorChain.createProcessor(req, rsp);
+-        SolrResourceLoader loader = req.getCore().getResourceLoader();
+-        SolrWriter sw = getSolrWriter(processor, loader, requestParams, req);
++        
++        DIHWriter.Factory writerFactory = new DIHWriter.Factory() {
++            @Override
++            public DIHWriter create() {
++                UpdateRequestProcessorChain processorChain =
++                    req.getCore().getUpdateProcessingChain(SolrPluginUtils.resolveUpdateChainParam(params, LOG));
++                UpdateRequestProcessor processor = processorChain.createProcessor(req, rsp);
++                SolrResourceLoader loader = req.getCore().getResourceLoader();
++                SolrWriter sw = getSolrWriter(processor, loader, requestParams, req);
++                return sw;
++            }
++        };
+         
+         if (requestParams.debug) {
+           if (debugEnabled) {
+             // Synchronous request for the debug mode
+-            importer.runCmd(requestParams, sw);
++            importer.runCmd(requestParams, writerFactory);
+             rsp.add("mode", "debug");
+             rsp.add("documents", requestParams.debugDocuments);
+             if (requestParams.debugVerboseOutput != null) {
+@@ -213,9 +219,9 @@ public class DataImportHandler extends RequestHandlerBase implements
+         } else {
+           // Asynchronous request for normal mode
+           if(requestParams.contentStream == null && !requestParams.syncMode){
+-            importer.runAsync(requestParams, sw);
++            importer.runAsync(requestParams, writerFactory);
+           } else {
+-            importer.runCmd(requestParams, sw);
++            importer.runCmd(requestParams, writerFactory);
+           }
+         }
+       } else if (DataImporter.RELOAD_CONF_CMD.equals(command)) {
+Index: b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DataImporter.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DataImporter.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DataImporter.java(working copy)
+@@ -28,6 +28,7 @@ import org.apache.solr.common.util.NamedList;
+ import org.apache.solr.common.util.StrUtils;
+ import org.apache.solr.common.util.SystemIdResolver;
+ import org.apache.solr.common.util.XMLErrorLogger;
++import org.apache.solr.handler.dataimport.DIHWriter.Factory;
+ 
+ import static org.apache.solr.handler.dataimport.DataImportHandlerException.wrapAndThrow;
+ import static org.apache.solr.handler.dataimport.DataImportHandlerException.SEVERE;
+@@ -360,15 +361,15 @@ public class DataImporter {
+     return importLock.isLocked();
+   }
+ 
+-  public void doFullImport(SolrWriter writer, RequestParams requestParams) {
++  public void doFullImport(DIHWriter.Factory writerFactory, RequestParams requestParams) {
+     LOG.info("Starting Full Import");
+     setStatus(Status.RUNNING_FULL_DUMP);
+ 
+     setIndexStartTime(new Date());
+ 
+     try {
+-      docBuilder = new DocBuilder(this, writer, propWriter, requestParams);
+-      checkWritablePersistFile(writer);
++      docBuilder = new DocBuilder(this, writerFactory, propWriter, requestParams);
++      checkWritablePersistFile();
+       docBuilder.execute();
+       if (!requestParams.debug)
+         cumulativeStatistics.add(docBuilder.importStatistics);
+@@ -384,7 +385,7 @@ public class DataImporter {
+ 
+   }
+ 
+-  private void checkWritablePersistFile(SolrWriter writer) {
++  private void checkWritablePersistFile() {
+ //  	File persistFile = propWriter.getPersistFile();
+ //    boolean isWritable = persistFile.exists() ? persistFile.canWrite() : persistFile.getParentFile().canWrite();
+     if (isDeltaImportSupported && !propWriter.isWritable()) {
+@@ -393,14 +394,14 @@ public class DataImporter {
+     }
+   }
+ 
+-  public void doDeltaImport(SolrWriter writer, RequestParams requestParams) {
++  public void doDeltaImport(DIHWriter.Factory swFactory, RequestParams requestParams) {
+     LOG.info("Starting Delta Import");
+     setStatus(Status.RUNNING_DELTA_DUMP);
+ 
+     try {
+       setIndexStartTime(new Date());
+-      docBuilder = new DocBuilder(this, writer, propWriter, requestParams);
+-      checkWritablePersistFile(writer);
++      docBuilder = new DocBuilder(this, swFactory, propWriter, requestParams);
++      checkWritablePersistFile();
+       docBuilder.execute();
+       if (!requestParams.debug)
+         cumulativeStatistics.add(docBuilder.importStatistics);
+@@ -416,7 +417,7 @@ public class DataImporter {
+ 
+   }
+ 
+-  public void runAsync(final RequestParams reqParams, final SolrWriter sw) {
++  public void runAsync(final RequestParams reqParams, final DIHWriter.Factory sw) {
+     new Thread() {
+       @Override
+       public void run() {
+@@ -425,7 +426,7 @@ public class DataImporter {
+     }.start();
+   }
+ 
+-  void runCmd(RequestParams reqParams, SolrWriter sw) {
++  void runCmd(RequestParams reqParams, DIHWriter.Factory swFactory) {
+     String command = reqParams.command;
+     if (command.equals(ABORT_CMD)) {
+       if (docBuilder != null) {
+@@ -439,9 +440,9 @@ public class DataImporter {
+     }
+     try {
+       if (FULL_IMPORT_CMD.equals(command) || IMPORT_CMD.equals(command)) {
+-        doFullImport(sw, reqParams);
++        doFullImport(swFactory, reqParams);
+       } else if (command.equals(DELTA_IMPORT_CMD)) {
+-        doDeltaImport(sw, reqParams);
++        doDeltaImport(swFactory, reqParams);
+       }
+     } finally {
+       importLock.unlock();
+Index: b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DocBuilder.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DocBuilder.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DocBuilder.java(working copy)
+@@ -58,7 +58,9 @@ public class DocBuilder {
+ 
+   public Statistics importStatistics = new Statistics();
+ 
+-  DIHWriter writer;
++  private DIHWriter writer;
++  private final DIHWriter.Factory writerFactory;
++  private String writerClassStr;
+ 
+   DataImporter.RequestParams requestParameters;
+ 
+@@ -77,39 +79,60 @@ public class DocBuilder {
+   private DataImporter.RequestParams reqParams;
+   
+     @SuppressWarnings("unchecked")
+-  public DocBuilder(DataImporter dataImporter, SolrWriter solrWriter, DIHPropertiesWriter propWriter, DataImporter.RequestParams reqParams) {
++  public DocBuilder(DataImporter dataImporter, DIHWriter.Factory solrWriterFactory, DIHPropertiesWriter propWriter, DataImporter.RequestParams reqParams) {
+     INSTANCE.set(this);
+     this.dataImporter = dataImporter;
+     this.reqParams = reqParams;
+     this.propWriter = propWriter;
++    this.writerFactory = solrWriterFactory;
++    
+     DataImporter.QUERY_COUNT.set(importStatistics.queryCount);
+     requestParameters = reqParams;
+     verboseDebug = requestParameters.debug && requestParameters.verbose;
+     functionsNamespace = EvaluatorBag.getFunctionsNamespace(this.dataImporter.getConfig().functions, this);
+     persistedProperties = propWriter.readIndexerProperties();
+     
+-    String writerClassStr = null;
+-    if(reqParams!=null && reqParams.requestParams != null) {
+-    	writerClassStr = (String) reqParams.requestParams.get(PARAM_WRITER_IMPL);
++    writerClassStr = (reqParams!=null && reqParams.requestParams != null) ? 
++            (String) reqParams.requestParams.get(PARAM_WRITER_IMPL) : null;
++
++  }
++
++    /**
++     * lazily creates writers, purposed for single thread usage
++     * */
++    DIHWriter getWriter() {
++        if(writer==null){
++            DIHWriter w = createWriter();
++            writer = w;
++        }
++        return writer;
+     }
+-    if(writerClassStr != null && !writerClassStr.equals(DEFAULT_WRITER_NAME) && !writerClassStr.equals(DocBuilder.class.getPackage().getName() + "." + DEFAULT_WRITER_NAME)) {
+-    	try {
+-    		Class<DIHWriter> writerClass = loadClass(writerClassStr, dataImporter.getCore());
+-    		this.writer = writerClass.newInstance();
+-    	} catch (Exception e) {
+-    		throw new DataImportHandlerException(DataImportHandlerException.SEVERE, "Unable to load Writer implementation:" + writerClassStr, e);
+-    	}
+-   	} else {
+-    	writer = solrWriter;
++    
++    /**
++     * creates writer via {@link writerClassStr} or {@link writerFactory}
++     * don't changes any fields
++     * */
++    protected DIHWriter createWriter() {
++        DIHWriter w;
++        if(writerClassStr != null && !writerClassStr.equals(DEFAULT_WRITER_NAME) && !writerClassStr.equals(DocBuilder.class.getPackage().getName() + "." + DEFAULT_WRITER_NAME)) {
++            try {
++                    Class<DIHWriter> writerClass = loadClass(writerClassStr, dataImporter.getCore());
++                    w = writerClass.newInstance();
++            } catch (Exception e) {
++                    throw new DataImportHandlerException(DataImportHandlerException.SEVERE, "Unable to load Writer implementation:" + writerClassStr, e);
++            }
++        } else {
++            w = writerFactory.create();
++        }
++        ContextImpl ctx = new ContextImpl(null, null, null, null, reqParams.requestParams, null, this);
++        w.init(ctx);
++        return w;
+     }
+-    ContextImpl ctx = new ContextImpl(null, null, null, null, reqParams.requestParams, null, this);
+-    writer.init(ctx);
+-  }
+ 
+ 
+ 
+ 
+-  DebugLogger getDebugLogger(){
++DebugLogger getDebugLogger(){
+     if (debugLogger == null) {
+       debugLogger = new DebugLogger();
+     }
+@@ -263,8 +286,8 @@ public class DocBuilder {
+ 			throw new RuntimeException(e);
+ 		} finally
+ 		{
+-			if (writer != null) {
+-	      writer.close();
++			if (getWriter() != null) {
++	      getWriter().close();
+ 	    }
+ 			if(requestParameters.debug) {
+ 				requestParameters.debugVerboseOutput = getDebugLogger().output;	
+@@ -279,7 +302,7 @@ public class DocBuilder {
+             + importStatistics.docCount + " documents. Deleted "
+             + importStatistics.deletedDocCount + " documents.");
+     if(requestParameters.commit) {
+-      writer.commit(requestParameters.optimize);
++      getWriter().commit(requestParameters.optimize);
+       addStatusMessage("Committed");
+       if (requestParameters.optimize)
+         addStatusMessage("Optimized");
+@@ -294,7 +317,7 @@ public class DocBuilder {
+   }
+ 
+   void rollback() {
+-    writer.rollback();
++    getWriter().rollback();
+     statusMessages.put("", "Indexing failed. Rolled back all changes.");
+     addStatusMessage("Rolledback");
+   }
+@@ -311,6 +334,7 @@ public class DocBuilder {
+         throw new RuntimeException("Error in multi-threaded import", e);
+       } finally {
+         if (entityRunner != null) {
++          // destroy all real entity processors
+           List<EntityRunner> closure = new ArrayList<EntityRunner>();
+           closure.add(entityRunner);
+           for (int i = 0; i < closure.size(); i++) {
+@@ -319,6 +343,10 @@ public class DocBuilder {
+           for (EntityRunner er : closure) {
+             er.entityProcessor.destroy();
+           }
++          // also destroy threadEPwrapers of root entity, to close its' writers
++          for (ThreadedEntityProcessorWrapper threadedRootWrapper : entityRunner.entityProcessorWrapper) {
++            threadedRootWrapper.destroy();
++          }
+         }
+       }
+     } else {
+@@ -332,7 +360,7 @@ public class DocBuilder {
+     VariableResolverImpl resolver = getVariableResolver();
+ 
+     if (document.deleteQuery != null) {
+-      writer.deleteByQuery(document.deleteQuery);
++      getWriter().deleteByQuery(document.deleteQuery);
+     }
+ 
+     addStatusMessage("Identifying Delta");
+@@ -349,7 +377,7 @@ public class DocBuilder {
+       // Make sure that documents are not re-created
+     }
+     deletedKeys = null;
+-    writer.setDeltaKeys(allPks);
++    getWriter().setDeltaKeys(allPks);
+ 
+     statusMessages.put("Total Changed Documents", allPks.size());
+     VariableResolverImpl vri = getVariableResolver();
+@@ -384,7 +412,7 @@ public class DocBuilder {
+         LOG.warn("no key was available for deleted pk query. keyName = " + keyName);
+         continue;
+       }
+-      writer.deleteDoc(key);
++      getWriter().deleteDoc(key);
+       importStatistics.deletedDocCount.incrementAndGet();
+       iter.remove();
+     }
+@@ -441,7 +469,7 @@ public class DocBuilder {
+       }
+       
+       for (int i = 0; i < threads; i++) {
+-        ThreadedEntityProcessorWrapper thepw = new ThreadedEntityProcessorWrapper(
++        ThreadedEntityProcessorWrapper thepw = ThreadedEntityProcessorWrapper.create(
+                 entityProcessor, DocBuilder.this, this, getVariableResolver(),
+                 childrenRunners, i);
+         entityProcessorWrapper.add(thepw);
+@@ -532,7 +560,7 @@ public class DocBuilder {
+                 if (LOG.isDebugEnabled()) {
+                   LOG.debug("adding a doc "+docWrapper);
+                 }
+-                boolean result = writer.upload(docWrapper);
++                boolean result = epw.getWriter().upload(docWrapper);
+                 if(reqParams.debug) {
+                 	reqParams.debugDocuments.add(docWrapper);
+                 }
+@@ -729,7 +757,7 @@ public class DocBuilder {
+             if (stop.get())
+               return;
+             if (!doc.isEmpty()) {
+-              boolean result = writer.upload(doc);
++              boolean result = getWriter().upload(doc);
+               if(reqParams.debug) {
+               	reqParams.debugDocuments.add(doc);
+               }
+@@ -802,11 +830,11 @@ public class DocBuilder {
+       if (value instanceof Collection) {
+         Collection collection = (Collection) value;
+         for (Object o : collection) {
+-          writer.deleteDoc(o.toString());
++          getWriter().deleteDoc(o.toString());
+           importStatistics.deletedDocCount.incrementAndGet();
+         }
+       } else {
+-        writer.deleteDoc(value);
++        getWriter().deleteDoc(value);
+         importStatistics.deletedDocCount.incrementAndGet();
+       }
+     }    
+@@ -815,11 +843,11 @@ public class DocBuilder {
+       if (value instanceof Collection) {
+         Collection collection = (Collection) value;
+         for (Object o : collection) {
+-          writer.deleteByQuery(o.toString());
++          getWriter().deleteByQuery(o.toString());
+           importStatistics.deletedDocCount.incrementAndGet();
+         }
+       } else {
+-        writer.deleteByQuery(value.toString());
++        getWriter().deleteByQuery(value.toString());
+         importStatistics.deletedDocCount.incrementAndGet();
+       }
+     }
+@@ -1157,10 +1185,10 @@ public class DocBuilder {
+     delQuery = getVariableResolver().replaceTokens(delQuery);
+     if (requestParameters.clean) {
+       if (delQuery == null && !completeCleanDone.get()) {
+-        writer.doDeleteAll();
++        getWriter().doDeleteAll();
+         completeCleanDone.set(true);
+       } else if (delQuery != null) {
+-        writer.deleteByQuery(delQuery);
++        getWriter().deleteByQuery(delQuery);
+       }
+     }
+   }
+@@ -1182,6 +1210,7 @@ public class DocBuilder {
+   }
+   public static final String LAST_INDEX_TIME = "last_index_time";
+   public static final String INDEX_START_TIME = "index_start_time";
++
+   
+   public void destroy(){
+     executorSvc.shutdown();
+Index: b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/EntityProcessorWrapper.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/EntityProcessorWrapper.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/EntityProcessorWrapper.java(working copy)
+@@ -38,7 +38,7 @@ public class EntityProcessorWrapper extends EntityProcessor {
+   private static final Logger log = LoggerFactory.getLogger(EntityProcessorWrapper.class);
+ 
+   EntityProcessor delegate;
+-  private DocBuilder docBuilder;
++  protected DocBuilder docBuilder;
+ 
+   String onError;
+   protected Context context;
+Index: b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/ThreadedEntityProcessorWrapper.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/ThreadedEntityProcessorWrapper.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/ThreadedEntityProcessorWrapper.java(working copy)
+@@ -21,6 +21,8 @@ import static org.apache.solr.handler.dataimport.EntityProcessorBase.ABORT;
+ import static org.apache.solr.handler.dataimport.DataImportHandlerException.wrapAndThrow;
+ import static org.apache.solr.handler.dataimport.DataImportHandlerException.SEVERE;
+ 
++import org.apache.solr.handler.dataimport.DataConfig.Entity;
++import org.apache.solr.handler.dataimport.DocBuilder.EntityRunner;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+@@ -33,7 +35,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
+  * @since Solr 3.1
+  */
+ 
+-public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
++public abstract class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
++
+   private static final Logger LOG = LoggerFactory.getLogger(ThreadedEntityProcessorWrapper.class);
+ 
+   final DocBuilder.EntityRunner entityRunner;
+@@ -42,9 +45,9 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
+   
+   final protected AtomicBoolean entityEnded = new AtomicBoolean(false);
+ 
+-   final private int number;
+-
+-  public ThreadedEntityProcessorWrapper(EntityProcessor delegate, DocBuilder docBuilder,
++  final private int number;
++  
++  protected ThreadedEntityProcessorWrapper(EntityProcessor delegate, DocBuilder docBuilder,
+                                   DocBuilder.EntityRunner entityRunner,
+                                   VariableResolverImpl resolver,
+                                   Map<DataConfig.Entity ,DocBuilder.EntityRunner> childrenRunners,
+@@ -56,6 +59,26 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
+     this.number = num;
+   }
+ 
++  public static ThreadedEntityProcessorWrapper create(EntityProcessor delegate, DocBuilder docBuilder,
++                                                          DocBuilder.EntityRunner entityRunner,
++                                                          VariableResolverImpl resolver,
++                                                          Map<DataConfig.Entity ,DocBuilder.EntityRunner> childrenRunners,
++                                                          int num){
++      boolean root = entityRunner.entity.isDocRoot;
++      if(!root){ // child entities 
++          return new ChildEntityProcessorWrapper(delegate, docBuilder, entityRunner, resolver,
++                childrenRunners, num);
++      } else {
++          if(num == 0) { // use DocBuilder's writer
++              return new FirstRootEntityProcessorWrapper(delegate, docBuilder, entityRunner,
++                    resolver, childrenRunners, num);
++          }else { // allocate writer per this thread
++              return new RootEntityProcessorWrapper(delegate, docBuilder, entityRunner, resolver,
++                    childrenRunners, num);
++          }
++      }
++  }
++  
+   void threadedInit(Context context){
+     rowcache = null;
+     this.context = context;
+@@ -141,6 +164,87 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
+     return number;
+   }
+ 
++  @Override
++  public abstract void destroy() ;
++  
++  public abstract DIHWriter getWriter();
++  
++  
++  /** allocates and destroys own writer to the single thread */
++  private static final class RootEntityProcessorWrapper extends
++        ThreadedEntityProcessorWrapper {
++    
++    private DIHWriter writer;
++
++    private RootEntityProcessorWrapper(EntityProcessor delegate,
++            DocBuilder docBuilder, EntityRunner entityRunner,
++            VariableResolverImpl resolver,
++            Map<Entity, EntityRunner> childrenRunners, int num) {
++        super(delegate, docBuilder, entityRunner, resolver,
++                childrenRunners, num);
++    }
++
++    @Override
++    public DIHWriter getWriter() {
++        if(writer==null){
++            writer = docBuilder.createWriter();
++        }
++        return writer;
++    }
++
++    @Override
++    public void destroy() { // it's my. I wipe it myself
++        if(writer!=null){
++            writer.close();
++        }
++    }
++  }
++
++  /** uses DocBuilder's writer, dont' closes it */
++  private static final class FirstRootEntityProcessorWrapper extends
++        ThreadedEntityProcessorWrapper {
++    private FirstRootEntityProcessorWrapper(EntityProcessor delegate,
++            DocBuilder docBuilder, EntityRunner entityRunner,
++            VariableResolverImpl resolver,
++            Map<Entity, EntityRunner> childrenRunners, int num) {
++        super(delegate, docBuilder, entityRunner, resolver,
++                childrenRunners, num);
++    }
++
++    @Override
++    public DIHWriter getWriter() {
++        return docBuilder.getWriter();
++    }
++
++    @Override
++    public void destroy() {
++        // does nothing, DocBuilder closes writer itself
++    }
++  }
++
++  /** never ever provides writer */
++  private static final class ChildEntityProcessorWrapper extends
++        ThreadedEntityProcessorWrapper {
++    private ChildEntityProcessorWrapper(EntityProcessor delegate,
++            DocBuilder docBuilder, EntityRunner entityRunner,
++            VariableResolverImpl resolver,
++            Map<Entity, EntityRunner> childrenRunners, int num) {
++        super(delegate, docBuilder, entityRunner, resolver,
++                childrenRunners, num);
++    }
++
++    @Override
++    public DIHWriter getWriter() {
++        throw new UnsupportedOperationException("not available for " +
++                    "children entity entity processor wrappers");
++    }
++
++    @Override
++    public void destroy() {
++        throw new UnsupportedOperationException("not available for " +
++                    "children entity entity processor wrappers");
++    }
++  }
++
+ 
+- 
+ }
+Index: b/solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestContextImpl.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestContextImpl.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestContextImpl.java(working copy)
+@@ -28,7 +28,13 @@ public class TestContextImpl extends AbstractDataImportHandlerTestCase {
+   public void testCoreScope() {
+     DataImporter di = new DataImporter();
+     di.loadAndInit("<dataConfig><document /></dataConfig>");
+-    DocBuilder db = new DocBuilder(di, new SolrWriter(null, null),new SimplePropertiesWriter(), new RequestParams());
++    DIHWriter.Factory writer = new DIHWriter.Factory() {
++        @Override
++        public DIHWriter create() {
++            return new SolrWriter(null, null);
++        }
++    };
++    DocBuilder db = new DocBuilder(di, writer,new SimplePropertiesWriter(), new RequestParams());
+     ContextImpl ctx = new ContextImpl(new Entity(), new VariableResolverImpl(), null, "something", new HashMap<String,Object>(), null, db);
+     String lala = new String("lala");
+     ctx.setSessionAttribute("huhu", lala, Context.SCOPE_SOLR_CORE);
+Index: b/solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestDocBuilder.java
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestDocBuilder.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestDocBuilder.java(working copy)
+@@ -188,7 +188,7 @@ public class TestDocBuilder extends AbstractDataImportHandlerTestCase {
+     assertEquals(3, di.getDocBuilder().importStatistics.rowsCount.get());
+   }
+ 
+-  static class SolrWriterImpl extends SolrWriter {
++  static class SolrWriterImpl extends SolrWriter implements DIHWriter.Factory{
+     List<SolrInputDocument> docs = new ArrayList<SolrInputDocument>();
+ 
+     Boolean deleteAllCalled = Boolean.FALSE;
+@@ -220,6 +220,11 @@ public class TestDocBuilder extends AbstractDataImportHandlerTestCase {
+     public void close() {
+       finishCalled = Boolean.TRUE;
+     }
++
++    @Override
++    public DIHWriter create() {
++        return this;
++    }
+   }
+ 
+   public static final String dc_singleEntity = "<dataConfig>\n"

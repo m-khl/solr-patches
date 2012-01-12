@@ -188,7 +188,7 @@ public class TestDocBuilder extends AbstractDataImportHandlerTestCase {
     assertEquals(3, di.getDocBuilder().importStatistics.rowsCount.get());
   }
 
-  static class SolrWriterImpl extends SolrWriter {
+  static class SolrWriterImpl extends SolrWriter implements DIHWriter.Factory{
     List<SolrInputDocument> docs = new ArrayList<SolrInputDocument>();
 
     Boolean deleteAllCalled = Boolean.FALSE;
@@ -219,6 +219,11 @@ public class TestDocBuilder extends AbstractDataImportHandlerTestCase {
     @Override
     public void close() {
       finishCalled = Boolean.TRUE;
+    }
+
+    @Override
+    public DIHWriter create() {
+        return this;
     }
   }
 

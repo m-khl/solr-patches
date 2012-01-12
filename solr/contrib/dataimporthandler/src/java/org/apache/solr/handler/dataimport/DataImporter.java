@@ -28,6 +28,7 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.common.util.SystemIdResolver;
 import org.apache.solr.common.util.XMLErrorLogger;
+import org.apache.solr.handler.dataimport.DIHWriter.Factory;
 
 import static org.apache.solr.handler.dataimport.DataImportHandlerException.wrapAndThrow;
 import static org.apache.solr.handler.dataimport.DataImportHandlerException.SEVERE;
@@ -360,15 +361,15 @@ public class DataImporter {
     return importLock.isLocked();
   }
 
-  public void doFullImport(SolrWriter writer, RequestParams requestParams) {
+  public void doFullImport(DIHWriter.Factory writerFactory, RequestParams requestParams) {
     LOG.info("Starting Full Import");
     setStatus(Status.RUNNING_FULL_DUMP);
 
     setIndexStartTime(new Date());
 
     try {
-      docBuilder = new DocBuilder(this, writer, propWriter, requestParams);
-      checkWritablePersistFile(writer);
+      docBuilder = new DocBuilder(this, writerFactory, propWriter, requestParams);
+      checkWritablePersistFile();
       docBuilder.execute();
       if (!requestParams.debug)
         cumulativeStatistics.add(docBuilder.importStatistics);
@@ -384,7 +385,7 @@ public class DataImporter {
 
   }
 
-  private void checkWritablePersistFile(SolrWriter writer) {
+  private void checkWritablePersistFile() {
 //  	File persistFile = propWriter.getPersistFile();
 //    boolean isWritable = persistFile.exists() ? persistFile.canWrite() : persistFile.getParentFile().canWrite();
     if (isDeltaImportSupported && !propWriter.isWritable()) {
@@ -393,14 +394,14 @@ public class DataImporter {
     }
   }
 
-  public void doDeltaImport(SolrWriter writer, RequestParams requestParams) {
+  public void doDeltaImport(DIHWriter.Factory swFactory, RequestParams requestParams) {
     LOG.info("Starting Delta Import");
     setStatus(Status.RUNNING_DELTA_DUMP);
 
     try {
       setIndexStartTime(new Date());
-      docBuilder = new DocBuilder(this, writer, propWriter, requestParams);
-      checkWritablePersistFile(writer);
+      docBuilder = new DocBuilder(this, swFactory, propWriter, requestParams);
+      checkWritablePersistFile();
       docBuilder.execute();
       if (!requestParams.debug)
         cumulativeStatistics.add(docBuilder.importStatistics);
@@ -416,7 +417,7 @@ public class DataImporter {
 
   }
 
-  public void runAsync(final RequestParams reqParams, final SolrWriter sw) {
+  public void runAsync(final RequestParams reqParams, final DIHWriter.Factory sw) {
     new Thread() {
       @Override
       public void run() {
@@ -425,7 +426,7 @@ public class DataImporter {
     }.start();
   }
 
-  void runCmd(RequestParams reqParams, SolrWriter sw) {
+  void runCmd(RequestParams reqParams, DIHWriter.Factory swFactory) {
     String command = reqParams.command;
     if (command.equals(ABORT_CMD)) {
       if (docBuilder != null) {
@@ -439,9 +440,9 @@ public class DataImporter {
     }
     try {
       if (FULL_IMPORT_CMD.equals(command) || IMPORT_CMD.equals(command)) {
-        doFullImport(sw, reqParams);
+        doFullImport(swFactory, reqParams);
       } else if (command.equals(DELTA_IMPORT_CMD)) {
-        doDeltaImport(sw, reqParams);
+        doDeltaImport(swFactory, reqParams);
       }
     } finally {
       importLock.unlock();

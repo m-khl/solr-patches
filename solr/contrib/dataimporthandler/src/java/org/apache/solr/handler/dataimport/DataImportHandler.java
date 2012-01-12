@@ -124,11 +124,11 @@ public class DataImportHandler extends RequestHandlerBase implements
 
   @Override
   @SuppressWarnings("unchecked")
-  public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp)
+  public void handleRequestBody(final SolrQueryRequest req, final SolrQueryResponse rsp)
           throws Exception {
     rsp.setHttpCaching(false);
-    SolrParams params = req.getParams();
-    DataImporter.RequestParams requestParams = new DataImporter.RequestParams(getParamsMap(params));
+    final SolrParams params = req.getParams();
+    final DataImporter.RequestParams requestParams = new DataImporter.RequestParams(getParamsMap(params));
     String command = requestParams.command;
     Iterable<ContentStream> streams = req.getContentStreams();
     if(streams != null){
@@ -189,17 +189,23 @@ public class DataImportHandler extends RequestHandlerBase implements
       if (DataImporter.FULL_IMPORT_CMD.equals(command)
               || DataImporter.DELTA_IMPORT_CMD.equals(command) ||
               IMPORT_CMD.equals(command)) {
-
-        UpdateRequestProcessorChain processorChain =
-                req.getCore().getUpdateProcessingChain(SolrPluginUtils.resolveUpdateChainParam(params, LOG));
-        UpdateRequestProcessor processor = processorChain.createProcessor(req, rsp);
-        SolrResourceLoader loader = req.getCore().getResourceLoader();
-        SolrWriter sw = getSolrWriter(processor, loader, requestParams, req);
+        
+        DIHWriter.Factory writerFactory = new DIHWriter.Factory() {
+            @Override
+            public DIHWriter create() {
+                UpdateRequestProcessorChain processorChain =
+                    req.getCore().getUpdateProcessingChain(SolrPluginUtils.resolveUpdateChainParam(params, LOG));
+                UpdateRequestProcessor processor = processorChain.createProcessor(req, rsp);
+                SolrResourceLoader loader = req.getCore().getResourceLoader();
+                SolrWriter sw = getSolrWriter(processor, loader, requestParams, req);
+                return sw;
+            }
+        };
         
         if (requestParams.debug) {
           if (debugEnabled) {
             // Synchronous request for the debug mode
-            importer.runCmd(requestParams, sw);
+            importer.runCmd(requestParams, writerFactory);
             rsp.add("mode", "debug");
             rsp.add("documents", requestParams.debugDocuments);
             if (requestParams.debugVerboseOutput != null) {
@@ -213,9 +219,9 @@ public class DataImportHandler extends RequestHandlerBase implements
         } else {
           // Asynchronous request for normal mode
           if(requestParams.contentStream == null && !requestParams.syncMode){
-            importer.runAsync(requestParams, sw);
+            importer.runAsync(requestParams, writerFactory);
           } else {
-            importer.runCmd(requestParams, sw);
+            importer.runCmd(requestParams, writerFactory);
           }
         }
       } else if (DataImporter.RELOAD_CONF_CMD.equals(command)) {

@@ -231,14 +231,14 @@ public class ContextImpl extends Context {
   @Override
   public void deleteDoc(String id) {
     if(docBuilder != null){
-      docBuilder.writer.deleteDoc(id);
+      docBuilder.getWriter().deleteDoc(id);
     }
   }
 
   @Override
   public void deleteDocByQuery(String query) {
     if(docBuilder != null){
-      docBuilder.writer.deleteByQuery(query);
+      docBuilder.getWriter().deleteByQuery(query);
     } 
   }
 

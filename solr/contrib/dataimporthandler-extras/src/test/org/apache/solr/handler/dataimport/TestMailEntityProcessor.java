@@ -182,7 +182,7 @@ public class TestMailEntityProcessor extends AbstractDataImportHandlerTestCase {
     return conf.replace("someconfig", attribs.toString());
   }
 
-  static class SolrWriterImpl extends SolrWriter {
+  static class SolrWriterImpl extends SolrWriter implements DIHWriter.Factory {
     List<SolrInputDocument> docs = new ArrayList<SolrInputDocument>();
     Boolean deleteAllCalled;
     Boolean commitCalled;
@@ -205,6 +205,11 @@ public class TestMailEntityProcessor extends AbstractDataImportHandlerTestCase {
     @Override
     public void commit(boolean b) {
       commitCalled = Boolean.TRUE;
+    }
+
+    @Override
+    public DIHWriter create() {
+        return this;
     }
   }
 }

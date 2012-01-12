@@ -101,5 +101,9 @@ public interface DIHWriter {
 	 * @param deltaKeys
 	 */
 	public void setDeltaKeys(Set<Map<String, Object>> deltaKeys) ;
+	
+	public interface Factory{
+	    public DIHWriter create();
+	}
 
 }

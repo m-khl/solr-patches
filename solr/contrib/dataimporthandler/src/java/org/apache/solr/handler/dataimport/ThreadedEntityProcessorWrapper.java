@@ -21,6 +21,8 @@ import static org.apache.solr.handler.dataimport.EntityProcessorBase.ABORT;
 import static org.apache.solr.handler.dataimport.DataImportHandlerException.wrapAndThrow;
 import static org.apache.solr.handler.dataimport.DataImportHandlerException.SEVERE;
 
+import org.apache.solr.handler.dataimport.DataConfig.Entity;
+import org.apache.solr.handler.dataimport.DocBuilder.EntityRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,7 +35,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @since Solr 3.1
  */
 
-public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
+public abstract class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
+
   private static final Logger LOG = LoggerFactory.getLogger(ThreadedEntityProcessorWrapper.class);
 
   final DocBuilder.EntityRunner entityRunner;
@@ -42,9 +45,9 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
   
   final protected AtomicBoolean entityEnded = new AtomicBoolean(false);
 
-   final private int number;
-
-  public ThreadedEntityProcessorWrapper(EntityProcessor delegate, DocBuilder docBuilder,
+  final private int number;
+  
+  protected ThreadedEntityProcessorWrapper(EntityProcessor delegate, DocBuilder docBuilder,
                                   DocBuilder.EntityRunner entityRunner,
                                   VariableResolverImpl resolver,
                                   Map<DataConfig.Entity ,DocBuilder.EntityRunner> childrenRunners,
@@ -56,6 +59,26 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
     this.number = num;
   }
 
+  public static ThreadedEntityProcessorWrapper create(EntityProcessor delegate, DocBuilder docBuilder,
+                                                          DocBuilder.EntityRunner entityRunner,
+                                                          VariableResolverImpl resolver,
+                                                          Map<DataConfig.Entity ,DocBuilder.EntityRunner> childrenRunners,
+                                                          int num){
+      boolean root = entityRunner.entity.isDocRoot;
+      if(!root){ // child entities 
+          return new ChildEntityProcessorWrapper(delegate, docBuilder, entityRunner, resolver,
+                childrenRunners, num);
+      } else {
+          if(num == 0) { // use DocBuilder's writer
+              return new FirstRootEntityProcessorWrapper(delegate, docBuilder, entityRunner,
+                    resolver, childrenRunners, num);
+          }else { // allocate writer per this thread
+              return new RootEntityProcessorWrapper(delegate, docBuilder, entityRunner, resolver,
+                    childrenRunners, num);
+          }
+      }
+  }
+  
   void threadedInit(Context context){
     rowcache = null;
     this.context = context;
@@ -141,6 +164,87 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
     return number;
   }
 
+  @Override
+  public abstract void destroy() ;
+  
+  public abstract DIHWriter getWriter();
+  
+  
+  /** allocates and destroys own writer to the single thread */
+  private static final class RootEntityProcessorWrapper extends
+        ThreadedEntityProcessorWrapper {
+    
+    private DIHWriter writer;
 
- 
+    private RootEntityProcessorWrapper(EntityProcessor delegate,
+            DocBuilder docBuilder, EntityRunner entityRunner,
+            VariableResolverImpl resolver,
+            Map<Entity, EntityRunner> childrenRunners, int num) {
+        super(delegate, docBuilder, entityRunner, resolver,
+                childrenRunners, num);
+    }
+
+    @Override
+    public DIHWriter getWriter() {
+        if(writer==null){
+            writer = docBuilder.createWriter();
+        }
+        return writer;
+    }
+
+    @Override
+    public void destroy() { // it's my. I wipe it myself
+        if(writer!=null){
+            writer.close();
+        }
+    }
+  }
+
+  /** uses DocBuilder's writer, dont' closes it */
+  private static final class FirstRootEntityProcessorWrapper extends
+        ThreadedEntityProcessorWrapper {
+    private FirstRootEntityProcessorWrapper(EntityProcessor delegate,
+            DocBuilder docBuilder, EntityRunner entityRunner,
+            VariableResolverImpl resolver,
+            Map<Entity, EntityRunner> childrenRunners, int num) {
+        super(delegate, docBuilder, entityRunner, resolver,
+                childrenRunners, num);
+    }
+
+    @Override
+    public DIHWriter getWriter() {
+        return docBuilder.getWriter();
+    }
+
+    @Override
+    public void destroy() {
+        // does nothing, DocBuilder closes writer itself
+    }
+  }
+
+  /** never ever provides writer */
+  private static final class ChildEntityProcessorWrapper extends
+        ThreadedEntityProcessorWrapper {
+    private ChildEntityProcessorWrapper(EntityProcessor delegate,
+            DocBuilder docBuilder, EntityRunner entityRunner,
+            VariableResolverImpl resolver,
+            Map<Entity, EntityRunner> childrenRunners, int num) {
+        super(delegate, docBuilder, entityRunner, resolver,
+                childrenRunners, num);
+    }
+
+    @Override
+    public DIHWriter getWriter() {
+        throw new UnsupportedOperationException("not available for " +
+                    "children entity entity processor wrappers");
+    }
+
+    @Override
+    public void destroy() {
+        throw new UnsupportedOperationException("not available for " +
+                    "children entity entity processor wrappers");
+    }
+  }
+
+
 }

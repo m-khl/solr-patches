@@ -38,7 +38,7 @@ public class EntityProcessorWrapper extends EntityProcessor {
   private static final Logger log = LoggerFactory.getLogger(EntityProcessorWrapper.class);
 
   EntityProcessor delegate;
-  private DocBuilder docBuilder;
+  protected DocBuilder docBuilder;
 
   String onError;
   protected Context context;
