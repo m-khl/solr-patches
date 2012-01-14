@@ -1,7 +1,7 @@
-Index: solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DocBuilder.java
+Index: b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DocBuilder.java
 ===================================================================
---- solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DocBuilder.java	(revision 1228293)
-+++ solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DocBuilder.java	(working copy)
+--- a/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DocBuilder.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimport/DocBuilder.java(working copy)
 @@ -297,20 +297,31 @@ public class DocBuilder {
      addStatusMessage("Rolledback");
    }
@@ -47,22 +47,48 @@ Index: solr/contrib/dataimporthandler/src/java/org/apache/solr/handler/dataimpor
        }
  
  
-@@ -573,6 +583,11 @@ public class DocBuilder {
+@@ -573,6 +583,17 @@ public class DocBuilder {
          }
        }
      }
 +    
++    /**
++     * @return children entity's EntityRunners
++     * 
++     * */
 +    Collection<EntityRunner> children(){
++        assert !entityProcessorWrapper.isEmpty(): "1 by default (see <init>), " +
++        		"on threads=0 run() will fail due to entityProcessorWrapper.get(0)";
 +        return entityProcessorWrapper.iterator().next().children.values();
 +    } 
 +    
    }
  
    /**A reverse linked list .
-Index: solr/contrib/dataimporthandler/src/test-files/dih/solr/conf/dataimport-cache-ephemeral.xml
+Index: b/solr/contrib/dataimporthandler/src/test-files/dih/solr/conf/dataimport-cache-ephemeral-rootonly.xml
+new file mode 100644
 ===================================================================
---- solr/contrib/dataimporthandler/src/test-files/dih/solr/conf/dataimport-cache-ephemeral.xml	(revision 1228293)
-+++ solr/contrib/dataimporthandler/src/test-files/dih/solr/conf/dataimport-cache-ephemeral.xml	(working copy)
+---b/solr/contrib/dataimporthandler/src/test-files/dih/solr/conf/dataimport-cache-ephemeral-rootonly.xml(revision 0)
++++b/solr/contrib/dataimporthandler/src/test-files/dih/solr/conf/dataimport-cache-ephemeral-rootonly.xml(revision 0)
+@@ -0,0 +1,14 @@
++<dataConfig>
++	<dataSource type="MockDataSource" />
++	<document>
++		<entity 
++			name="PARENT"
++			processor="SqlEntityProcessor"
++			cacheName="PARENT"
++			cacheImpl="DestroyCountCache"		
++			query="SELECT * FROM PARENT"
++			threads="10"				
++		>
++		</entity>
++	</document>
++</dataConfig>
+Index: b/solr/contrib/dataimporthandler/src/test-files/dih/solr/conf/dataimport-cache-ephemeral.xml
+===================================================================
+--- a/solr/contrib/dataimporthandler/src/test-files/dih/solr/conf/dataimport-cache-ephemeral.xml(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/test-files/dih/solr/conf/dataimport-cache-ephemeral.xml(working copy)
 @@ -5,13 +5,14 @@
  			name="PARENT"
  			processor="SqlEntityProcessor"
@@ -90,11 +116,11 @@ Index: solr/contrib/dataimporthandler/src/test-files/dih/solr/conf/dataimport-ca
  				cachePk="id"
  				cacheLookup="PARENT.id"
  				query="SELECT * FROM CHILD_2"				
-Index: solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestEphemeralCache.java
+Index: b/solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestEphemeralCache.java
 ===================================================================
---- solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestEphemeralCache.java	(revision 1228293)
-+++ solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestEphemeralCache.java	(working copy)
-@@ -2,67 +2,119 @@ package org.apache.solr.handler.dataimport;
+--- a/solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestEphemeralCache.java(revision 1228293)
++++ b/solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimport/TestEphemeralCache.java(working copy)
+@@ -2,67 +2,148 @@ package org.apache.solr.handler.dataimport;
  
  import java.math.BigDecimal;
  import java.util.ArrayList;
@@ -199,9 +225,8 @@ Index: solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimpor
 +        MockDataSource.setIterator("SELECT * FROM CHILD_2", child2Rows.iterator());
 +        
 +    }
- 
--    runFullImport(loadDataConfig("dataimport-cache-ephemeral.xml"));
-+    @Ignore
++    
++    @Ignore("until SOLR-3011")
 +    @Test
 +    public void testTenThreads() throws Exception {
 +        assertFullImport(dataConfig);
@@ -212,6 +237,33 @@ Index: solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimpor
 +    public void testThreadless() throws Exception {
 +        assertFullImport(dataConfig.replaceAll("threads=\"10\"", ""));
 +    }
+ 
+-    runFullImport(loadDataConfig("dataimport-cache-ephemeral.xml"));
++    @Test
++    public void testSingleThread() throws Exception {
++        assertFullImport(dataConfig.replaceAll("threads=\"10\"", "threads=\"1\""));
++    }
++    
++    @Test
++    public void testSingleThreadRootOnly() throws Exception {
++        assertRootEntityOnly(loadDataConfig("dataimport-cache-ephemeral-rootonly.xml")
++                .replaceAll("threads=\"10\"", "threads=\"1\""));
++    }
++    
++    @Test
++    public void testThreadlessRootOnly() throws Exception {
++        assertRootEntityOnly(loadDataConfig("dataimport-cache-ephemeral-rootonly.xml")
++                .replaceAll("threads=\"10\"", ""));
++    }
++    
++    @Ignore("until SOLR-3011")
++    @Test
++    public void testTenThreadsRootOnly() throws Exception {
++        assertRootEntityOnly(loadDataConfig("dataimport-cache-ephemeral-rootonly.xml"));
++    }
++    
++    private void assertFullImport(String dataConfig) throws Exception {
++        runFullImport(dataConfig);
  
 -    assertQ(req("*:*"),                                       "//*[@numFound='5']");
 -    assertQ(req("id:1"),                                      "//*[@numFound='1']");
@@ -224,15 +276,6 @@ Index: solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimpor
 -    assertQ(req("child1a_mult_s:one"),                        "//*[@numFound='1']");
 -    assertQ(req("child1a_mult_s:uno"),                        "//*[@numFound='1']");
 -    assertQ(req("child1a_mult_s:(uno OR one)"),               "//*[@numFound='1']");
-+    @Test
-+    public void testSingleThread() throws Exception {
-+        assertFullImport(dataConfig.replaceAll("threads=\"10\"", "threads=\"1\""));
-+    }
-+    
-+    private void assertFullImport(String dataConfig) throws Exception {
-+        runFullImport(dataConfig);
- 
--	}
 +        assertQ(req("*:*"),                                       "//*[@numFound='5']");
 +        assertQ(req("id:1"),                                      "//*[@numFound='1']");
 +        assertQ(req("id:6"),                                      "//*[@numFound='0']");
@@ -246,6 +289,18 @@ Index: solr/contrib/dataimporthandler/src/test/org/apache/solr/handler/dataimpor
 +        assertQ(req("child1a_mult_s:(uno OR one)"),               "//*[@numFound='1']");
 +        
 +        assertThat(DestroyCountCache.destroyed.size(), is(3));
++    }
++    
++    private void assertRootEntityOnly(String dataConfig) throws Exception {
++        runFullImport(dataConfig);
+ 
+-	}
++        assertQ(req("*:*"),                                       "//*[@numFound='5']");
++        assertQ(req("id:1"),                                      "//*[@numFound='1']");
++        assertQ(req("id:6"),                                      "//*[@numFound='0']");
++        assertQ(req("parent_s:four"),                             "//*[@numFound='1']");
++        
++        assertThat(DestroyCountCache.destroyed.size(), is(1));
 +    }
 +}
  

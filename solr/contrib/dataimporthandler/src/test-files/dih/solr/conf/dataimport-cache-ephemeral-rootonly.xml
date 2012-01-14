@@ -1,0 +1,14 @@
+<dataConfig>
+	<dataSource type="MockDataSource" />
+	<document>
+		<entity 
+			name="PARENT"
+			processor="SqlEntityProcessor"
+			cacheName="PARENT"
+			cacheImpl="DestroyCountCache"		
+			query="SELECT * FROM PARENT"
+			threads="10"				
+		>
+		</entity>
+	</document>
+</dataConfig>

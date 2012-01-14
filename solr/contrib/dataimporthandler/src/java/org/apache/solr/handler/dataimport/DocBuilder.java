@@ -584,7 +584,13 @@ public class DocBuilder {
       }
     }
     
+    /**
+     * @return children entity's EntityRunners
+     * 
+     * */
     Collection<EntityRunner> children(){
+        assert !entityProcessorWrapper.isEmpty(): "1 by default (see <init>), " +
+        		"on threads=0 run() will fail due to entityProcessorWrapper.get(0)";
         return entityProcessorWrapper.iterator().next().children.values();
     } 
     

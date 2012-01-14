@@ -68,8 +68,8 @@ public class TestEphemeralCache extends AbstractDataImportHandlerTestCase {
         MockDataSource.setIterator("SELECT * FROM CHILD_2", child2Rows.iterator());
         
     }
-
-    @Ignore
+    
+    @Ignore("until SOLR-3011")
     @Test
     public void testTenThreads() throws Exception {
         assertFullImport(dataConfig);
@@ -84,6 +84,24 @@ public class TestEphemeralCache extends AbstractDataImportHandlerTestCase {
     @Test
     public void testSingleThread() throws Exception {
         assertFullImport(dataConfig.replaceAll("threads=\"10\"", "threads=\"1\""));
+    }
+    
+    @Test
+    public void testSingleThreadRootOnly() throws Exception {
+        assertRootEntityOnly(loadDataConfig("dataimport-cache-ephemeral-rootonly.xml")
+                .replaceAll("threads=\"10\"", "threads=\"1\""));
+    }
+    
+    @Test
+    public void testThreadlessRootOnly() throws Exception {
+        assertRootEntityOnly(loadDataConfig("dataimport-cache-ephemeral-rootonly.xml")
+                .replaceAll("threads=\"10\"", ""));
+    }
+    
+    @Ignore("until SOLR-3011")
+    @Test
+    public void testTenThreadsRootOnly() throws Exception {
+        assertRootEntityOnly(loadDataConfig("dataimport-cache-ephemeral-rootonly.xml"));
     }
     
     private void assertFullImport(String dataConfig) throws Exception {
@@ -102,6 +120,17 @@ public class TestEphemeralCache extends AbstractDataImportHandlerTestCase {
         assertQ(req("child1a_mult_s:(uno OR one)"),               "//*[@numFound='1']");
         
         assertThat(DestroyCountCache.destroyed.size(), is(3));
+    }
+    
+    private void assertRootEntityOnly(String dataConfig) throws Exception {
+        runFullImport(dataConfig);
+
+        assertQ(req("*:*"),                                       "//*[@numFound='5']");
+        assertQ(req("id:1"),                                      "//*[@numFound='1']");
+        assertQ(req("id:6"),                                      "//*[@numFound='0']");
+        assertQ(req("parent_s:four"),                             "//*[@numFound='1']");
+        
+        assertThat(DestroyCountCache.destroyed.size(), is(1));
     }
 }
 
