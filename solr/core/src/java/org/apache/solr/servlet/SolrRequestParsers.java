@@ -34,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.fileupload.FileItem;
 import org.apache.commons.fileupload.disk.DiskFileItemFactory;
@@ -103,7 +104,7 @@ public class SolrRequestParsers
     parsers.put( STANDARD, standard );
     parsers.put( "", standard );
   }
-  
+  @Deprecated
   public SolrQueryRequest parse( SolrCore core, String path, HttpServletRequest req ) throws Exception
   {
     SolrRequestParser parser = standard;
@@ -211,6 +212,12 @@ public class SolrRequestParsers
   public void setHandleSelect(boolean handleSelect) {
     this.handleSelect = handleSelect;
   }
+
+  public SolrQueryRequest parse(SolrCore core, String path,
+            HttpServletRequest req, HttpServletResponse resp) throws Exception {
+        return parse(core, path, req);
+  }
+  
 }
 
 //-----------------------------------------------------------------

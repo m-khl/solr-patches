@@ -23,6 +23,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.OutputStreamWriter;
 import java.io.ByteArrayInputStream;
+import java.lang.reflect.Constructor;
 import java.nio.charset.Charset;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -176,7 +177,7 @@ public class SolrDispatchFilter implements Filter
         // Check for the core admin page
         if( path.equals( cores.getAdminPath() ) ) {
           handler = cores.getMultiCoreHandler();
-          solrReq =  adminRequestParser.parse(null,path, req);
+          solrReq =  adminRequestParser.parse(null,path, req, resp);
           handleAdminRequest(req, response, handler, solrReq);
           return;
         }
@@ -204,7 +205,7 @@ public class SolrDispatchFilter implements Filter
           SolrRequestParsers parser = null;
           parser = parsers.get(config);
           if( parser == null ) {
-            parser = new SolrRequestParsers(config);
+            parser = createRequestParsers(core, config);
             parsers.put(config, parser );
           }
 
@@ -215,7 +216,7 @@ public class SolrDispatchFilter implements Filter
             // no handler yet but allowed to handle select; let's check
             if( handler == null && parser.isHandleSelect() ) {
               if( "/select".equals( path ) || "/select/".equals( path ) ) {
-                solrReq = parser.parse( core, path, req );
+                solrReq = parser.parse( core, path, req, resp );
                 String qt = solrReq.getParams().get( CommonParams.QT );
                 handler = core.getRequestHandler( qt );
                 if( handler == null ) {
@@ -229,7 +230,7 @@ public class SolrDispatchFilter implements Filter
           if( handler != null ) {
             // if not a /select, create the request
             if( solrReq == null ) {
-              solrReq = parser.parse( core, path, req );
+              solrReq = parser.parse( core, path, req, resp );
             }
 
             final Method reqMethod = Method.getMethod(req.getMethod());
@@ -292,6 +293,11 @@ public class SolrDispatchFilter implements Filter
 
     // Otherwise let the webapp handle the request
     chain.doFilter(request, response);
+  }
+
+  protected SolrRequestParsers createRequestParsers(SolrCore core, final Config config) throws Exception {
+    String clazz = config.get("solrRequestParsers", "org.apache.solr.servlet.SolrRequestParsers");
+    return (SolrRequestParsers) core.getResourceLoader().newInstance(clazz, null, new Class[]{Config.class}, new Object[]{config});
   }
 
   private void handleAdminRequest(HttpServletRequest req, ServletResponse response, SolrRequestHandler handler,
