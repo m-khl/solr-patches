@@ -94,11 +94,11 @@ public class ResponseStreamingTest extends SolrJettyTestBase {
 //        SolrQuery params = new SolrQuery("*:*");
 //        params.set("wt","response-streaming");
 //        params.set("qt","response-streaming");
-        URL url = new URL("http://localhost:"+port+"/solr/select?wt=response-streaming&qt=response-streaming&q=*:*&response-streaming=true");
+        URL url = new URL("http://localhost:"+port+"/solr/select?wt=response-streaming&qt=response-streaming&q=*:*&response-streaming=true&fl=id");
         log.info("url {}", url);
         InputStream is = url.openConnection().getInputStream();
-        int b;
-        FileOutputStream out = new FileOutputStream("/tmp/out");
+//        int b;
+//        FileOutputStream out = new FileOutputStream("/tmp/out");
         
         byte buff[] = new byte[4]; 
         
@@ -112,13 +112,13 @@ public class ResponseStreamingTest extends SolrJettyTestBase {
                 assertEquals(pre+1, i);
             }
             pre = i;
-            out.write(buff);
+ //           out.write(buff);
         }
         
         assertEquals(pre, 100-1);
         
         is.close();
-        out.close();
+ //       out.close();
         
         log.info("file written");
     }

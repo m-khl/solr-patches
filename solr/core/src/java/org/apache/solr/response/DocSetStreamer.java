@@ -20,7 +20,6 @@ public class DocSetStreamer implements ResponseStreamer, SolrCoreAware {
 
     public static final String outputStream = "outputStream";
     private static final Logger log = LoggerFactory.getLogger(DocSetStreamer.class);
-    protected Set<String> fields = null;
     
     public DocSetStreamer() {
     }
@@ -53,7 +52,8 @@ public class DocSetStreamer implements ResponseStreamer, SolrCoreAware {
     }
 
     protected Set<String> getFields(SolrQueryRequest req) {
-        return fields;
+        String fl = req.getParams().get("fl");
+        return Collections.singleton(fl);
     }
 
     protected boolean dumpField(Document doc, OutputStream os, String field)
@@ -83,7 +83,7 @@ public class DocSetStreamer implements ResponseStreamer, SolrCoreAware {
     @Override
     public String getContentType(SolrQueryRequest request,
             SolrQueryResponse response) {
-        return null;
+        return getContentType();
     }
 
     @Override
@@ -93,40 +93,37 @@ public class DocSetStreamer implements ResponseStreamer, SolrCoreAware {
     
     @Override
     public void init(NamedList args) {
-        String fl = (String) args.get("field");
-        if(fl!=null && !"".equals(fl)){
-            fields = Collections.singleton(fl); 
-        }
     }
 
     @Override
     public void write(Writer writer, SolrQueryRequest request,
             SolrQueryResponse response) throws IOException {
-        writer.append(this.toString());
-        writer.append(" doesn't support write() ops");
+//        writer.append(this.toString());
+//        writer.append(" doesn't support write() ops");
     }
 
     @Override
     public ResponseStreamer requestScope(final SolrQueryRequest req) {
+        
         return new DocSetStreamer(){
+            
+            final Set<String> fields = super.getFields(req);
             final OutputStream stream = super.getStream(req); 
             
-            {
-                this.fields = DocSetStreamer.this.fields;
-            }
             @Override
             protected OutputStream getStream(SolrQueryRequest req) {
                 return stream;
+            }
+            
+            @Override
+            protected Set<String> getFields(SolrQueryRequest req) {
+                return fields;
             }
         };
     }
 
     @Override
     public void inform(SolrCore core) {
-        if(fields==null){
-            fields = Collections.singleton(core.getSchema().getUniqueKeyField().getName());
-        }
-        log.info("dump {} field",fields);
     }
 
 
