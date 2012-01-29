@@ -249,4 +249,15 @@
     </ant>
     <property name="suggest.uptodate" value="true"/>
   </target>
+	
+  <property name="join.jar" value="${common.dir}/../modules/join/build/lucene-join-${version}.jar"/>
+  <target name="check-join-uptodate" unless="join.uptodate">
+    <module-uptodate name="join" jarfile="${join.jar}" property="join.uptodate"/>
+  </target>
+  <target name="jar-join" unless="join.uptodate" depends="check-join-uptodate">
+  	<ant dir="${common.dir}/../modules/join" target="jar-core" inheritAll="false">
+      <propertyset refid="uptodate.and.compiled.properties"/>
+    </ant>
+    <property name="join.uptodate" value="true"/>
+  </target>
 </project>

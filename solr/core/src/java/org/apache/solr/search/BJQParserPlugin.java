@@ -11,8 +11,7 @@ import org.apache.lucene.search.FilteredQuery;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryWrapperFilter;
-import org.apache.lucene.search.join.BlockJoinQuery;
-import org.apache.lucene.search.join.BlockJoinQuery.ScoreMode;
+import org.apache.lucene.search.join.ToParentBlockJoinQuery;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
@@ -50,9 +49,9 @@ public class BJQParserPlugin extends QParserPlugin {
                 
                 QParser childrenParser = subQuery(queryText, null);
                 
-                return new BlockJoinQuery(childrenParser.getQuery(),
+                return new ToParentBlockJoinQuery(childrenParser.getQuery(),
                         parentFilter
-                        ,ScoreMode.None); // TODO support more scores
+                        ,ToParentBlockJoinQuery.ScoreMode.None); // TODO support more scores
             }
 
             protected Filter cachedParentFilter(SolrQueryRequest req, Query parentQ) {
