@@ -56,8 +56,22 @@ public class TestBJQParser extends SolrTestCaseJ4 {
     
     @Test
     public void testFull() throws IOException, Exception{
+        //NOTE: reproduce with: ant test -Dtestcase=TestBJQParser -Dtestmethod=testFull -Dtests.seed=7350714397afc6c6:633a39acc51ae8e2:-76de92440be16af2 -Dargs="-Dfile.encoding=UTF-8"
+        System.out.println(h.query(req("q","*:*",
+                "sort","_docid_ asc",
+                "fl","parent_s,child_s,parentchild_s",
+                "rows","100",
+                "wt","csv")));
         
-        assertQ(req("q","{!parent filter=\"parent_s:[* TO *]\"}child_s:b"), 
+        assertQ(req("q","parent_s:a"),"//*[@numFound='1']");
+        assertQ(req("q","+child_s:b +parentchild_s:ab"),"//*[@numFound='1']");
+        String childb = "{!parent filter=\"parent_s:[* TO *]\"}child_s:b";
+        System.out.println(h.query(req("q",childb, 
+                "sort","_docid_ asc",
+                "fl","parent_s,child_s,parentchild_s",
+                "rows","100",
+                "wt","csv")));
+        assertQ(req("q",childb), 
                 "//*[@numFound='6']"
               ,"//doc/arr[@name=\"parent_s\"]/str='a'",
               "//doc/arr[@name=\"parent_s\"]/str='b'",
