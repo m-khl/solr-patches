@@ -24,33 +24,44 @@ public class TestBJQParser extends SolrTestCaseJ4 {
         assertU(delQ("*:*"));
         assertU(optimize());
         
-        List<List<String>> blocks = new ArrayList<List<String>>();
+        List<List<String[]>> blocks = new ArrayList<List<String[]>>();
         for(String parent:new String[]{"a","b","c","d", "e","f"}){
-            List<String> block = new ArrayList<String>();
+            List<String[]> block = new ArrayList<String[]>();
             for(String child:new String[]{"a","b","c"}){
                 block.add(
-                        add(doc("child_s",child, "parentchild_s",parent+child), "overwrite", "false")
-                );
+                        new String[]{"child_s",child, "parentchild_s",parent+child})
+                ;
             }
             Collections.shuffle(block, random);
-            block.add(
-                    add(doc("parent_s",parent), "overwrite", "false"));
+            block.add(new String[]{"parent_s",parent});
             blocks.add(block);
         }
         Collections.shuffle(blocks, random);
-        for(List<String> block: blocks){
-            for(String doc: block){
-                assertU(doc);
+        int i=0;
+        for(List<String[]> block: blocks){
+            for(String[] doc: block){
+                assertU(add(doc(doc), "overwrite", "false"));
+                i++;
             }
             if(random.nextBoolean()){
                 assertU(commit());
+                assertQ(req("q","*:*"),"//*[@numFound='"+i+"']");
+                String childb = "{!parent filter=\"parent_s:[* TO *]\"}child_s:"+(new String[]{"a","b","c"})[random.nextInt(3)];
+                assertQ(req("q", childb),"//doc/arr[@name=\"parent_s\"]/str='"+
+                        block.get(block.size()-1)[1]
+                        +"'");
                 // force empty segment
                 if(random.nextBoolean()){
                     assertU(commit());
+                    assertQ(req("q","*:*"),"//*[@numFound='"+i+"']");
+                    assertQ(req("q", childb),"//doc/arr[@name=\"parent_s\"]/str='"+
+                            block.get(block.size()-1)[1]
+                            +"'");
                 }
             }
         }
         assertU(commit());
+        assertQ(req("q","*:*"),"//*[@numFound='"+i+"']");
     }
     
     @Test

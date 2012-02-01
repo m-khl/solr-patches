@@ -74,7 +74,7 @@ public class BJQParserPlugin extends QParserPlugin {
 
             protected Filter createParentFilter(Query parentQ) {
                 return new CachingWrapperFilter(new QueryWrapperFilter(parentQ) /*,? re-cache dels*/){
-                    @Override
+                   /* @Override
                     protected DocIdSet docIdSetToCache(DocIdSet docIdSet,
                             IndexReader reader) throws IOException {
                         DocIdSet result = super.docIdSetToCache(docIdSet, reader);
@@ -85,7 +85,7 @@ public class BJQParserPlugin extends QParserPlugin {
                             return bits;
                         }
                         return result;
-                    }
+                    }*/
                 };
             }
         };
