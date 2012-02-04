@@ -103,12 +103,14 @@
     <!-- for better multi-segment testing, we are using slower
     indexing properties of maxBufferedDocs=10 and LogDocMergePolicy.
     -->
-    <maxBufferedDocs>10</maxBufferedDocs>
+    <maxBufferedDocs>100000</maxBufferedDocs>
     <maxMergeDocs>2147483647</maxMergeDocs>
     <maxFieldLength>10000</maxFieldLength>
     <mergePolicy class="org.apache.lucene.index.LogDocMergePolicy"/>
 
     <unlockOnStartup>true</unlockOnStartup>
+    
+    
   </mainIndex>
 
   <updateHandler class="solr.DirectUpdateHandler2">
