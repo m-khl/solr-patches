@@ -173,7 +173,7 @@ public class ToParentBlockJoinQuery extends Query {
     public Scorer scorer(AtomicReaderContext readerContext, boolean scoreDocsInOrder,
         boolean topScorer, Bits acceptDocs) throws IOException {
       // Pass scoreDocsInOrder true, topScorer false to our sub:
-      final Scorer childScorer = childWeight.scorer(readerContext, true, false, acceptDocs);
+      final Scorer childScorer = childWeight.scorer(readerContext, true, false, readerContext.reader.getLiveDocs() );
 
       if (childScorer == null) {
         // No matches
@@ -186,7 +186,7 @@ public class ToParentBlockJoinQuery extends Query {
         return null;
       }
 
-      final DocIdSet parents = parentsFilter.getDocIdSet(readerContext, readerContext.reader.getLiveDocs());
+      final DocIdSet parents = parentsFilter.getDocIdSet(readerContext, acceptDocs );
       // TODO: once we do random-access filters we can
       // generalize this:
       if (parents == null) {

@@ -155,6 +155,63 @@ public class TestBlockJoin extends LuceneTestCase {
     dir.close();
   }
 
+  public void testSimpleFilter() throws Exception {
+
+      final Directory dir = newDirectory();
+      final RandomIndexWriter w = new RandomIndexWriter(random, dir);
+
+      final List<Document> docs = new ArrayList<Document>();
+
+      docs.add(makeJob("java", 2007));
+      docs.add(makeJob("python", 2010));
+      docs.add(makeResume("Lisa", "United Kingdom"));
+      w.addDocuments(docs);
+
+      docs.clear();
+      docs.add(makeJob("ruby", 2005));
+      docs.add(makeJob("java", 2006));
+      docs.add(makeResume("Frank", "United States"));
+      w.addDocuments(docs);
+
+      IndexReader r = w.getReader();
+      w.close();
+      IndexSearcher s = newSearcher(r);
+
+      // Create a filter that defines "parent" documents in the index - in this case resumes
+      Filter parentsFilter = new CachingWrapperFilter(new QueryWrapperFilter(new TermQuery(new Term("docType", "resume"))));
+
+      // Define child document criteria (finds an example of relevant work experience)
+      BooleanQuery childQuery = new BooleanQuery();
+      childQuery.add(new BooleanClause(new TermQuery(new Term("skill", "java")), Occur.MUST));
+      childQuery.add(new BooleanClause(NumericRangeQuery.newIntRange("year", 2006, 2011, true, true), Occur.MUST));
+
+      // Define parent document criteria (find a resident in the UK)
+      Query parentQuery = new TermQuery(new Term("country", "United Kingdom"));
+      
+      // Wrap the child document query to 'join' any matches
+      // up to corresponding parent:
+      ToParentBlockJoinQuery childJoinQuery = new ToParentBlockJoinQuery(childQuery, parentsFilter, ToParentBlockJoinQuery.ScoreMode.Avg);
+      
+      assertEquals("no filter - both passed", 2 ,s.search(childJoinQuery, 10).totalHits);
+      assertEquals("dummy filter passes everyone ", 2,s.search(childJoinQuery, parentsFilter, 10).totalHits);
+      
+      // not found test
+      TopDocs ozHabitants  = s.search(childJoinQuery , new CachingWrapperFilter( new QueryWrapperFilter(new TermQuery(new Term("country", "Oz")))), 10);
+      assertEquals("noone live there",0, ozHabitants.totalHits);
+      
+      // apply the UK filter by the searcher
+      TopDocs ukOnly = s.search(childJoinQuery, new CachingWrapperFilter(new QueryWrapperFilter(parentQuery)), 10);
+      //TopDocs ukOnly = s.search(childJoinQuery, new QueryWrapperFilter(parentQuery), 10);
+      assertEquals("has filter - single passed",1, ukOnly.totalHits);
+      assertEquals( "Lisa", r.document(ukOnly.scoreDocs[0].doc).get("name"));
+      // looking for US candidates
+      TopDocs usThen = s.search(childJoinQuery , new CachingWrapperFilter( new QueryWrapperFilter(new TermQuery(new Term("country", "United States")))), 10);
+      assertEquals("has filter - single passed", 1,usThen.totalHits);
+      assertEquals("Frank", r.document(usThen.scoreDocs[0].doc).get("name"));
+      r.close();
+      dir.close();
+  }
+  
   private Document getParentDoc(IndexReader reader, Filter parents, int childDocID) throws IOException {
     final AtomicReaderContext[] leaves = ReaderUtil.leaves(reader.getTopReaderContext());
     final int subIndex = ReaderUtil.subIndex(childDocID, leaves);
