@@ -17,13 +17,15 @@
 
 package org.apache.lucene.util;
 
-import org.apache.lucene.search.DocIdSetIterator;
+import java.io.IOException;
+
+import org.apache.lucene.search.DocIdSetBackwardIterator;
 
 /** An iterator to iterate over set bits in an OpenBitSet.
  * This is faster than nextSetBit() for iterating over the complete set of bits,
  * especially when the density of the bits set is high.
  */
-public class OpenBitSetIterator extends DocIdSetIterator {
+public class OpenBitSetIterator extends DocIdSetBackwardIterator {
 
   // The General Idea: instead of having an array per byte that has
   // the offsets of the next set bit, that array could be
@@ -190,4 +192,16 @@ public class OpenBitSetIterator extends DocIdSetIterator {
     return curDocId;
   }
   
+  private OpenBitSet rewindSet;
+  
+  @Override
+    public int rewind(int target) throws IOException {
+        // I never be able to write a bit juggling such as in advance()
+        if(rewindSet==null){
+            rewindSet = new OpenBitSet(arr, words);
+        }
+        curDocId = rewindSet.prevSetBit(target);
+            
+        return curDocId;
+    }
 }

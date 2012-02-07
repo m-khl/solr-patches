@@ -27,6 +27,7 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;       // javadocs
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.DocIdSet;
+import org.apache.lucene.search.DocIdSetBackwardIterator;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.Filter;
@@ -193,11 +194,16 @@ public class ToParentBlockJoinQuery extends Query {
         // No matches
         return null;
       }
-      if (!(parents instanceof FixedBitSet)) {
+      DocIdSetIterator parentIterator = parents.iterator();
+      if(parentIterator==null){
+       // No matches
+          return null;
+      }
+      if (!(parentIterator instanceof DocIdSetBackwardIterator)) {
         throw new IllegalStateException("parentFilter must return FixedBitSet; got " + parents);
       }
 
-      return new BlockJoinScorer(this, childScorer, (FixedBitSet) parents, firstChildDoc, scoreMode);
+      return new BlockJoinScorer(this, childScorer, (DocIdSetBackwardIterator) parentIterator, firstChildDoc, scoreMode);
     }
 
     @Override
@@ -215,7 +221,7 @@ public class ToParentBlockJoinQuery extends Query {
 
   static class BlockJoinScorer extends Scorer {
     private final Scorer childScorer;
-    private final FixedBitSet parentBits;
+    private final DocIdSetBackwardIterator parentBits;
     private final ScoreMode scoreMode;
     private int parentDoc = -1;
     private float parentScore;
@@ -225,7 +231,7 @@ public class ToParentBlockJoinQuery extends Query {
     private float[] pendingChildScores;
     private int childDocUpto;
 
-    public BlockJoinScorer(Weight weight, Scorer childScorer, FixedBitSet parentBits, int firstChildDoc, ScoreMode scoreMode) {
+    public BlockJoinScorer(Weight weight, Scorer childScorer, DocIdSetBackwardIterator parentBits, int firstChildDoc, ScoreMode scoreMode) {
       super(weight);
       //System.out.println("Q.init firstChildDoc=" + firstChildDoc);
       this.parentBits = parentBits;
@@ -279,7 +285,8 @@ public class ToParentBlockJoinQuery extends Query {
       }
 
       // Gather all children sharing the same parent as nextChildDoc
-      parentDoc = parentBits.nextSetBit(nextChildDoc);
+      parentDoc = parentBits.advance(nextChildDoc);
+      assert parentDoc != NO_MORE_DOCS;
       //System.out.println("  parentDoc=" + parentDoc);
       assert parentDoc != -1;
 
@@ -357,7 +364,7 @@ public class ToParentBlockJoinQuery extends Query {
         return nextDoc();
       }
 
-      final int prevParentDoc = parentBits.prevSetBit(parentTarget-1);
+      final int prevParentDoc = parentBits.rewind(parentTarget-1);
 
       //System.out.println("  rolled back to prevParentDoc=" + prevParentDoc + " vs parentDoc=" + parentDoc);
       assert prevParentDoc >= parentDoc;

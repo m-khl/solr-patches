@@ -25,7 +25,7 @@ import java.io.IOException;
  * mechanism on an underlying DocIdSetIterator.  See {@link
  * FilteredDocIdSet}.
  */
-public abstract class FilteredDocIdSetIterator extends DocIdSetIterator {
+public abstract class FilteredDocIdSetIterator extends DocIdSetBackwardIterator {
   protected DocIdSetIterator _innerIter;
   private int doc;
 	
@@ -82,4 +82,23 @@ public abstract class FilteredDocIdSetIterator extends DocIdSetIterator {
     return doc;
   }
   
+  @Override
+    public int rewind(int target) throws IOException {
+       // it might be CCE thrown
+          DocIdSetBackwardIterator rewindable = ((DocIdSetBackwardIterator)_innerIter);
+          doc = rewindable.rewind(target);
+          if (doc != -1) {
+              if (match(doc)) {
+                return doc;
+              } else {
+                while ((doc = rewindable.rewind(doc)) != -1) {
+                  if (match(doc)) {
+                    return doc;
+                  }
+                }
+                return doc;
+              }
+            }
+            return doc;
+    }
 }
