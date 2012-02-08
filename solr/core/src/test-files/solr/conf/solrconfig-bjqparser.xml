@@ -181,16 +181,14 @@
     -->
     <enableLazyFieldLoading>true</enableLazyFieldLoading>
 
-    <!--
+    
 
-    <cache name="myUserCache"
+    <cache name="blockJoinParentFilterCache"
       class="solr.search.LRUCache"
-      size="4096"
-      initialSize="1024"
-      autowarmCount="1024"
-      regenerator="MyRegenerator"
+      size="1"
+      initialSize="0"
+      autowarmCount="1"
       />
-    -->
 
 
     <!--
@@ -508,7 +506,9 @@
 
   <queryParser name="foo" class="FooQParserPlugin"/>
   
-  <queryParser name="parent" class="org.apache.solr.search.BJQParserPlugin"/>
+  <queryParser name="parent" class="org.apache.solr.search.BlockJoinParentQParserPlugin">
+  		<str name="parent-filter-cache">${blockJoinParentFilterCache:blockJoinParentFilterCache}</str>
+  </queryParser>
 
   <updateRequestProcessorChain name="dedupe">
     <processor class="org.apache.solr.update.processor.SignatureUpdateProcessorFactory">

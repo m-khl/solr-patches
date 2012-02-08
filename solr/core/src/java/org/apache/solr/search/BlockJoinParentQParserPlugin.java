@@ -2,25 +2,35 @@ package org.apache.solr.search;
 
 import java.io.IOException;
 
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.CachingWrapperFilter;
-import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.FilteredQuery;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.search.join.ToParentBlockJoinQuery;
-import org.apache.lucene.util.FixedBitSet;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrQueryRequest;
 
 /**
+ * Usage:
  * {!parent filter="PARENT:true"}CHILD_PRICE:10
+ * 
+ * To obtain just parent filter from the cache, omit child query:
+ * {!parent filter="PARENT:true"}
+ * 
+ * This parser needs user cache to store parent filter as CachingWrapperFilter 
+ * provide it's name via tag in solrconfig.xml:
+ * 
+ * <str name="parent-filter-cache">blockJoinParentFilterCache</str>
+ * 
+ *  no default value is provided for cache name. 
+ * User cache with this name should be configured, otherwise query might not be performant 
+ *  * 
  * */
-public class BJQParserPlugin extends QParserPlugin {
+public class BlockJoinParentQParserPlugin extends QParserPlugin {
 
     private String parentCacheName;
 
@@ -74,18 +84,6 @@ public class BJQParserPlugin extends QParserPlugin {
 
             protected Filter createParentFilter(Query parentQ) {
                 return new CachingWrapperFilter(new QueryWrapperFilter(parentQ) /*,? re-cache dels*/){
-                   /* @Override
-                    protected DocIdSet docIdSetToCache(DocIdSet docIdSet,
-                            IndexReader reader) throws IOException {
-                        DocIdSet result = super.docIdSetToCache(docIdSet, reader);
-                        // it never return null but let's handle hypothetical side cases
-                        if(!(result instanceof FixedBitSet)){
-                            final FixedBitSet bits = new FixedBitSet(reader.maxDoc());
-                            bits.or(result.iterator());
-                            return bits;
-                        }
-                        return result;
-                    }*/
                 };
             }
         };
