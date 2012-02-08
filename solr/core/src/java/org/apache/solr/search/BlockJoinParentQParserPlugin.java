@@ -53,8 +53,9 @@ public class BlockJoinParentQParserPlugin extends QParserPlugin {
                 String queryText = localParams.get(QueryParsing.V);
                 // there is no child query, return parent filter from cache
                 if(queryText==null || "".equals(queryText)){
-                    return new FilteredQuery(new MatchAllDocsQuery(),
-                            parentFilter);
+                    SolrConstantScoreQuery wrapped = new SolrConstantScoreQuery(parentFilter);
+                    wrapped.setCache(false);
+                    return wrapped;
                 }
                 
                 QParser childrenParser = subQuery(queryText, null);
