@@ -1,0 +1,61 @@
+
+<!-- solrconf.xml snippet brings ER model into inverted index -->
+<queryParser name="block-join" class="..BJQParser.">
+
+<!-- Usage
+ q=Ambivalence&fq=AGE:45&fq={!block-join lookat=jfq}&jfq=FIRM_NAME:Sun&jfq=CITY:vancouver&jfq=DEPT:R&D&jfq=SKILL:Math
+ -->
+
+     <lst name="entity">
+          <str name="filter">doc_typ:candidate</str>
+          
+          <lst name="child">
+              <str name="filter">doc_typ:company</str>
+              <arr name="fields">
+                  <str>FIRM_NAME</str>
+                  <str>TRADED_AS</str>
+               </arr>
+               
+               <lst name="child">
+                 <!--<str name="filter">doc_typ:location</str> -->
+                  <arr name="fields">
+                     <str>COUNTRY</str>
+                     <str>CITY</str>
+                  </arr>
+          		</lst>
+          
+	          <lst name="child">
+	              <!-- <str name="filter">doc_typ:position</str> -->
+	              <arr name="fields">
+	                  <str>POSITION</str>
+	                  <str>IN_CHARGE</str>
+	                  <str>DEPT</str>
+	               </arr>
+	          </lst>
+          </lst>
+          
+          <lst name="child">
+               <!-- is not necessary for leaf level entities
+                  <str name="filter">doc_typ:skill</str>
+               -->
+               <arr name="fields">
+                  <str>SKILL</str>
+                  <str>SCORE</str>
+               </arr>
+          </lst>
+          
+          <!-- is not necessary for root level entities - 
+               any unknown field treated as a root level 
+               
+          <arr name="fields">
+              <str>NAME</str>
+              <str>BIRTH</str>
+          </arr>
+          -->     
+     </lst>
+     <!-- don;t think we need a forest but why not 
+        - aha it contradicts with the single root assumption above
+     <lst name="entity">
+     </lst>
+     -->
+</queryParser>

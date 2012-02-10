@@ -36,7 +36,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
         List<List<String[]>> blocks = new ArrayList<List<String[]>>();
         for(String parent:new String[]{"a","b","c","d", "e","f"}){
             List<String[]> block = new ArrayList<String[]>();
-            for(String child:new String[]{"a","b","c"}){
+            for(String child:new String[]{"k","l","m"}){
                 block.add(
                         new String[]{"child_s",child, "parentchild_s",parent+child})
                 ;
@@ -66,7 +66,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
     
     @Test
     public void testFull() throws IOException, Exception{
-        String childb = "{!parent filter=\"parent_s:[* TO *]\"}child_s:b";
+        String childb = "{!parent filter=\"parent_s:[* TO *]\"}child_s:l";
         assertQ(req("q",childb), 
                 "//*[@numFound='6']"
               ,"//doc/arr[@name=\"parent_s\"]/str='a'",
@@ -94,14 +94,14 @@ public class TestBJQParser extends SolrTestCaseJ4 {
     @Test
     public void testIntersectBqBjq() {
         assertQ(req("q","+parent_s:(e b) +_query_:\"{!parent filter=$pq v=$chq}\"",
-                "chq","child_s:b",    "pq","parent_s:[* TO *]"), 
+                "chq","child_s:l",    "pq","parent_s:[* TO *]"), 
                 "//*[@numFound='2']",
                 "//doc/arr[@name=\"parent_s\"]/str='b'",
                 "//doc/arr[@name=\"parent_s\"]/str='e'"
               );
         assertQ(req("fq","{!parent filter=$pq v=$chq}\"",
                 "q","parent_s:(e b)",
-                "chq","child_s:b",    "pq","parent_s:[* TO *]"), 
+                "chq","child_s:l",    "pq","parent_s:[* TO *]"), 
                 "//*[@numFound='2']",
                 "//doc/arr[@name=\"parent_s\"]/str='b'",
                 "//doc/arr[@name=\"parent_s\"]/str='e'"
@@ -110,7 +110,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
         assertQ(req("q","*:*",
                 "fq","{!parent filter=$pq v=$chq}\"",
                 "fq","parent_s:(e b)",
-                "chq","child_s:b",    "pq","parent_s:[* TO *]"), 
+                "chq","child_s:l",    "pq","parent_s:[* TO *]"), 
                 "//*[@numFound='2']",
                 "//doc/arr[@name=\"parent_s\"]/str='b'",
                 "//doc/arr[@name=\"parent_s\"]/str='e'"
@@ -122,7 +122,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
     public void testFq() {
         assertQ(req("q","{!parent filter=$pq v=$chq}",
                 "fq","parent_s:(e b)",
-                "chq","child_s:b",    "pq","parent_s:[* TO *]"//,"debugQuery","on"
+                "chq","child_s:l",    "pq","parent_s:[* TO *]"//,"debugQuery","on"
                 ),
                 "//*[@numFound='2']",
                 "//doc/arr[@name=\"parent_s\"]/str='b'",
@@ -132,7 +132,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
         boolean qfq = random.nextBoolean();
         assertQ(req(qfq ? "q":"fq","parent_s:(a e b)",
                   (!qfq)? "q":"fq", "{!parent filter=$pq v=$chq}",
-                "chq","parentchild_s:(bc ea cb)",
+                "chq","parentchild_s:(bm ek cl)",
                 "pq","parent_s:[* TO *]"), 
                 "//*[@numFound='2']",
                 "//doc/arr[@name=\"parent_s\"]/str='b'",
@@ -145,7 +145,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
     public void testIntersectParentBqChildBq() throws IOException {
         
         assertQ(req("q","+parent_s:(a e b) +_query_:\"{!parent filter=$pq v=$chq}\"",
-                "chq","parentchild_s:(bc ea cb)",
+                "chq","parentchild_s:(bm ek cl)",
                 "pq","parent_s:[* TO *]"), 
                 "//*[@numFound='2']",
                 "//doc/arr[@name=\"parent_s\"]/str='b'",
