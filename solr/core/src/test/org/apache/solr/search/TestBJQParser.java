@@ -6,19 +6,21 @@ import java.util.Collections;
 import java.util.List;
 
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.util.RefCounted;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
 
 public class TestBJQParser extends SolrTestCaseJ4 {
 
+    private static boolean cachedMode;
 
     @BeforeClass
     public static void beforeClass() throws Exception {
         String oldCacheNamePropValue = 
                 System.getProperty("blockJoinParentFilterCache");
         System.setProperty("blockJoinParentFilterCache", 
-                random.nextBoolean() ? "blockJoinParentFilterCache" : "don't cache");
+                (cachedMode = random.nextBoolean()) ? "blockJoinParentFilterCache" : "don't cache");
         
       initCore("solrconfig-bjqparser.xml", "schema.xml");
 
@@ -153,4 +155,49 @@ public class TestBJQParser extends SolrTestCaseJ4 {
         );
     }
     
+    @Test
+    public void testCacheHit() throws IOException {
+        
+        SolrCache parentFilterCache = (SolrCache) h.getCore().getInfoRegistry().get("blockJoinParentFilterCache");
+        
+        SolrCache filterCache = (SolrCache) h.getCore().getInfoRegistry().get("filterCache");
+        
+        Long lookupsBefore = (Long) parentFilterCache.getStatistics().get("lookups");
+        Long hitsBefore = (Long) parentFilterCache.getStatistics().get("hits");
+        Long insertsBefore = (Long) parentFilterCache.getStatistics().get("inserts");
+        
+        Long fqLookupsBefore = (Long) filterCache.getStatistics().get("lookups");
+        
+        // it should be weird enough to be uniq
+        String parentFilter = "parent_s:([a TO c] [d TO f])";
+        
+        assertQ("search by parent filter",req("q", "{!parent filter=\""+parentFilter +"\"}"), 
+                "//*[@numFound='6']");
+        
+        assertQ("filter by parent filter", req("q","*:*",
+                "fq", "{!parent filter=\""+parentFilter +"\"}"), 
+                 "//*[@numFound='6']");
+        
+        assertQ("filter by join", req("q","*:*",
+                "fq", "{!parent filter=\""+parentFilter +"\"}child_s:l"), 
+                 "//*[@numFound='6']");
+        
+        Long lookupsAfter = (Long) parentFilterCache.getStatistics().get("lookups");
+        Long hitsAfter = (Long) parentFilterCache.getStatistics().get("hits");
+        Long insertsAfter = (Long) parentFilterCache.getStatistics().get("inserts");
+        
+        Long fqLookupsAfter = (Long) filterCache.getStatistics().get("lookups");
+        
+        if(cachedMode){
+            assertEquals("in cache mode every request lookups", 3, lookupsAfter - lookupsBefore);
+            assertEquals("last two lookups causes hits", 2, hitsAfter - hitsBefore);
+            assertEquals("the first lookup gets insert", 1, insertsAfter - insertsBefore);
+        }else{
+            assertEquals("no one look into cache", lookupsAfter,  lookupsBefore);
+            assertEquals("no one hit cache", hitsAfter,  hitsBefore);
+            assertEquals("no one insert into cache", insertsAfter,  insertsBefore);
+        }
+        
+        assertEquals("true join query is cached in fqCache", 1, fqLookupsAfter - fqLookupsBefore);
+    }
 }
