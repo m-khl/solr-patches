@@ -32,6 +32,61 @@ import org.apache.solr.request.SolrQueryRequest;
  * */
 public class BlockJoinParentQParserPlugin extends QParserPlugin {
 
+    private static final class BlockJoinParentQParser extends QParser {
+        private final SolrCache parentCache;
+
+        private BlockJoinParentQParser(String qstr, SolrParams localParams,
+                SolrParams params, SolrQueryRequest req, SolrCache parentCache) {
+            super(qstr, localParams, params, req);
+            this.parentCache = parentCache;
+        }
+
+        @Override
+        public Query parse() throws ParseException {
+            String filter = localParams.get("filter");
+            QParser parentParser = subQuery(filter, null);
+            Query parentQ = parentParser.getQuery();
+            Filter parentFilter = cachedParentFilter(req, parentQ);
+            
+            String queryText = localParams.get(QueryParsing.V);
+            // there is no child query, return parent filter from cache
+            if(queryText==null || "".equals(queryText)){
+                SolrConstantScoreQuery wrapped = new SolrConstantScoreQuery(parentFilter);
+                wrapped.setCache(false);
+                return wrapped;
+            }
+            
+            QParser childrenParser = subQuery(queryText, null);
+            
+            return new ToParentBlockJoinQuery(childrenParser.getQuery(),
+                    parentFilter
+                    ,ToParentBlockJoinQuery.ScoreMode.None); // TODO support more scores
+        }
+
+        protected Filter cachedParentFilter(SolrQueryRequest req, Query parentQ) {
+            // lazily retrieve from solr cache
+            Filter filter = null;
+            if(parentCache!=null){
+                filter = (Filter) parentCache.get(parentQ);
+            }
+            Filter result;
+            if(filter==null){
+                result = createParentFilter(parentQ);
+                if(parentCache!=null){
+                    parentCache.put(parentQ, result);
+                }
+            } else {
+                result = filter;
+            }
+            return result;
+        }
+
+        protected Filter createParentFilter(Query parentQ) {
+            return new CachingWrapperFilter(new QueryWrapperFilter(parentQ) /*,? re-cache dels*/){
+            };
+        }
+    }
+
     private String parentCacheName;
 
     @Override
@@ -41,58 +96,18 @@ public class BlockJoinParentQParserPlugin extends QParserPlugin {
         final SolrCache parentCache = (parentCacheName==null) ? null 
                 : req.getSearcher().getCache(parentCacheName);
         
-        return new QParser(qstr, localParams, params, req) {
-            
-            @Override
-            public Query parse() throws ParseException {
-                String filter = localParams.get("filter");
-                QParser parentParser = subQuery(filter, null);
-                Query parentQ = parentParser.getQuery();
-                Filter parentFilter = cachedParentFilter(req, parentQ);
-                
-                String queryText = localParams.get(QueryParsing.V);
-                // there is no child query, return parent filter from cache
-                if(queryText==null || "".equals(queryText)){
-                    SolrConstantScoreQuery wrapped = new SolrConstantScoreQuery(parentFilter);
-                    wrapped.setCache(false);
-                    return wrapped;
-                }
-                
-                QParser childrenParser = subQuery(queryText, null);
-                
-                return new ToParentBlockJoinQuery(childrenParser.getQuery(),
-                        parentFilter
-                        ,ToParentBlockJoinQuery.ScoreMode.None); // TODO support more scores
-            }
-
-            protected Filter cachedParentFilter(SolrQueryRequest req, Query parentQ) {
-                // lazily retrieve from solr cache
-                Filter filter = null;
-                if(parentCache!=null){
-                    filter = (Filter) parentCache.get(parentQ);
-                }
-                Filter result;
-                if(filter==null){
-                    result = createParentFilter(parentQ);
-                    if(parentCache!=null){
-                        parentCache.put(parentQ, result);
-                    }
-                } else {
-                    result = filter;
-                }
-                return result;
-            }
-
-            protected Filter createParentFilter(Query parentQ) {
-                return new CachingWrapperFilter(new QueryWrapperFilter(parentQ) /*,? re-cache dels*/){
-                };
-            }
-        };
+        BlockJoinParentQParser parser = new BlockJoinParentQParser(qstr, localParams, params, req,
+                parentCache);
+        
+        return parser;
     }
 
     @Override
     public void init(NamedList args) {
-        parentCacheName = (String) args.get("parent-filter-cache");
+        
+        if(args!=null){
+            parentCacheName = (String) args.get("parent-filter-cache");
+        }
     }
 
 }

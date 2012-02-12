@@ -3,9 +3,17 @@ package org.apache.solr.search;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
+import org.apache.lucene.queryparser.classic.ParseException;
+import org.apache.lucene.search.Query;
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.common.params.MapSolrParams;
+import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.util.NamedList;
+import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.util.RefCounted;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
@@ -162,11 +170,9 @@ public class TestBJQParser extends SolrTestCaseJ4 {
         
         SolrCache filterCache = (SolrCache) h.getCore().getInfoRegistry().get("filterCache");
         
-        Long lookupsBefore = (Long) parentFilterCache.getStatistics().get("lookups");
-        Long hitsBefore = (Long) parentFilterCache.getStatistics().get("hits");
-        Long insertsBefore = (Long) parentFilterCache.getStatistics().get("inserts");
+        NamedList parentsBefore = parentFilterCache.getStatistics();
         
-        Long fqLookupsBefore = (Long) filterCache.getStatistics().get("lookups");
+        NamedList filtersBefore =  filterCache.getStatistics();
         
         // it should be weird enough to be uniq
         String parentFilter = "parent_s:([a TO c] [d TO f])";
@@ -178,26 +184,53 @@ public class TestBJQParser extends SolrTestCaseJ4 {
                 "fq", "{!parent filter=\""+parentFilter +"\"}"), 
                  "//*[@numFound='6']");
         
+        assertEquals("didn't hit fqCache yet ", 0L, delta("lookups",filterCache.getStatistics(), filtersBefore ));
+        
         assertQ("filter by join", req("q","*:*",
                 "fq", "{!parent filter=\""+parentFilter +"\"}child_s:l"), 
                  "//*[@numFound='6']");
         
-        Long lookupsAfter = (Long) parentFilterCache.getStatistics().get("lookups");
-        Long hitsAfter = (Long) parentFilterCache.getStatistics().get("hits");
-        Long insertsAfter = (Long) parentFilterCache.getStatistics().get("inserts");
-        
-        Long fqLookupsAfter = (Long) filterCache.getStatistics().get("lookups");
-        
         if(cachedMode){
-            assertEquals("in cache mode every request lookups", 3, lookupsAfter - lookupsBefore);
-            assertEquals("last two lookups causes hits", 2, hitsAfter - hitsBefore);
-            assertEquals("the first lookup gets insert", 1, insertsAfter - insertsBefore);
+            assertEquals("in cache mode every request lookups", 3, delta("lookups", 
+                                                                    parentFilterCache.getStatistics(),  parentsBefore));
+            assertEquals("last two lookups causes hits", 2,  delta("hits", 
+                                                                    parentFilterCache.getStatistics(),  parentsBefore));
+            assertEquals("the first lookup gets insert", 1,  delta("inserts", 
+                                                                    parentFilterCache.getStatistics(),  parentsBefore));
         }else{
-            assertEquals("no one look into cache", lookupsAfter,  lookupsBefore);
-            assertEquals("no one hit cache", hitsAfter,  hitsBefore);
-            assertEquals("no one insert into cache", insertsAfter,  insertsBefore);
+            assertEquals("no one look into cache", 0L ,delta("lookups", 
+                    parentFilterCache.getStatistics(),  parentsBefore));
+            assertEquals("no one hit cache", 0L ,delta("hits", 
+                    parentFilterCache.getStatistics(),  parentsBefore));
+            assertEquals("no one insert into cache", 0L ,delta("inserts", 
+                    parentFilterCache.getStatistics(),  parentsBefore));
         }
         
-        assertEquals("true join query is cached in fqCache", 1, fqLookupsAfter - fqLookupsBefore);
+        assertEquals("true join query is cached in fqCache", 1L, delta("lookups",filterCache.getStatistics(), filtersBefore ));
+    }
+    
+    private long delta(String key, NamedList a, NamedList b){
+        return (Long) a.get(key) - (Long) b.get(key);
+    }
+    
+    @Test
+    public void emptyListInit() throws ParseException{ 
+        
+        SolrQueryRequest req = req("q", "*:*");
+        try{
+        
+        assertEquals("empty init args works well", QParser.getParser("{!parent filter=\"parent_s:[* TO *]\"}child_s:l", "", req).getQuery(),
+                QParser.getParser("{!parentemptyinit filter=\"parent_s:[* TO *]\"}child_s:l", "", req).getQuery());
+        
+        assertEquals("empty init args works well for parent filter mode", QParser.getParser("{!parent filter=\"parent_s:[* TO *]\"}", "", req).getQuery(),
+                QParser.getParser("{!parentemptyinit filter=\"parent_s:[* TO *]\"}", "", req).getQuery());
+        }finally{
+            req.close();
+        }
+    }
+    
+    @Test
+    public void nullInit(){
+        new BlockJoinParentQParserPlugin().init(null);
     }
 }
