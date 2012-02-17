@@ -1,12 +1,8 @@
 package org.apache.solr.search;
 
-import java.io.IOException;
-
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.CachingWrapperFilter;
 import org.apache.lucene.search.Filter;
-import org.apache.lucene.search.FilteredQuery;
-import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.search.join.ToParentBlockJoinQuery;
