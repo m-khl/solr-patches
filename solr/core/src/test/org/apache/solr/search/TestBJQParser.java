@@ -4,26 +4,22 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
-import java.util.Map;
 
 import org.apache.lucene.queryparser.classic.ParseException;
-import org.apache.lucene.search.Query;
 import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.common.params.MapSolrParams;
-import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrQueryRequest;
-import org.apache.solr.util.RefCounted;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
 
 public class TestBJQParser extends SolrTestCaseJ4 {
 
+    private static final String[] klm = new String[]{"k","l","m"};
+    private static final List<String> xyz = Arrays.asList("x","y","z");
+    private static final String[] abcdef = new String[]{"a","b","c","d", "e","f"};
     private static boolean cachedMode;
 
     @BeforeClass
@@ -42,25 +38,11 @@ public class TestBJQParser extends SolrTestCaseJ4 {
     }
 
     
-    public static void createIndex() {
+    public static void createIndex() throws IOException, Exception {
         assertU(delQ("*:*"));
         assertU(optimize());
-        
-        List<List<String[]>> blocks = new ArrayList<List<String[]>>();
-        for(String parent:new String[]{"a","b","c","d", "e","f"}){
-            List<String[]> block = new ArrayList<String[]>();
-            for(String child:new String[]{"k","l","m"}){
-                block.add(
-                        new String[]{"child_s",child, "parentchild_s",parent+child})
-                ;
-            }
-            Collections.shuffle(block, random);
-            addGrandChildren(block);
-            block.add(new String[]{"parent_s",parent});
-            blocks.add(block);
-        }
-        Collections.shuffle(blocks, random);
         int i=0;
+        List<List<String[]>> blocks = createBlocks();
         for(List<String[]> block: blocks){
             for(String[] doc: block){
                 assertU(add(doc(doc), "overwrite", "false"));
@@ -76,19 +58,52 @@ public class TestBJQParser extends SolrTestCaseJ4 {
         }
         assertU(commit());
         assertQ(req("q","*:*"),"//*[@numFound='"+i+"']");
+        
+        System.out.println(h.query(req("q","*:*", 
+                "sort","_docid_ asc", 
+                "fl","parent_s,child_s,parentchild_s,grand_s,grand_child_s,grand_parentchild_s",
+                "wt","csv", "rows","1000")));
+    }
+
+
+    private static List<List<String[]>> createBlocks() {
+        List<List<String[]>> blocks = new ArrayList<List<String[]>>();
+        for(String parent:abcdef){
+            List<String[]> block
+                = createChildrenBlock(parent);
+            block.add(new String[]{"parent_s",parent});
+            blocks.add(block);
+        }
+        Collections.shuffle(blocks, random);
+        return blocks;
+    }
+
+
+    private static List<String[]> createChildrenBlock(String parent) {
+        List<String[]> block = new ArrayList<String[]>();
+        for(String child:klm){
+            block.add(
+                    new String[]{"child_s",child, "parentchild_s",parent+child})
+            ;
+        }
+        Collections.shuffle(block, random);
+        addGrandChildren(block);
+        return block;
     }
 
 
     private static void addGrandChildren(List<String[]> block) {
-        List<String> grandChildren = new ArrayList<String>(Arrays.asList("x","y","z"));
+        List<String> grandChildren = new ArrayList<String>(xyz);
+        // add grandchildren after children
         for(ListIterator<String[]> iter = block.listIterator(); iter.hasNext();){
             String[] child = iter.next();
             String child_s = child[1];
             String parentchild_s = child[3];
             int grandChildPos=0;
+            boolean lastLoopButStillHasGrCh = !iter.hasNext() && !grandChildren.isEmpty();
             while( !grandChildren.isEmpty() && ( 
                     (grandChildPos = random.nextInt(grandChildren.size()*2)) < grandChildren.size() || 
-                        (!iter.hasNext() && !grandChildren.isEmpty()))){
+                        lastLoopButStillHasGrCh)){
                 grandChildPos = grandChildPos >=grandChildren.size() ? 0 : grandChildPos; 
                iter.add(new String[]{
                     "grand_s", grandChildren.remove(grandChildPos) , 
@@ -96,6 +111,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
                });
             }
         }
+        // and reverse after that
         Collections.reverse(block);
     }
     
@@ -180,7 +196,20 @@ public class TestBJQParser extends SolrTestCaseJ4 {
     
     @Test
     public void testGrandChildren() throws IOException {
-        
+        assertQ(req("q","{!parent filter=$parentfilter v=$children}",
+                "children","{!parent filter=$childrenfilter v=$grandchildren}",
+                "grandchildren", "grand_s:"+"x",
+                "parentfilter", "parent_s:[* TO *]",
+                "childrenfilter", "child_s:[* TO *]"),sixParents);
+        //int loops = atLeast(1);
+        String grandChildren = xyz.get(random.nextInt(xyz.size()));
+        assertQ(req("q","+parent_s:(a e b) +_query_:\"{!parent filter=$pq v=$chq}\"",
+                "chq","{!parent filter=$childfilter v=$grandchq}", 
+                "grandchq", "+grand_s:"+grandChildren+" +grand_parentchild_s:(b* e* c*)",
+                "pq","parent_s:[* TO *]", 
+                "childfilter", "child_s:[* TO *]"), 
+                beParents
+        );
     }
     
     @Test
