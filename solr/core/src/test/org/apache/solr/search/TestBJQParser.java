@@ -58,11 +58,12 @@ public class TestBJQParser extends SolrTestCaseJ4 {
         }
         assertU(commit());
         assertQ(req("q","*:*"),"//*[@numFound='"+i+"']");
-        
+        /* dump docs well
         System.out.println(h.query(req("q","*:*", 
                 "sort","_docid_ asc", 
                 "fl","parent_s,child_s,parentchild_s,grand_s,grand_child_s,grand_parentchild_s",
                 "wt","csv", "rows","1000")));
+                */
     }
 
 
@@ -164,7 +165,6 @@ public class TestBJQParser extends SolrTestCaseJ4 {
               );
     }
     
-    @Ignore("until BJQ supports filtered search")
     @Test
     public void testFq() {
         assertQ(req("q","{!parent filter=$pq v=$chq}",
