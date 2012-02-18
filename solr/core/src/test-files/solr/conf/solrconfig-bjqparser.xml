@@ -81,11 +81,11 @@
 
   <queryParser name="foo" class="FooQParserPlugin"/>
   
-  <queryParser name="parent" class="org.apache.solr.search.BlockJoinParentQParserPlugin">
+  <queryParser name="parent" class="org.apache.solr.search.join.BlockJoinParentQParserPlugin">
   		<str name="parent-filter-cache">${blockJoinParentFilterCache}</str>
   </queryParser>
   
-  <queryParser name="parentemptyinit" class="org.apache.solr.search.BlockJoinParentQParserPlugin">
+  <queryParser name="parentemptyinit" class="org.apache.solr.search.join.BlockJoinParentQParserPlugin">
   </queryParser>
 
 </config>

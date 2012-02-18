@@ -11,6 +11,7 @@ import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrQueryRequest;
+import org.apache.solr.search.join.BlockJoinParentQParserPlugin;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
