@@ -19,6 +19,8 @@ package org.apache.solr.handler.dataimport;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ArrayList;
@@ -37,6 +39,11 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
   @Test
   @SuppressWarnings("unchecked")
   public void testCompositePk_FullImport() throws Exception {
+    testComposite(dataConfig);
+  }
+  
+  @SuppressWarnings("unchecked")
+  public void testComposite(String dataConfigXml) throws Exception {
     List parentRow = new ArrayList();
 //    parentRow.add(createMap("id", "1"));
     parentRow.add(createMap("id", "2"));
@@ -45,20 +52,31 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
     parentRow.add(createMap("id", "1"));
     MockDataSource.setIterator("select * from x", parentRow.iterator());
 
-    List childRow = new ArrayList();
-    Map map = createMap("desc", "hello");
-    childRow.add(map);
+    List childRow = Arrays.asList(
+            createMap("desc", "hello"),
+            createMap("desc", "bye"),
+            createMap("desc", "hi"),
+            createMap("desc", "aurevoir"));
 
     MockDataSource.setIterator("select * from y where y.A=1", childRow.iterator());
     MockDataSource.setIterator("select * from y where y.A=2", childRow.iterator());
     MockDataSource.setIterator("select * from y where y.A=3", childRow.iterator());
     MockDataSource.setIterator("select * from y where y.A=4", childRow.iterator());
 
-    runFullImport(dataConfig);
+    runFullImport(dataConfigXml);
 
     assertQ(req("id:1"), "//*[@numFound='1']");
     assertQ(req("*:*"), "//*[@numFound='4']");
     assertQ(req("desc:hello"), "//*[@numFound='4']");
+    assertQ(req("desc:bye"), "//*[@numFound='4']");
+    assertQ(req("desc:hi"), "//*[@numFound='4']");
+    assertQ(req("desc:aurevoir"), "//*[@numFound='4']");
+  }
+  
+  private Iterator shuffledIter(List rows){
+    ArrayList shuffle = new ArrayList(rows);
+    Collections.shuffle(shuffle, random);
+    return shuffle.iterator();
   }
 
   @Test
@@ -74,6 +92,13 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
   @Test
   public void testCachedTenThreads_FullImport() throws Exception {
       testCached(threads2replacement.replaceAll("threads=\"10\""));
+  }
+  
+  @Test
+  public void testNPlusOneTenThreads_FullImport() throws Exception {
+    testComposite(Pattern.compile(threads2).matcher(dataNPlusOneConfig).replaceAll(//""
+          "threads=\"2\""
+          ));
   }
   
   @Test
@@ -136,4 +161,16 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
       + "       </document>\n" + "</dataConfig>";
 
 private static final Matcher threads2replacement = Pattern.compile(threads2).matcher(dataCachedConfig);
+  
+  private static String dataNPlusOneConfig = "<dataConfig>\n"
+    +"<dataSource  type=\"MockDataSource\"/>\n"
+    + "       <document>\n"
+    + "               <entity name=\"x\" "+threads2+" query=\"select * from x\" " +
+                       " processor=\"SqlEntityProcessor\""+ ">\n"
+    + "                       <field column=\"id\" />\n"
+    + "                       <entity name=\"y\" query=\"select * from y where y.A=${x.id}\" " +
+    "processor=\"SqlEntityProcessor\">\n"
+    + "                               <field column=\"desc\" />\n"
+    + "                       </entity>\n" + "               </entity>\n"
+    + "       </document>\n" + "</dataConfig>";
 }
