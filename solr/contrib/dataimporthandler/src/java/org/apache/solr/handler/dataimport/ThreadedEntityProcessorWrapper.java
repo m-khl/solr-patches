@@ -81,14 +81,17 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
       synchronized (delegate) {
           Map<String, Object> arow = null;
           // for paged case we need to loop through whole page, other wise single row is enough
-              for (int i = 0; delegate.isPaged() ? !eof : i==0; i++) {
-                  arow = pullRow();
-                  if (arow != null) {
-                      rawRows.add(arow);
-                  }else { // there is no row, eof
-                      eof = true;
-                  }
+          boolean retrieveWholePage = !entityRunner.entity.isDocRoot;
+          for (int i = 0; 
+              retrieveWholePage ? !eof : i==0; // otherwise only single row
+                  i++) {
+              arow = pullRow();
+              if (arow != null) {
+                  rawRows.add(arow);
+              }else { // there is no row, eof
+                  eof = true;
               }
+          }
       }
       for(Map<String, Object> rawRow : rawRows){
           // transforming emits N rows

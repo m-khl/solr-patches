@@ -142,11 +142,6 @@ public class EntityProcessorBase extends EntityProcessor {
   	cacheSupport = null;
   }
 
-    @Override
-    public boolean isPaged() {
-        return cacheSupport!=null && cacheSupport.doesKeyLookup();
-    }
-
   public static final String TRANSFORMER = "transformer";
 
   public static final String TRANSFORM_ROW = "transformRow";

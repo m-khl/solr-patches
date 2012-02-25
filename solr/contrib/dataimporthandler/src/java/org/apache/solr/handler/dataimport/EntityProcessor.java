@@ -113,8 +113,4 @@ public abstract class EntityProcessor {
   public void close() {
     //no-op
   }
-  /**
-   * whether or not this processor does key lookup by the parent key values 
-   */
-  public abstract boolean isPaged();
 }
