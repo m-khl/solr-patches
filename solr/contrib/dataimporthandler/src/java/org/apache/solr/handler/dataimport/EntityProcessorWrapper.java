@@ -325,9 +325,4 @@ public class EntityProcessorWrapper extends EntityProcessor {
   public void close() {
     delegate.close();
   }
-  
-  @Override
-    public boolean isPaged() {
-        return false;
-    }
 }

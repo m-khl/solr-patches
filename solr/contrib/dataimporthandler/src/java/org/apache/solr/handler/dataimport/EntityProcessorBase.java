@@ -142,6 +142,8 @@ public class EntityProcessorBase extends EntityProcessor {
   	cacheSupport = null;
   }
 
+  
+
   public static final String TRANSFORMER = "transformer";
 
   public static final String TRANSFORM_ROW = "transformRow";

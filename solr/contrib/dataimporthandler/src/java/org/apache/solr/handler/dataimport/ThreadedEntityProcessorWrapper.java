@@ -68,6 +68,17 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
     }    
   }
 
+  /**
+   * for root entity it retrieves single row, transforms it, 
+   *    and loop until transfomer passes the first row
+   *    
+   * for child entities whole page is pulled. where the page is non-null children entity rows.
+   * then the whole page is transformed and emitted to a {@link rowcache}
+   * 
+   * the rationale is avoid stealing child rows by parent entity threads. For every parent row 
+   * the linked children rows (page) is pulled under lock obtained on {@link delegate} 
+   *  
+   * */
   @Override
   public Map<String, Object> nextRow() {
     if (rowcache != null) {
@@ -80,7 +91,7 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
         List<Map<String, Object>> rawRows = new ArrayList<Map<String, Object>>();
       synchronized (delegate) {
           Map<String, Object> arow = null;
-          // for paged case we need to loop through whole page, other wise single row is enough
+          // for paginated case we need to loop through whole page, other wise single row is enough
           boolean retrieveWholePage = !entityRunner.entity.isDocRoot;
           for (int i = 0; 
               retrieveWholePage ? !eof : i==0; // otherwise only single row
@@ -96,7 +107,8 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
       for(Map<String, Object> rawRow : rawRows){
           // transforming emits N rows
           List<Map<String, Object>> result = transformRow(rawRow);
-          if(!result.isEmpty() && result.get(0) != null){ // but post-transforming is applied only to the first one (legacy as-is)
+       // but post-transforming is applied only to the first one (legacy as-is)
+          if(!result.isEmpty() && result.get(0) != null){ 
               delegate.postTransform(result.get(0));
               transformedRows.addAll(result);
           }
@@ -129,9 +141,7 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
         return null;
       }
     }
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("arow : " + arow);
-    }
+    LOG.debug("arow : {}", arow);
     if(arow == null) entityEnded.set(true);
     return arow;
   }

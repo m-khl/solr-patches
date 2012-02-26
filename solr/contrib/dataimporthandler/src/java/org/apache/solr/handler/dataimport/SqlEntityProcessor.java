@@ -153,7 +153,7 @@ public class SqlEntityProcessor extends EntityProcessorBase {
     }
     return sb.toString();
   }
-  
+
   private static Pattern SELECT_WHERE_PATTERN = Pattern.compile(
           "^\\s*(select\\b.*?\\b)(where).*", Pattern.CASE_INSENSITIVE);
 
