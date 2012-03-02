@@ -157,8 +157,26 @@ public class TestBlockJoin extends LuceneTestCase {
                              new QueryWrapperFilter(new TermQuery(new Term("skill", "foosball"))),
                              1).totalHits);
     
+    TermQuery us = new TermQuery(new Term("country", "United States"));
+    assertEquals("@ US we have java and ruby", 2, 
+        s.search(new ToChildBlockJoinQuery(us, 
+                          parentsFilter, random.nextBoolean()), 10).totalHits );
+    // surprisingly it finds 0 and 4 
+    assertEquals("java skills in US", 1, s.search(new ToChildBlockJoinQuery(us, parentsFilter, random.nextBoolean()),
+        skill("java"), 10).totalHits );
+
+    BooleanQuery rubyPython = new BooleanQuery();
+    rubyPython.add(new TermQuery(new Term("skill", "ruby")), Occur.SHOULD);
+    rubyPython.add(new TermQuery(new Term("skill", "python")), Occur.SHOULD);
+    assertEquals("ruby skills in US", 1, s.search(new ToChildBlockJoinQuery(us, parentsFilter, random.nextBoolean()),
+                                          new QueryWrapperFilter(rubyPython), 10).totalHits );
+    
     r.close();
     dir.close();
+  }
+
+  protected QueryWrapperFilter skill(String skill) {
+    return new QueryWrapperFilter(new TermQuery(new Term("skill", skill)));
   }
 
   public void testSimpleFilter() throws Exception {
