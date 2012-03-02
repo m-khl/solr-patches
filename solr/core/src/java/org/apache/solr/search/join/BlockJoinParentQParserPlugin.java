@@ -9,10 +9,10 @@ import org.apache.solr.search.SolrCache;
 
 /**
  * Usage:
- * {!parent filter="PARENT:true"}CHILD_PRICE:10
+ * {!parent which="PARENT:true"}CHILD_PRICE:10
  * 
  * To obtain just parent filter from the cache, omit child query:
- * {!parent filter="PARENT:true"}
+ * {!parent which="PARENT:true"}
  * 
  * This parser needs user cache to store parent filter as CachingWrapperFilter 
  * provide it's name via tag in solrconfig.xml:

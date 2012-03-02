@@ -59,12 +59,12 @@ public class TestBJQParser extends SolrTestCaseJ4 {
         }
         assertU(commit());
         assertQ(req("q","*:*"),"//*[@numFound='"+i+"']");
-        /* dump docs well
+        /* dump docs well 
         System.out.println(h.query(req("q","*:*", 
                 "sort","_docid_ asc", 
                 "fl","parent_s,child_s,parentchild_s,grand_s,grand_child_s,grand_parentchild_s",
                 "wt","csv", "rows","1000")));
-                */
+                //*/
     }
 
 
@@ -119,7 +119,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
     
     @Test
     public void testFull() throws IOException, Exception{
-        String childb = "{!parent filter=\"parent_s:[* TO *]\"}child_s:l";
+        String childb = "{!parent which=\"parent_s:[* TO *]\"}child_s:l";
         assertQ(req("q",childb), sixParents
               );
     }
@@ -135,7 +135,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
     
     @Test
     public void testJustParentsFilter() throws IOException {
-        assertQ(req("q", "{!parent filter=\"parent_s:[* TO *]\"}"), 
+        assertQ(req("q", "{!parent which=\"parent_s:[* TO *]\"}"), 
                 sixParents
               );
     }
@@ -148,18 +148,18 @@ public class TestBJQParser extends SolrTestCaseJ4 {
     @Test
     public void testIntersectBqBjq() {
         
-        assertQ(req("q","+parent_s:(e b) +_query_:\"{!parent filter=$pq v=$chq}\"",
+        assertQ(req("q","+parent_s:(e b) +_query_:\"{!parent which=$pq v=$chq}\"",
                 "chq","child_s:l",    "pq","parent_s:[* TO *]"), 
                 beParents 
               );
-        assertQ(req("fq","{!parent filter=$pq v=$chq}\"",
+        assertQ(req("fq","{!parent which=$pq v=$chq}\"",
                 "q","parent_s:(e b)",
                 "chq","child_s:l",    "pq","parent_s:[* TO *]"), 
                 beParents
               );
         
         assertQ(req("q","*:*",
-                "fq","{!parent filter=$pq v=$chq}\"",
+                "fq","{!parent which=$pq v=$chq}\"",
                 "fq","parent_s:(e b)",
                 "chq","child_s:l",    "pq","parent_s:[* TO *]"), 
                 beParents
@@ -168,7 +168,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
     
     @Test
     public void testFq() {
-        assertQ(req("q","{!parent filter=$pq v=$chq}",
+        assertQ(req("q","{!parent which=$pq v=$chq}",
                 "fq","parent_s:(e b)",
                 "chq","child_s:l",    "pq","parent_s:[* TO *]"//,"debugQuery","on"
                 ),
@@ -177,7 +177,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
 
         boolean qfq = random.nextBoolean();
         assertQ(req(qfq ? "q":"fq","parent_s:(a e b)",
-                  (!qfq)? "q":"fq", "{!parent filter=$pq v=$chq}",
+                  (!qfq)? "q":"fq", "{!parent which=$pq v=$chq}",
                 "chq","parentchild_s:(bm ek cl)",
                 "pq","parent_s:[* TO *]"), 
                 beParents
@@ -188,7 +188,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
     @Test
     public void testIntersectParentBqChildBq() throws IOException {
         
-        assertQ(req("q","+parent_s:(a e b) +_query_:\"{!parent filter=$pq v=$chq}\"",
+        assertQ(req("q","+parent_s:(a e b) +_query_:\"{!parent which=$pq v=$chq}\"",
                 "chq","parentchild_s:(bm ek cl)",
                 "pq","parent_s:[* TO *]"), 
                 beParents
@@ -197,20 +197,37 @@ public class TestBJQParser extends SolrTestCaseJ4 {
     
     @Test
     public void testGrandChildren() throws IOException {
-        assertQ(req("q","{!parent filter=$parentfilter v=$children}",
-                "children","{!parent filter=$childrenfilter v=$grandchildren}",
+        assertQ(req("q","{!parent which=$parentfilter v=$children}",
+                "children","{!parent which=$childrenfilter v=$grandchildren}",
                 "grandchildren", "grand_s:"+"x",
                 "parentfilter", "parent_s:[* TO *]",
                 "childrenfilter", "child_s:[* TO *]"),sixParents);
         //int loops = atLeast(1);
         String grandChildren = xyz.get(random.nextInt(xyz.size()));
-        assertQ(req("q","+parent_s:(a e b) +_query_:\"{!parent filter=$pq v=$chq}\"",
-                "chq","{!parent filter=$childfilter v=$grandchq}", 
+        assertQ(req("q","+parent_s:(a e b) +_query_:\"{!parent which=$pq v=$chq}\"",
+                "chq","{!parent which=$childfilter v=$grandchq}", 
                 "grandchq", "+grand_s:"+grandChildren+" +grand_parentchild_s:(b* e* c*)",
                 "pq","parent_s:[* TO *]", 
                 "childfilter", "child_s:[* TO *]"), 
                 beParents
         );
+    }
+    
+    @Test @Ignore("until ToChildBlockJoinScorer.nextDoc() line 212 seek through child docs instead of jump by continue")
+    public void testChildrenParser(){
+      assertQ(req("q","{!child of=\"parent_s:[* TO *]\"}parent_s:a"
+          ,"fq","NOT grand_s:[* TO *]"
+          ),
+          "//*[@numFound='3']",
+          "//doc/arr[@name=\"child_s\"]/str='k'",
+          "//doc/arr[@name=\"child_s\"]/str='l'",
+          "//doc/arr[@name=\"child_s\"]/str='m'");
+      assertQ(req("q","{!child of=\"parent_s:[* TO *]\"}parent_s:b" 
+                    ,"fq","-parentchild_s:bm", "fq","-grand_s:*"
+                    ),
+          "//*[@numFound='2']",
+          "//doc/arr[@name=\"child_s\"]/str='k'",
+          "//doc/arr[@name=\"child_s\"]/str='l'");
     }
     
     @Test
@@ -227,17 +244,17 @@ public class TestBJQParser extends SolrTestCaseJ4 {
         // it should be weird enough to be uniq
         String parentFilter = "parent_s:([a TO c] [d TO f])";
         
-        assertQ("search by parent filter",req("q", "{!parent filter=\""+parentFilter +"\"}"), 
+        assertQ("search by parent filter",req("q", "{!parent which=\""+parentFilter +"\"}"), 
                 "//*[@numFound='6']");
         
         assertQ("filter by parent filter", req("q","*:*",
-                "fq", "{!parent filter=\""+parentFilter +"\"}"), 
+                "fq", "{!parent which=\""+parentFilter +"\"}"), 
                  "//*[@numFound='6']");
         
         assertEquals("didn't hit fqCache yet ", 0L, delta("lookups",filterCache.getStatistics(), filtersBefore ));
         
         assertQ("filter by join", req("q","*:*",
-                "fq", "{!parent filter=\""+parentFilter +"\"}child_s:l"), 
+                "fq", "{!parent which=\""+parentFilter +"\"}child_s:l"), 
                  "//*[@numFound='6']");
         
         if(cachedMode){
@@ -270,12 +287,12 @@ public class TestBJQParser extends SolrTestCaseJ4 {
         try{
         
         assertEquals("empty init args works well",
-                QParser.getParser("{!parent filter=\"parent_s:[* TO *]\"}child_s:l", "", req).getQuery(),
-                QParser.getParser("{!parentemptyinit filter=\"parent_s:[* TO *]\"}child_s:l", "", req).getQuery());
+                QParser.getParser("{!parent which=\"parent_s:[* TO *]\"}child_s:l", "", req).getQuery(),
+                QParser.getParser("{!parentemptyinit which=\"parent_s:[* TO *]\"}child_s:l", "", req).getQuery());
         
         assertEquals("empty init args works well for parent filter mode too",
-                QParser.getParser("{!parent filter=\"parent_s:[* TO *]\"}", "", req).getQuery(),
-                QParser.getParser("{!parentemptyinit filter=\"parent_s:[* TO *]\"}", "", req).getQuery());
+                QParser.getParser("{!parent which=\"parent_s:[* TO *]\"}", "", req).getQuery(),
+                QParser.getParser("{!parentemptyinit which=\"parent_s:[* TO *]\"}", "", req).getQuery());
         }finally{
             req.close();
         }

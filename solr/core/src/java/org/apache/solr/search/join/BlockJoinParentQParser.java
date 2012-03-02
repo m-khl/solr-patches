@@ -19,6 +19,10 @@ import org.apache.solr.search.SolrConstantScoreQuery;
 class BlockJoinParentQParser extends QParser {
     private final SolrCache parentCache;
 
+    protected String getParentFilterLocalParamName() {
+      return "which";
+    }
+
     BlockJoinParentQParser(String qstr, SolrParams localParams,
             SolrParams params, SolrQueryRequest req, SolrCache parentCache) {
         super(qstr, localParams, params, req);
@@ -27,7 +31,7 @@ class BlockJoinParentQParser extends QParser {
 
     @Override
     public Query parse() throws ParseException {
-        String filter = localParams.get("filter");
+        String filter = localParams.get(getParentFilterLocalParamName());
         QParser parentParser = subQuery(filter, null);
         Query parentQ = parentParser.getQuery();
         Filter parentFilter = cachedParentFilter(req, parentQ);
@@ -42,9 +46,15 @@ class BlockJoinParentQParser extends QParser {
         
         QParser childrenParser = subQuery(queryText, null);
         
-        return new ToParentBlockJoinQuery(childrenParser.getQuery(),
-                parentFilter
-                ,ToParentBlockJoinQuery.ScoreMode.None); // TODO support more scores
+        Query childrenQuery = childrenParser.getQuery();
+        return createQuery(parentFilter, childrenQuery); 
+    }
+
+    protected Query createQuery(Filter parentFilter,
+        Query query) {
+      return new ToParentBlockJoinQuery(query,
+              parentFilter
+              ,ToParentBlockJoinQuery.ScoreMode.None);// TODO support more scores
     }
 
     protected Filter cachedParentFilter(SolrQueryRequest req, Query parentQ) {

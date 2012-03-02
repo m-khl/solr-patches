@@ -85,6 +85,10 @@
   		<str name="parent-filter-cache">${blockJoinParentFilterCache}</str>
   </queryParser>
   
+  <queryParser name="child" class="org.apache.solr.search.join.BlockJoinChildQParserPlugin">
+  		<str name="parent-filter-cache">${blockJoinParentFilterCache}</str>
+  </queryParser>
+  
   <queryParser name="parentemptyinit" class="org.apache.solr.search.join.BlockJoinParentQParserPlugin">
   </queryParser>
 
