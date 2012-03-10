@@ -74,7 +74,7 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
     parentRow.add(createMap("id", "3"));
     parentRow.add(createMap("id", "4"));
     parentRow.add(createMap("id", "1"));
-    MockDataSource.setIterator("select * from x", parentRow.iterator());
+    MockDataSource.setCollection("select * from x", parentRow);
     // for every x we have four linked y-s
     List childRow = Arrays.asList(
             createMap("desc", "hello"),
@@ -96,7 +96,7 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
          cartesianProduct.add(tuple);
       }
     }
-    MockDataSource.setIterator("select * from y", cartesianProduct .iterator());
+    MockDataSource.setCollection("select * from y", cartesianProduct);
   }
   
   @After

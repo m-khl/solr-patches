@@ -129,7 +129,9 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
    * */
   protected Map<String, Object> pullRow() {
       Map<String, Object> arow = null;
-    if(entityEnded.get()) return null;
+    if(entityEnded.get()){
+        return null;
+    }
     try {
       arow = delegate.nextRow();
     } catch (Exception e) {
@@ -142,7 +144,9 @@ public class ThreadedEntityProcessorWrapper extends EntityProcessorWrapper {
       }
     }
     LOG.debug("arow : {}", arow);
-    if(arow == null) entityEnded.set(true);
+    if(arow == null){
+        entityEnded.set(true);
+    }
     return arow;
   }
 

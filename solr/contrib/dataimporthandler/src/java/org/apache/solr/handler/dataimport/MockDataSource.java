@@ -33,11 +33,16 @@ import java.util.Properties;
 public class MockDataSource extends
         DataSource<Iterator<Map<String, Object>>> {
 
-  private static Map<String, Iterator<Map<String, Object>>> cache = new HashMap<String, Iterator<Map<String, Object>>>();
+  private static Map<String, Object> cache = new HashMap<String, Object>();
 
   public static void setIterator(String query,
                                  Iterator<Map<String, Object>> iter) {
     cache.put(query, iter);
+  }
+  
+  public static void setCollection(String query,
+      Iterable<Map<String, Object>> collection) {
+        cache.put(query, collection);
   }
 
   public static void clearCache() {
@@ -50,7 +55,8 @@ public class MockDataSource extends
 
   @Override
   public Iterator<Map<String, Object>> getData(String query) {
-    return cache.get(query);
+    Object data = cache.get(query);
+    return data instanceof Iterator ? ((Iterator<Map<String, Object>>)data) : (((Iterable)data).iterator());
   }
 
   @Override
