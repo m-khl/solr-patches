@@ -209,8 +209,16 @@ public class ToChildBlockJoinQuery extends Query {
 
             childDoc = 1 + parentBits.prevSetBit(parentDoc-1);
 
-            if (acceptDocs != null && !acceptDocs.get(childDoc)) {
-              continue;
+            if (acceptDocs != null){ // filtered case
+              // seek first child which passes the filter
+              int firstChildPassed = nextSetBit(acceptDocs, childDoc, parentDoc );
+              if(firstChildPassed!=childDoc){ // suggested child didn't pass the filter
+                if(firstChildPassed>=parentDoc || firstChildPassed==-1){ // there is no child passed the filter in this block
+                  continue; // go away to the next block
+                } else { // we have another good one child
+                  childDoc = firstChildPassed;
+                }
+              }
             }
 
             if (childDoc < parentDoc) {
@@ -235,6 +243,25 @@ public class ToChildBlockJoinQuery extends Query {
       }
     }
 
+    /**
+     * @param bits search in it
+     * @param bit seek starting from this
+     * @param lessThan possible exclusive boundary, it can not impact 
+     * a behaviour and is provided only for performance considerations 
+     * for the certain cases
+     *   
+     * @return next set bit starting from the giving inclusively
+     */
+    private int nextSetBit(Bits bits, int bit, int lessThan) {
+      if(bits instanceof FixedBitSet){
+        return ((FixedBitSet)bits).nextSetBit(bit);
+      } else {
+        for(; !bits.get(bit) && bit<lessThan; bit++){
+        } // it's odd but should work 
+        return bit;
+      }
+    }
+
     @Override
     public int docID() {
       return childDoc;
@@ -254,6 +281,9 @@ public class ToChildBlockJoinQuery extends Query {
         return childDoc = parentDoc = NO_MORE_DOCS;
       }
 
+      if(parentDoc==0){// it may be non-init state
+        parentDoc = parentScorer.docID();
+      }
       assert childTarget != parentDoc;
       if (childTarget > parentDoc) {
         // Advance to new parent:
