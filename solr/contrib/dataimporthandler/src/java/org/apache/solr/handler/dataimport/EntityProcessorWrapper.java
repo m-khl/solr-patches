@@ -41,7 +41,7 @@ public class EntityProcessorWrapper extends EntityProcessor {
   private DocBuilder docBuilder;
 
   String onError;
-  protected Context context;
+  Context context;
   protected VariableResolverImpl resolver;
   String entityName;
 
@@ -62,7 +62,9 @@ public class EntityProcessorWrapper extends EntityProcessor {
     //context has to be set correctly . keep the copy of the old one so that it can be restored in destroy
     if (entityName == null) {
       onError = resolver.replaceTokens(context.getEntityAttribute(ON_ERROR));
-      if (onError == null) onError = ABORT;
+      if (onError == null) {
+          onError = ABORT;
+      }
       entityName = context.getEntityAttribute(DataConfig.NAME);
     }
     delegate.init(context);
@@ -149,10 +151,10 @@ public class EntityProcessorWrapper extends EntityProcessor {
   }
 
   protected Map<String, Object> getFromRowCache() {
-    Map<String, Object> r = rowcache.remove(0);
-    if (rowcache.isEmpty())
-      rowcache = null;
-    return r;
+    if (rowcache.isEmpty()){
+      return null;
+    }
+    return rowcache.remove(0);
   }
 
   /**
@@ -257,34 +259,99 @@ public class EntityProcessorWrapper extends EntityProcessor {
             && Boolean.parseBoolean(oMap.get("$stopTransform").toString());
   }
 
+  /**
+   * for root entity it retrieves single row, transforms it, 
+   *    and loop until transfomer passes the first row
+   *    
+   * for child entities whole page is pulled. where the page is non-null children entity rows.
+   * then the whole page is transformed and emitted to a {@link rowcache}
+   * 
+   * the rationale is avoid stealing child rows by parent entity threads. For every parent row 
+   * the linked children rows (page) is pulled under lock obtained on {@link delegate} 
+   *  
+   *  Note: this code initially was amended in the threaded descendant, but the I need the same paging logic in 
+   *  the threadless mode too, I pulled it here. it has a synchronise(delegate){} section, which could be
+   *  considered as overhead for threadless mode, but IIRC acquiring lock without a concurrency cost roughly 
+   *  nothing. Also if you are cocerned by synch section you can extract it in template method and synh in 
+   *  descendant     
+   * */
   @Override
   public Map<String, Object> nextRow() {
     if (rowcache != null) {
-      return getFromRowCache();
+      Map<String,Object> rowFromCache = getFromRowCache();
+      if(rowFromCache != null || !context.isRootEntity()){
+        return rowFromCache;
+      } 
     }
-    while (true) {
-      Map<String, Object> arow = null;
-      try {
-        arow = delegate.nextRow();
-      } catch (Exception e) {
-        if(ABORT.equals(onError)){
-          wrapAndThrow(SEVERE, e);
-        } else {
-          //SKIP is not really possible. If this calls the nextRow() again the Entityprocessor would be in an inconisttent state           
-          SolrException.log(log, "Exception in entity : "+ entityName, e);
-          return null;
-        }
+    
+    List<Map<String, Object>> transformedRows = new ArrayList<Map<String,Object>>();
+    boolean eof = false;
+    while (transformedRows.isEmpty() && !eof) { // looping while transformer bans raw rows
+        List<Map<String, Object>> rawRows = new ArrayList<Map<String, Object>>();
+      synchronized (delegate) {
+          Map<String, Object> arow = null;
+          // for paginated case we need to loop through whole page, other wise single row is enough
+          boolean retrieveWholePage = !context.isRootEntity();
+          
+          if(((EntityProcessorBase) delegate).context==null || retrieveWholePage){
+            delegate.init(context);
+          }
+          
+          for (int i = 0; 
+              retrieveWholePage ? !eof : i==0; // otherwise only single row
+                  i++) {
+              arow = pullRow();
+              if (arow != null) {
+                  rawRows.add(arow);
+              }else { // there is no row, eof
+                  eof = true;
+              }
+          }
       }
-      if (arow == null) {
+      for(Map<String, Object> rawRow : rawRows){
+          // transforming emits N rows
+          List<Map<String, Object>> result = transformRow(rawRow);
+       // but post-transforming is applied only to the first one (legacy as-is)
+          if(!result.isEmpty() && result.get(0) != null){ 
+              delegate.postTransform(result.get(0));
+              transformedRows.addAll(result);
+          }
+      }
+    }
+    if(!transformedRows.isEmpty()){
+        rowcache = transformedRows;
+        return getFromRowCache();
+    }else{ // caused by eof
         return null;
+    }
+  }
+  
+  /**
+   * pulls single row from {@link delegate}, checks and sets {@link entityRunner.entityEnded}.
+   * it expect to be called in synchronised(delegate) section
+   * @return row from delegate
+   * */
+  protected Map<String, Object> pullRow() {
+      Map<String, Object> arow = null;
+//    if(entityEnded.get()){
+//        return null;
+//    }
+    try {
+      arow = delegate.nextRow();
+    } catch (Exception e) {
+      if (ABORT.equals(onError)) {
+        wrapAndThrow(SEVERE, e);
       } else {
-        arow = applyTransformer(arow);
-        if (arow != null) {
-          delegate.postTransform(arow);
-          return arow;
-        }
+        //SKIP is not really possible. If this calls the nextRow() again the Entityprocessor would be in an inconistent state
+        log.error("Exception in entity : " + entityName, e);
+        return null;
       }
     }
+    log.debug("arow : {}", arow);
+//    if(arow == null){
+//        entityEnded.set(true);
+//    }
+    return arow;
   }
 
   @Override

@@ -2,6 +2,7 @@ package org.apache.solr.handler.dataimport;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -105,7 +106,7 @@ public class SortedMapBackedCache implements DIHCache {
     checkOpen(true);
     List<Map<String,Object>> val = theMap.get(key);
     if (val == null) {
-      return null;
+      return Collections.<Map<String,Object>>emptyList().iterator();
     }
     return val.iterator();
   }

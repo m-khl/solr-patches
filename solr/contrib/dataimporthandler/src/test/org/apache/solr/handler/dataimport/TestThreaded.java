@@ -19,6 +19,7 @@ package org.apache.solr.handler.dataimport;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -34,6 +35,8 @@ import java.util.regex.Pattern;
 public class TestThreaded extends AbstractDataImportHandlerTestCase {
 
   private static final String threads2 = "threads=\"2\"";
+
+  private static final Pattern threads2Pattern = Pattern.compile(threads2);
   
   private static String dataConfigNPulsOne = "<dataConfig>\n"
           +"<dataSource  type=\"MockDataSource\"/>\n"
@@ -46,20 +49,8 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
           + "       </document>\n" + "</dataConfig>";
 
   
-  private static String dataConfigCached = "<dataConfig>\n"
-      +"<dataSource  type=\"MockDataSource\"/>\n"
-      + "       <document>\n"
-      + "               <entity name=\"x\" "+threads2+" query=\"select * from x\" " +
-                         "processor=\"CachedSqlEntityProcessor\""+ ">\n"
-      + "                       <field column=\"id\" />\n"
-      + "                       <entity name=\"y\" query=\"select * from y\" where=\"xid=x.id\" " +
-      "processor=\"CachedSqlEntityProcessor\">\n"
-      + "                               <field column=\"desc\" />\n"
-      + "                       </entity>\n" + "               </entity>\n"
-      + "       </document>\n" + "</dataConfig>";
 
-  private static final Matcher nPulsOne = Pattern.compile(threads2).matcher(dataConfigNPulsOne);
-  private static final Matcher cached = Pattern.compile(threads2).matcher(dataConfigCached);
+  private static final Matcher nPulsOne = threads2Pattern.matcher(dataConfigNPulsOne);
   
   @BeforeClass
   public static void beforeClass() throws Exception {
@@ -82,15 +73,15 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
             createMap("desc", "hi"),
             createMap("desc", "aurevoir"));
     // for N+1 scenario
-    MockDataSource.setIterator("select * from y where y.A=1", shuffledIter(childRow));
-    MockDataSource.setIterator("select * from y where y.A=2", shuffledIter(childRow));
-    MockDataSource.setIterator("select * from y where y.A=3", shuffledIter(childRow));
-    MockDataSource.setIterator("select * from y where y.A=4", shuffledIter(childRow));
+    MockDataSource.setCollection("select * from y where y.A=1", shuffled(childRow));
+    MockDataSource.setCollection("select * from y where y.A=2", shuffled(childRow));
+    MockDataSource.setCollection("select * from y where y.A=3", shuffled(childRow));
+    MockDataSource.setCollection("select * from y where y.A=4", shuffled(childRow));
     // for cached scenario
     
     List cartesianProduct = new ArrayList();
     for(Map parent : (List<Map>)parentRow){
-      for(Iterator<Map> child = shuffledIter(childRow); child.hasNext();){
+      for(Iterator<Map> child = shuffled(childRow).iterator(); child.hasNext();){
          Map tuple = createMap("xid", parent.get("id"));
          tuple.putAll(child.next());
          cartesianProduct.add(tuple);
@@ -110,30 +101,30 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
     assertQ(req("desc:aurevoir"), "//*[@numFound='4']");
   }
   
-  private Iterator shuffledIter(List rows){
-    ArrayList shuffle = new ArrayList(rows);
+  private <T> List<T> shuffled(List<T> rows){
+    ArrayList<T> shuffle = new ArrayList<T>(rows);
     Collections.shuffle(shuffle, random);
-    return shuffle.iterator();
+    return shuffle;
   }
   
   @Test
   public void testCachedThreadless_FullImport() throws Exception {
-    runFullImport(cached.replaceAll(""));
+    runFullImport(getCachedConfig().replaceAll(""));
   }
   
   @Test
   public void testCachedSingleThread_FullImport() throws Exception {
-    runFullImport(cached.replaceAll("threads=\"1\""));
+    runFullImport(getCachedConfig().replaceAll("threads=\"1\""));
   }
   
   @Test
   public void testCachedTwoThread_FullImport() throws Exception {
-     runFullImport(cached.replaceAll("threads=\"2\""));
+     runFullImport(getCachedConfig().replaceAll("threads=\"2\""));
   }
   
-  @Test
+  @Test 
   public void testCachedTenThreads_FullImport() throws Exception {
-    runFullImport(cached.replaceAll("threads=\"10\""));
+    runFullImport(getCachedConfig().replaceAll("threads=\"2\""));
   }
   
   @Test
@@ -148,6 +139,21 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
   @Test
   public void testNPlusOneTenThreads_FullImport() throws Exception {
     runFullImport(nPulsOne.replaceAll("threads=\"10\"" ));
+  }
+
+  private static Matcher getCachedConfig() {
+    String cfg = "<dataConfig>\n"
+      +"<dataSource  type=\"MockDataSource\"/>\n"
+      + "       <document>\n"
+      + "               <entity name=\"x\" "+threads2+" query=\"select * from x\" " +
+                         "processor=\""+(random.nextBoolean() ? "Cached":"")+"SqlEntityProcessor\">\n"
+      + "                       <field column=\"id\" />\n"
+      + "                       <entity name=\"y\" query=\"select * from y\" where=\"xid=x.id\" " +
+      "processor=\""+(random.nextBoolean() ? "Cached":"")+"SqlEntityProcessor\">\n"
+      + "                               <field column=\"desc\" />\n"
+      + "                       </entity>\n" + "               </entity>\n"
+      + "       </document>\n" + "</dataConfig>";
+    return threads2Pattern.matcher(cfg);
   }
   
 }

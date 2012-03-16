@@ -495,8 +495,8 @@ public class DocBuilder {
       try {
         Context.CURRENT_CONTEXT.set(context);
         epw.init(rows);
-        initEntity();
-        epw.entityEnded.set(false);
+//        initEntity();
+//        epw.entityEnded.set(false);
         DocWrapper docWrapper = parentDocWrapper;
         for (; ;) {
           if(DocBuilder.this.stop.get()) break;
@@ -565,14 +565,14 @@ public class DocBuilder {
             } else {
               //if this is not the docRoot then the execution has happened in the same thread. so propogate up,
               // it will be handled at the docroot
-              epw.entityEnded.set(true); 
+//              epw.entityEnded.set(true); 
               throw dihe;
             }
-            epw.entityEnded.set(true);
+//            epw.entityEnded.set(true);
           }
         }
       } catch(RuntimeException r) {
-          epw.entityEnded.set(true);
+//          epw.entityEnded.set(true);
           throw r;
       } finally {
           currentEntityProcWrapper.remove();
