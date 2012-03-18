@@ -1002,6 +1002,7 @@ public class DocBuilder {
         return new HashSet();
     }
     //get the deleted rows for this entity
+    entityProcessor.init(context1);
     Set<Map<String, Object>> deletedSet = new HashSet<Map<String, Object>>();
     while (true) {
       Map<String, Object> row = entityProcessor.nextDeletedRowKey();
@@ -1037,7 +1038,7 @@ public class DocBuilder {
     //propogate up the changes in the chain
     if (entity.parentEntity != null) {
       // identifying deleted rows with deltas
-
+      entityProcessor.init(context1);
       for (Map<String, Object> row : myModifiedPks) {
         getModifiedParentRows(resolver.addNamespace(entity.name, row), entity.name, entityProcessor, parentKeyList);
         // check for abort
@@ -1045,6 +1046,7 @@ public class DocBuilder {
           return new HashSet();
       }
       // running the same for deletedrows
+      entityProcessor.init(context1);
       for (Map<String, Object> row : deletedSet) {
         getModifiedParentRows(resolver.addNamespace(entity.name, row), entity.name, entityProcessor, parentKeyList);
         // check for abort

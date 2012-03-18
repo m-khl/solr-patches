@@ -16,6 +16,7 @@
  */
 package org.apache.solr.handler.dataimport;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -56,7 +57,8 @@ public class MockDataSource extends
   @Override
   public Iterator<Map<String, Object>> getData(String query) {
     Object data = cache.get(query);
-    return data instanceof Iterator ? ((Iterator<Map<String, Object>>)data) : (((Iterable)data).iterator());
+    return data == null ? Collections.emptyList().iterator():( 
+    data instanceof Iterator ? ((Iterator<Map<String, Object>>)data) : (((Iterable)data).iterator()));
   }
 
   @Override

@@ -98,7 +98,7 @@ public class AbstractDIHCacheTestCase {
 		List<Object[]> data = new ArrayList<Object[]>();
 		while (true) {
 			Iterator<Map<String, Object>> listORecs = cache.iterator(recId);
-			if (listORecs == null) {
+			if (listORecs == null || !listORecs.hasNext()) {
 				break;
 			}
 
