@@ -16,7 +16,9 @@ import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.LargeVolumeTestBase.DocThread;
+import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
 import org.apache.solr.common.SolrInputDocument;
+import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.util.ExternalPaths;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -24,15 +26,17 @@ import org.junit.Test;
 public class ResponseStreamingTest extends SolrJettyTestBase {
     
     static final class Digits implements Iterable<Integer> {
-        private final int j;
+        
+        private int i;
 
         Digits(int j) {
-            this.j = j;
+            this.i = j;
         }
 
         @Override
         public Iterator<Integer> iterator() {
             return new Iterator<Integer>(){
+                final int j = i; 
                 int ord = 10;
                 
                 @Override
@@ -60,6 +64,9 @@ public class ResponseStreamingTest extends SolrJettyTestBase {
             return l; 
         }
         
+        public void set(int k){
+          i = k;
+        }
     }
 
     @BeforeClass
@@ -91,36 +98,15 @@ public class ResponseStreamingTest extends SolrJettyTestBase {
         // so do a final commit to make sure everything is visible.
         gserver.commit();
         
-//        SolrQuery params = new SolrQuery("*:*");
-//        params.set("wt","response-streaming");
-//        params.set("qt","response-streaming");
-        URL url = new URL("http://localhost:"+port+"/solr/select?wt=response-streaming&qt=response-streaming&q=*:*&response-streaming=true&fl=id");
-        log.info("url {}", url);
-        InputStream is = url.openConnection().getInputStream();
-//        int b;
-//        FileOutputStream out = new FileOutputStream("/tmp/out");
+        CommonsHttpSolrServer solr = new CommonsHttpSolrServer("http://localhost:"+port+"/solr");
         
-        byte buff[] = new byte[4]; 
+        ModifiableSolrParams params = new ModifiableSolrParams();
+        params.add("qt","response-streaming");
+        params.add("q","*:*");
+        params.add("response-streaming","true");
+        params.add("fl","id");
         
-        int pre=-1; 
-        while(is.read(buff)==4){
-            int i = ((buff[0] & 0xFF) << 24) | ((buff[1] & 0xFF) << 16)
-            | ((buff[2] & 0xFF) <<  8) |  (buff[3] & 0xFF);
-            if(pre==-1){
-                assertEquals(1, i);
-            }else{
-                assertEquals(pre+1, i);
-            }
-            pre = i;
- //           out.write(buff);
-        }
-        
-        assertEquals(pre, 100-1);
-        
-        is.close();
- //       out.close();
-        
-        log.info("file written");
+        System.out.println(solr.query( params ).getResponse());
     }
     
     @Test

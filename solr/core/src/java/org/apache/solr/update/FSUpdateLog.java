@@ -377,7 +377,7 @@ class TransactionLog {
 
   public class LogCodec extends JavaBinCodec {
     public LogCodec() {
-      super(resolver);
+      super(TransactionLog.this.resolver);
     }
 
     @Override

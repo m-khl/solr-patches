@@ -19,6 +19,7 @@ package org.apache.solr.client.solrj.response;
 
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.beans.DocumentObjectBinder;
+import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
@@ -99,7 +100,13 @@ public class QueryResponse extends SolrResponseBase
         _header = (NamedList<Object>) res.getVal( i );
       }
       else if( "response".equals( n ) ) {
-        _results = (SolrDocumentList) res.getVal( i );
+        final Object val = res.getVal( i );
+        if(val instanceof List){
+          _results = new SolrDocumentList();
+          _results.addAll((Collection<? extends SolrDocument>) val);
+        }else{
+          _results = (SolrDocumentList) val;
+        }
       }
       else if( "sort_values".equals( n ) ) {
         _sortvalues = (NamedList<ArrayList>) res.getVal( i );

@@ -103,26 +103,6 @@ public class DocSetStreamer implements ResponseStreamer, SolrCoreAware {
     }
 
     @Override
-    public ResponseStreamer requestScope(final SolrQueryRequest req) {
-        
-        return new DocSetStreamer(){
-            
-            final Set<String> fields = super.getFields(req);
-            final OutputStream stream = super.getStream(req); 
-            
-            @Override
-            protected OutputStream getStream(SolrQueryRequest req) {
-                return stream;
-            }
-            
-            @Override
-            protected Set<String> getFields(SolrQueryRequest req) {
-                return fields;
-            }
-        };
-    }
-
-    @Override
     public void inform(SolrCore core) {
     }
 

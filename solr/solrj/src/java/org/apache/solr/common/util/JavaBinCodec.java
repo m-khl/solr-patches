@@ -74,7 +74,7 @@ public class JavaBinCodec {
 
 
   private static byte VERSION = 2;
-  private ObjectResolver resolver;
+  protected ObjectResolver resolver;
   protected FastOutputStream daos;
 
   public JavaBinCodec() {
