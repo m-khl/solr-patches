@@ -26,6 +26,7 @@ import org.apache.solr.common.util.JavaBinCodec;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -79,6 +80,16 @@ public class StreamingBinaryResponseParser extends BinaryResponseParser {
             readVal( dis ); 
           }
           return solrDocs;
+        }
+        
+        @Override
+        public List<Object> readIterator(FastInputStream fis)
+            throws IOException {
+          while (true) {
+            Object o = readVal(fis);
+            if (o == END_OBJ) break;
+          }
+          return null;
         }
       };
       

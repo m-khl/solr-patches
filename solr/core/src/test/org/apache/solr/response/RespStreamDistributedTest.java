@@ -36,25 +36,18 @@ public class RespStreamDistributedTest extends BaseDistributedSearchTestCase {
     handle.put("timestamp", SKIPVAL);
     handle.put("maxScore", SKIPVAL);
     
-
     ModifiableSolrParams params = new ModifiableSolrParams();
-    params.add("q", "cat_s:2");
+  /*  params.add("q", "cat_s:2");
     QueryResponse rez = controlClient.query(params);
     System.out.println(rez.getResponse());
     
-    query("q","cat_s:2"
-        //, 
-        //"wt","response-streaming",
-        /*"qt","response-streaming",
-        "response-streaming","true", */
-        //"fl","id"
-        );
+    query("q","cat_s:2");
     
-    
+    */
     query("q","cat_s:2", 
-        //"wt","response-streaming",
         "qt","response-streaming",
         "response-streaming","true",
+        "sort","_docid_ asc",
         "fl","id");
   }
   
