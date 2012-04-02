@@ -8,7 +8,6 @@ import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.params.ModifiableSolrParams;
-import org.apache.solr.response.ResponseStreamingTest.Digits;
 
 public class RespStreamDistributedTest extends BaseDistributedSearchTestCase {
   
