@@ -24,7 +24,7 @@ public class ResponseStreamingTest extends SolrJettyTestBase {
     private static int twos = 0;
     private static int oneSeven = 0;
 
-    private static final class CounterCallback extends StreamingResponseCallback {
+    static final class CounterCallback extends StreamingResponseCallback {
       private int count;
       private int lastId=-1;
       

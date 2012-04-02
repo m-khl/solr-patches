@@ -8,6 +8,7 @@ import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.response.ResponseStreamingTest.CounterCallback;
 
 public class RespStreamDistributedTest extends BaseDistributedSearchTestCase {
   
@@ -36,18 +37,21 @@ public class RespStreamDistributedTest extends BaseDistributedSearchTestCase {
     handle.put("maxScore", SKIPVAL);
     
     ModifiableSolrParams params = new ModifiableSolrParams();
-  /*  params.add("q", "cat_s:2");
-    QueryResponse rez = controlClient.query(params);
-    System.out.println(rez.getResponse());
+    CounterCallback callback = new CounterCallback();
+    params.add("q", "cat_s:2");
+    params.add("qt","response-streaming");
+    params.add("response-streaming","true");
+    params.add("sort","_docid_ asc");
+    params.add("fl","id");
+    QueryResponse rsp = controlClient.queryAndStreamResponse(params, callback);
+    assertEquals(18, callback.getCount());
+    assertNull(rsp.getResults());
     
-    query("q","cat_s:2");
-    
-    */
-    query("q","cat_s:2", 
+    /*query("q","cat_s:2", 
         "qt","response-streaming",
         "response-streaming","true",
         "sort","_docid_ asc",
-        "fl","id");
+        "fl","id");*/
   }
   
   public JettySolrRunner createJetty(File baseDir, String dataDir) throws Exception {
