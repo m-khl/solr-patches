@@ -4,6 +4,7 @@ import java.io.File;
 import java.util.ArrayList;
 
 import org.apache.solr.BaseDistributedSearchTestCase;
+import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrInputDocument;
@@ -46,6 +47,16 @@ public class RespStreamDistributedTest extends BaseDistributedSearchTestCase {
     QueryResponse rsp = controlClient.queryAndStreamResponse(params, callback);
     assertEquals(18, callback.getCount());
     assertNull(rsp.getResults());
+    
+    setDistributedParams(params);
+    
+ // query a random server
+    int which = r.nextInt(clients.size());
+    SolrServer client = clients.get(which);
+    final CounterCallback callback2 = new CounterCallback();
+    QueryResponse shardsRsp = client.queryAndStreamResponse(params, callback2);
+    assertEquals(18, callback2.getCount());
+    assertNull(shardsRsp.getResults());
     
     /*query("q","cat_s:2", 
         "qt","response-streaming",
