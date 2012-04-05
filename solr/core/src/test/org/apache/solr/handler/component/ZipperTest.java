@@ -26,7 +26,7 @@ public class ZipperTest extends LuceneTestCase{
   private static int resultIds[];
   private static List<Integer> partitions[];
   private Iterator[] partIters;
-  private Zipper zipper;
+  private SolrZipper zipper;
 
   @BeforeClass
   public static void setup(){
@@ -66,12 +66,12 @@ public class ZipperTest extends LuceneTestCase{
     
   @Test
   public void testZipperSingleThread() {
-    zipper = new Zipper(partitions.length, resultIds.length);
+    zipper = new SolrZipper(partitions.length, resultIds.length, "id");
     
     List<Map.Entry<Iterator<Integer>,StreamingResponseCallback>> streams
                     = new ArrayList<Map.Entry<Iterator<Integer>,StreamingResponseCallback>>(); 
     for(int i=0; i<partitions.length; i++){
-      final StreamingResponseCallback inbound = zipper.addInbound();
+      final StreamingResponseCallback inbound = zipper.addInboundCallback();
       final Iterator iterator = partIters[i];
       streams.add(new Map.Entry(){
         @Override
@@ -133,8 +133,9 @@ public class ZipperTest extends LuceneTestCase{
   
   @Test
   public void testZipperMultiThread() throws InterruptedException {
-    zipper = new Zipper(partitions.length, 
-        rarely() ? random.nextInt(5)+1 : random.nextInt(resultIds.length+10)+1);
+    zipper = new SolrZipper(partitions.length, 
+        rarely() ? random.nextInt(5)+1 : random.nextInt(resultIds.length+10)+1,
+            "id");
     
     ExecutorService exec = random.nextBoolean() ? 
         Executors.newCachedThreadPool() :
@@ -142,7 +143,7 @@ public class ZipperTest extends LuceneTestCase{
         
     List<Callable<Void>> searches = new ArrayList<Callable<Void>>();
     for(int i=0; i<partitions.length; i++){
-      final StreamingResponseCallback inbound = zipper.addInbound();
+      final StreamingResponseCallback inbound = zipper.addInboundCallback();
       final Iterator iter = partIters[i];
       final Callable<Void> c = new Callable<Void>() {
         @Override
