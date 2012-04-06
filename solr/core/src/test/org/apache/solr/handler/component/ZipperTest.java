@@ -3,11 +3,14 @@ package org.apache.solr.handler.component;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -33,6 +36,7 @@ public class ZipperTest extends LuceneTestCase{
     resultIds = new int[atLeast(100)];
     int id = random.nextInt(20)-10;
     for(int i=0; i<resultIds.length;i++){
+      resultIds[i]=id;
       id += rarely() ? random.nextInt(5)+1 : 1;
     }
     
@@ -90,21 +94,29 @@ public class ZipperTest extends LuceneTestCase{
     }
     
     for(int id: resultIds){
-      // kick all partitions first
       
-      Collections.shuffle(streams);
-      for(Iterator<Map.Entry<Iterator<Integer>,StreamingResponseCallback>> tuples = streams.iterator();tuples.hasNext();){
-        final Map.Entry<Iterator<Integer>,StreamingResponseCallback> tuple = tuples.next();
-        if(tuple.getKey().hasNext()){
-          final SolrDocument doc = new SolrDocument();
-          doc.addField("id", tuple.getKey().next());
-          tuple.getValue().streamSolrDocument(doc);
-        }else{
-          tuple.getValue().streamSolrDocument(null);
-          tuples.remove();
+      Set<Integer> partIds = new HashSet<Integer>();
+      do{
+      // kick all partitions first
+        Collections.shuffle(streams);
+        for(Iterator<Map.Entry<Iterator<Integer>,StreamingResponseCallback>> tuples = streams.iterator();tuples.hasNext();){
+          final Map.Entry<Iterator<Integer>,StreamingResponseCallback> tuple = tuples.next();
+          
+            if(tuple.getKey().hasNext()){
+              final Integer partId = tuple.getKey().next();
+              
+              final SolrDocument doc = new SolrDocument();
+              doc.addField("id", partId);
+              
+              tuple.getValue().streamSolrDocument(doc);
+              partIds.add(partId);
+            }else{
+              tuple.getValue().streamSolrDocument(null);
+              tuples.remove();
+            }// for every partition I need to put two different ids, or exhaust the partition
         }
-      }
-    
+      }while(partIds.size()<streams.size()*2);
+      
       boolean callHasNext = usually();
       if(callHasNext){        
         assertTrue("eof but expect to see "+id, zipper.hasNext());
@@ -122,7 +134,7 @@ public class ZipperTest extends LuceneTestCase{
   @After
   public void tollgate() {
     if(usually()){
-      assertTrue("expect to see eof", zipper.hasNext());
+      assertFalse("expect to see eof", zipper.hasNext());
     }
     try{
       SolrDocument doc = zipper.next();
@@ -132,7 +144,7 @@ public class ZipperTest extends LuceneTestCase{
   }
   
   @Test
-  public void testZipperMultiThread() throws InterruptedException {
+  public void testZipperMultiThread() throws InterruptedException, ExecutionException {
     zipper = new SolrZipper(partitions.length, 
         rarely() ? random.nextInt(5)+1 : random.nextInt(resultIds.length+10)+1,
             "id");
@@ -173,16 +185,16 @@ public class ZipperTest extends LuceneTestCase{
     int i=0;
     while(skipHasNext || zipper.hasNext()){
       try{
-        assertEquals(resultIds[i++], zipper.next());
+        assertEquals(resultIds[i++], zipper.next().getFieldValue("id"));
       }catch(NoSuchElementException ee){
         assertTrue("hasNext() just return true", skipHasNext);
         break; // otherwise
       }
       skipHasNext = rarely();
     }
-    assertEquals(resultIds.length-1, i);
+    assertEquals(resultIds.length, i);
     for(Future<Void> f : futures){
-      assertTrue(f.isDone());
+      f.get();
     }
     assertEquals(Collections.emptyList(), exec.shutdownNow());
   }
