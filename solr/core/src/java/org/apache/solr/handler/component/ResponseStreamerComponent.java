@@ -16,20 +16,22 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.solr.common.SolrDocument;
+import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.util.FastOutputStream;
 import org.apache.solr.common.util.JavaBinCodec;
-import org.apache.solr.common.util.SimpleOrderedMap;
+import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrQueryRequest;
-import org.apache.solr.response.BinaryQueryResponseWriter;
 import org.apache.solr.response.BinaryResponseWriter;
-import org.apache.solr.response.DocSetStreamer;
-import org.apache.solr.response.ResponseStreamer;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.search.DelegatingCollector;
 import org.apache.solr.search.PostFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 public class ResponseStreamerComponent extends SearchComponent {
+
+    private static final Logger logger = LoggerFactory.getLogger(ResponseStreamerComponent.class);
 
     private final class StreamingPostFilter extends MatchAllDocsQuery implements PostFilter{
 
@@ -114,7 +116,7 @@ public class ResponseStreamerComponent extends SearchComponent {
     @Override
     public void prepare(ResponseBuilder rb) throws IOException {
         SolrQueryRequest req = rb.req;
-        if(req.getParams().getBool("response-streaming", false)){
+        if(req.getParams().getBool("response-streaming", false) && req.getParams().get("shards")==null){
             // add post filter
             List<Query> fqs = rb.getFilters();
             if(fqs==null){
@@ -129,20 +131,19 @@ public class ResponseStreamerComponent extends SearchComponent {
               }
             };
             FastOutputStream wrap = FastOutputStream.wrap(
-                  (OutputStream) req.getContext().get(DocSetStreamer.outputStream));
+                  (OutputStream) rb.req.getContext().get("outputStream"));
             codec.init(wrap);
             
-            fqs.add(new StreamingPostFilter(codec, req));
-            
-            HttpServletResponse response = (HttpServletResponse) req.getContext().get("response");
-            response.setContentType(req.getCore().getQueryResponseWriter(req).getContentType(req, null));
+            HttpServletResponse response = (HttpServletResponse) rb.req.getContext().get("response");
+            response.setContentType(rb.req.getCore().getQueryResponseWriter(rb.req).getContentType(rb.req, null));
             
             SolrQueryResponse preamble = new SolrQueryResponse();
             preamble.add("response", Collections.emptyList().iterator());
             
-            
             codec.marshal(preamble.getValues(), wrap);
+            
             req.getContext().put("streaming-codec", codec);
+            fqs.add(new StreamingPostFilter(codec, req));
             
             
         }
@@ -182,5 +183,46 @@ public class ResponseStreamerComponent extends SearchComponent {
           SolrDocument sdoc = ((BinaryResponseWriter.Resolver) resolver).getDoc(doc);
           writeSolrDocument(sdoc);
       }
+    }
+    
+    @Override
+    public void finishStage(ResponseBuilder rb) {
+      final NamedList nl = rb.rsp.getValues();
+      for(int e = 0; e< nl.size(); e++){
+        if(nl.getName(e).equals("response") && nl.getVal(e) instanceof SolrDocumentList && ((SolrDocumentList) nl.getVal(e)).size()==0){
+          logger.warn("wiping :{} remain list is are:{}",nl.remove(e), nl);
+          ;
+          
+        }
+      }
+    }
+    
+    /**
+     * zipper becomes response and available for streaming by javabean codec
+     * */
+    @Override
+    public void handleResponses(ResponseBuilder rb, ShardRequest sreq) {
+      final Iterator<SolrDocument> zipper = (Iterator<SolrDocument>) sreq.responses.get(0).getSolrResponse().getResponse().get("zipper");
+      rb.rsp.add("response", new Iterator<SolrDocument>(){
+        @Override
+        public boolean hasNext() {
+          return zipper.hasNext();
+        }
+
+        @Override
+        public SolrDocument next() {
+          final SolrDocument next = zipper.next();
+          logger.info("streaming " + next);
+          return next;
+        }
+
+        @Override
+        public void remove() {
+          zipper.remove();
+        }
+        
+      } );
+      rb.resultIds = Collections.emptyMap();
+      rb._responseDocs = new SolrDocumentList();
     }
 }

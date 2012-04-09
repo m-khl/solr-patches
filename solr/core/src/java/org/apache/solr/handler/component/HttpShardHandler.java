@@ -43,9 +43,9 @@ import java.util.concurrent.*;
 
 public class HttpShardHandler extends ShardHandler {
 
-  private HttpShardHandlerFactory httpShardHandlerFactory;
-  private CompletionService<ShardResponse> completionService;
-  private     Set<Future<ShardResponse>> pending;
+  protected HttpShardHandlerFactory httpShardHandlerFactory;
+  protected CompletionService<ShardResponse> completionService;
+  protected     Set<Future<ShardResponse>> pending;
   private Map<String,List<String>> shardToURLs;
 
 
@@ -63,7 +63,7 @@ public class HttpShardHandler extends ShardHandler {
   }
 
 
-  private static class SimpleSolrResponse extends SolrResponse {
+  protected static class SimpleSolrResponse extends SolrResponse {
     long elapsedTime;
     NamedList<Object> nl;
 
@@ -86,7 +86,7 @@ public class HttpShardHandler extends ShardHandler {
 
   // Not thread safe... don't use in Callable.
   // Don't modify the returned URL list.
-  private List<String> getURLs(String shard) {
+  protected List<String> getURLs(String shard) {
     List<String> urls = shardToURLs.get(shard);
     if (urls==null) {
       urls = StrUtils.splitSmart(shard, "|", true);

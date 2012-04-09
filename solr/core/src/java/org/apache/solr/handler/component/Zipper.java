@@ -120,10 +120,8 @@ public class Zipper<T> implements Iterator<T> {
     try {
       do{
         head = buff.take();
-        assert justYeildedValue==null || cmp.compare(head, justYeildedValue)>=0 
+        assert justYeildedValue==null || head==eof || cmp.compare(head, justYeildedValue)>=0 
            : "current head "+head+" is less than the previous "+justYeildedValue;
-        
-        ;
       }while(head!=eof && ( // retry take if there are more elems only and
            // head matches to the top elem which gonna be yeilded 
             (justYeildedValue!=null && cmp.compare(head, justYeildedValue)==0)
@@ -136,10 +134,7 @@ public class Zipper<T> implements Iterator<T> {
     
     if(head!=eof){
       final BlockingQueue<T> sameHeadQueue = heap.put(head, buff);
-      // damn we just throw away another queue, which has the same head, we need to put back 
-      if(sameHeadQueue!=null){ 
-        
-      }
+      assert sameHeadQueue==null;
     }
   }
 

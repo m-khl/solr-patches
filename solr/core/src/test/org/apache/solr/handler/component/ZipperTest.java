@@ -40,7 +40,7 @@ public class ZipperTest extends LuceneTestCase{
       id += rarely() ? random.nextInt(5)+1 : 1;
     }
     
-    partitions = new List[atLeast(3)];
+    partitions = new List[3+random.nextInt(5)];
     for(int p=0 ; p < partitions.length; p++){
       partitions[p] = new ArrayList<Integer>();
     }
@@ -93,6 +93,8 @@ public class ZipperTest extends LuceneTestCase{
       });
     }
     
+    boolean first = true;
+    
     for(int id: resultIds){
       
       Set<Integer> partIds = new HashSet<Integer>();
@@ -115,7 +117,9 @@ public class ZipperTest extends LuceneTestCase{
               tuples.remove();
             }// for every partition I need to put two different ids, or exhaust the partition
         }
-      }while(partIds.size()<streams.size()*2);
+      }while( partIds.size() < streams.size() * (first ? 2 : 1));
+      
+      first = false;
       
       boolean callHasNext = usually();
       if(callHasNext){        
@@ -185,7 +189,8 @@ public class ZipperTest extends LuceneTestCase{
     int i=0;
     while(skipHasNext || zipper.hasNext()){
       try{
-        assertEquals(resultIds[i++], zipper.next().getFieldValue("id"));
+        final Object val = zipper.next().getFieldValue("id");
+        assertEquals(resultIds[i++], val);
       }catch(NoSuchElementException ee){
         assertTrue("hasNext() just return true", skipHasNext);
         break; // otherwise

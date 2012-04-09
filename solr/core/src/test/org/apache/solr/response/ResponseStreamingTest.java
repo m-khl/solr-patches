@@ -30,8 +30,9 @@ public class ResponseStreamingTest extends SolrJettyTestBase {
       
       @Override
       public void streamSolrDocument(SolrDocument doc) {
+        System.out.println(doc);
         Integer id = Integer.valueOf(doc.getFieldValue("id").toString());
-        assertTrue(id>lastId);
+        assertTrue(""+doc+" occusr but the last id is "+lastId,id>lastId);
         lastId = id;
         count++;
       }

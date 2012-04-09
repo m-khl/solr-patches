@@ -70,6 +70,7 @@ import org.apache.solr.search.grouping.endresulttransformer.GroupedEndResultTran
 import org.apache.solr.search.grouping.endresulttransformer.MainEndResultTransformer;
 import org.apache.solr.search.grouping.endresulttransformer.SimpleEndResultTransformer;
 import org.apache.solr.util.SolrPluginUtils;
+import org.mortbay.log.Log;
 
 import java.io.IOException;
 import java.net.URL;
@@ -856,6 +857,13 @@ public class QueryComponent extends SearchComponent
         sortFields = new SortField[]{SortField.FIELD_SCORE};
       }
  
+      for(SortField sf: sortFields){
+        if(sf.getType()==SortField.Type.DOC){
+          Log.warn("abandon standard merging when sort by docnum is requested");
+          return;
+        }
+      }
+        
       SchemaField uniqueKeyField = rb.req.getSchema().getUniqueKeyField();
 
 

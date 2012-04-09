@@ -233,7 +233,16 @@ public class SearchHandler extends RequestHandlerBase implements SolrCoreAware ,
 
         // check the outgoing queue and send requests
         while (rb.outgoing.size() > 0) {
-
+          // assert that the only single outgoing request is distributed:
+          // outgoing should be empty when concrete shard request it submitters
+          log.info("outgoing size: "+rb.outgoing.size()+ ", stage: "+rb.stage+", next stage: "+nextStage);
+          if(rb.req.getParams().getBool("response-streaming", false)){
+            if(rb.outgoing.size()>1){
+              throw new IllegalStateException("Zipper which handles response streaming " +
+              		"doesn't support several outgoings: " + rb.outgoing);
+            }
+          }
+          
           // submit all current request tasks at once
           while (rb.outgoing.size() > 0) {
             ShardRequest sreq = rb.outgoing.remove(0);

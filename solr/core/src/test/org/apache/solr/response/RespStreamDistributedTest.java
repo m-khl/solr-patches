@@ -1,14 +1,21 @@
 package org.apache.solr.response;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.solr.BaseDistributedSearchTestCase;
 import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.StreamingResponseCallback;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
+import org.apache.solr.client.solrj.impl.StreamingBinaryResponseParser;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.common.util.FastInputStream;
+import org.apache.solr.common.util.JavaBinCodec;
+import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.response.ResponseStreamingTest.CounterCallback;
 
 public class RespStreamDistributedTest extends BaseDistributedSearchTestCase {
@@ -26,6 +33,7 @@ public class RespStreamDistributedTest extends BaseDistributedSearchTestCase {
       for(int d : digits){
         if(d==2){
           twos++;
+          break; // skip second 2 in 22
         }
       }
     }
@@ -41,11 +49,12 @@ public class RespStreamDistributedTest extends BaseDistributedSearchTestCase {
     CounterCallback callback = new CounterCallback();
     params.add("q", "cat_s:2");
     params.add("qt","response-streaming");
+    params.add("shards.qt","response-streaming");
     params.add("response-streaming","true");
     params.add("sort","_docid_ asc");
     params.add("fl","id");
     QueryResponse rsp = controlClient.queryAndStreamResponse(params, callback);
-    assertEquals(18, callback.getCount());
+    assertEquals(twos, callback.getCount());
     assertNull(rsp.getResults());
     
     setDistributedParams(params);
@@ -55,7 +64,7 @@ public class RespStreamDistributedTest extends BaseDistributedSearchTestCase {
     SolrServer client = clients.get(which);
     final CounterCallback callback2 = new CounterCallback();
     QueryResponse shardsRsp = client.queryAndStreamResponse(params, callback2);
-    assertEquals(18, callback2.getCount());
+    assertEquals(twos, callback2.getCount());
     assertNull(shardsRsp.getResults());
     
     /*query("q","cat_s:2", 

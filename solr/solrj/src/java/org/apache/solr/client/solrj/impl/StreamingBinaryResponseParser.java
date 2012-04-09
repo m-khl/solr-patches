@@ -37,6 +37,59 @@ import java.util.List;
  * @since solr 4.0
  */
 public class StreamingBinaryResponseParser extends BinaryResponseParser {
+  
+  protected static class Codec extends JavaBinCodec {
+    
+    private final StreamingResponseCallback callback;
+    
+    public Codec(StreamingResponseCallback call) {
+       this.callback = call;
+    }
+    
+    @Override
+    public SolrDocument readSolrDocument(FastInputStream dis) throws IOException {
+      SolrDocument doc = super.readSolrDocument(dis);
+      callback.streamSolrDocument( doc );
+      return null;
+    }
+    
+    @Override
+    public SolrDocumentList readSolrDocumentList(FastInputStream dis) throws IOException {
+      SolrDocumentList solrDocs = new SolrDocumentList();
+      List list = (List) readVal(dis);
+      solrDocs.setNumFound((Long) list.get(0));
+      solrDocs.setStart((Long) list.get(1));
+      solrDocs.setMaxScore((Float) list.get(2));
+
+      callback.streamDocListInfo( 
+          solrDocs.getNumFound(), 
+          solrDocs.getStart(), 
+          solrDocs.getMaxScore() );
+      
+      // Read the Array
+      tagByte = dis.readByte();
+      if( (tagByte >>> 5) != (ARR >>> 5) ) {
+        throw new RuntimeException( "doclist must have an array" );
+      } 
+      int sz = readSize(dis);
+      for (int i = 0; i < sz; i++) {
+        // must be a SolrDocument
+        readVal( dis ); 
+      }
+      return solrDocs;
+    }
+    
+    @Override
+    public List<Object> readIterator(FastInputStream fis)
+        throws IOException {
+      while (true) {
+        Object o = readVal(fis);
+        if (o == END_OBJ) break;
+      }
+      return null;
+    }
+  }
+
   final StreamingResponseCallback callback;
   
   public StreamingBinaryResponseParser( StreamingResponseCallback cb )
@@ -47,56 +100,16 @@ public class StreamingBinaryResponseParser extends BinaryResponseParser {
   @Override
   public NamedList<Object> processResponse(InputStream body, String encoding) {
     try {
-      JavaBinCodec codec = new JavaBinCodec() {
-
-        @Override
-        public SolrDocument readSolrDocument(FastInputStream dis) throws IOException {
-          SolrDocument doc = super.readSolrDocument(dis);
-          callback.streamSolrDocument( doc );
-          return null;
-        }
-
-        @Override
-        public SolrDocumentList readSolrDocumentList(FastInputStream dis) throws IOException {
-          SolrDocumentList solrDocs = new SolrDocumentList();
-          List list = (List) readVal(dis);
-          solrDocs.setNumFound((Long) list.get(0));
-          solrDocs.setStart((Long) list.get(1));
-          solrDocs.setMaxScore((Float) list.get(2));
-
-          callback.streamDocListInfo( 
-              solrDocs.getNumFound(), 
-              solrDocs.getStart(), 
-              solrDocs.getMaxScore() );
-          
-          // Read the Array
-          tagByte = dis.readByte();
-          if( (tagByte >>> 5) != (ARR >>> 5) ) {
-            throw new RuntimeException( "doclist must have an array" );
-          } 
-          int sz = readSize(dis);
-          for (int i = 0; i < sz; i++) {
-            // must be a SolrDocument
-            readVal( dis ); 
-          }
-          return solrDocs;
-        }
-        
-        @Override
-        public List<Object> readIterator(FastInputStream fis)
-            throws IOException {
-          while (true) {
-            Object o = readVal(fis);
-            if (o == END_OBJ) break;
-          }
-          return null;
-        }
-      };
+      JavaBinCodec codec = createCodec(callback);
       
       return (NamedList<Object>) codec.unmarshal(body);
     } 
     catch (IOException e) {
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "parsing error", e);
     }
+  }
+
+  protected JavaBinCodec createCodec(StreamingResponseCallback cb) {
+    return new Codec(cb);
   }
 }

@@ -443,15 +443,18 @@
     <arr name="last-components">
          <str>response-streaming</str>
     </arr>
+    
+    <shardHandlerFactory class="org.apache.solr.handler.component.StreamingShardHandlerFactory"></shardHandlerFactory>
+    
   </requestHandler>
   
   <searchComponent name="response-streaming" class="org.apache.solr.handler.component.ResponseStreamerComponent" />
 
   <solrRequestParsers>org.apache.solr.servlet.ResponseStreamingRequestParsers</solrRequestParsers>  
   
-  <queryResponseWriter name="response-streaming" class="org.apache.solr.response.DocSetStreamer">
-    <str name="field">id</str>
+  <queryResponseWriter name="javabin" class="org.apache.solr.response.BinaryResponseWriter">
   </queryResponseWriter>
+  
        
   <requestHandler name="/mlt" class="solr.MoreLikeThisHandler">
   </requestHandler>
