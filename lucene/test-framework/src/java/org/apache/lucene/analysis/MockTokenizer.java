@@ -95,6 +95,11 @@ public class MockTokenizer extends Tokenizer {
     this(input, runAutomaton, lowerCase, DEFAULT_MAX_TOKEN_LENGTH);
   }
   
+  /** Calls {@link #MockTokenizer(Reader, CharacterRunAutomaton, boolean) MockTokenizer(Reader, WHITESPACE, true)} */
+  public MockTokenizer(Reader input) {
+    this(input, WHITESPACE, true);
+  }
+  
   @Override
   public final boolean incrementToken() throws IOException {
     assert !enableChecks || (streamState == State.RESET || streamState == State.INCREMENT) 
@@ -199,8 +204,11 @@ public class MockTokenizer extends Tokenizer {
     offsetAtt.setOffset(finalOffset, finalOffset);
     // some tokenizers, such as limiting tokenizers, call end() before incrementToken() returns false.
     // these tests should disable this check (in general you should consume the entire stream)
-    assert !enableChecks || streamState == State.INCREMENT_FALSE : "end() called before incrementToken() returned false!";
-    streamState = State.END;
+    try {
+      assert !enableChecks || streamState == State.INCREMENT_FALSE : "end() called before incrementToken() returned false!";
+    } finally {
+      streamState = State.END;
+    }
   }
 
   /** 

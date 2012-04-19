@@ -48,13 +48,8 @@ import org.apache.lucene.store.Directory;
  synchronization, you should <b>not</b> synchronize on the
  <code>IndexReader</code> instance; use your own
  (non-Lucene) objects instead.
- 
- <p><em>Please note:</em> This class extends from an internal (invisible)
- superclass that is generic: The type parameter {@code R} is
- {@link AtomicReader}, see {@link #subReaders} and
- {@link #getSequentialSubReaders}.
 */
-public abstract class DirectoryReader extends BaseMultiReader<AtomicReader> {
+public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> {
   public static final int DEFAULT_TERMS_INDEX_DIVISOR = 1;
 
   protected final Directory directory;
@@ -328,8 +323,17 @@ public abstract class DirectoryReader extends BaseMultiReader<AtomicReader> {
     }
   }
 
-  protected DirectoryReader(Directory directory, AtomicReader[] readers) throws CorruptIndexException, IOException {
-    super(readers);
+  /**
+   * Expert: Constructs a {@code DirectoryReader} on the given subReaders.
+   * @param segmentReaders the wrapped atomic index segment readers. This array is
+   * returned by {@link #getSequentialSubReaders} and used to resolve the correct
+   * subreader for docID-based methods. <b>Please note:</b> This array is <b>not</b>
+   * cloned and not protected for modification outside of this reader.
+   * Subclasses of {@code DirectoryReader} should take care to not allow
+   * modification of this internal array, e.g. {@link #doOpenIfChanged()}.
+   */
+  protected DirectoryReader(Directory directory, AtomicReader[] segmentReaders) throws CorruptIndexException, IOException {
+    super(segmentReaders);
     this.directory = directory;
   }
   

@@ -23,6 +23,7 @@ import java.util.HashSet;
 import java.util.List;
 
 import org.apache.lucene.document.Document;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.BytesRef;
@@ -40,7 +41,7 @@ public class TestSegmentReader extends LuceneTestCase {
     super.setUp();
     dir = newDirectory();
     DocHelper.setupDoc(testDoc);
-    SegmentInfo info = DocHelper.writeDoc(random, dir, testDoc);
+    SegmentInfo info = DocHelper.writeDoc(random(), dir, testDoc);
     reader = new SegmentReader(info, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, IOContext.READ);
   }
   
@@ -127,22 +128,22 @@ public class TestSegmentReader extends LuceneTestCase {
       }
     }
     
-    DocsEnum termDocs = _TestUtil.docs(random, reader,
+    DocsEnum termDocs = _TestUtil.docs(random(), reader,
                                        DocHelper.TEXT_FIELD_1_KEY,
                                        new BytesRef("field"),
                                        MultiFields.getLiveDocs(reader),
                                        null,
                                        false);
-    assertTrue(termDocs.nextDoc() != DocsEnum.NO_MORE_DOCS);
+    assertTrue(termDocs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
 
-    termDocs = _TestUtil.docs(random, reader,
+    termDocs = _TestUtil.docs(random(), reader,
                               DocHelper.NO_NORMS_KEY,
                               new BytesRef(DocHelper.NO_NORMS_TEXT),
                               MultiFields.getLiveDocs(reader),
                               null,
                               false);
 
-    assertTrue(termDocs.nextDoc() != DocsEnum.NO_MORE_DOCS);
+    assertTrue(termDocs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
 
     
     DocsAndPositionsEnum positions = MultiFields.getTermPositionsEnum(reader,
@@ -152,7 +153,7 @@ public class TestSegmentReader extends LuceneTestCase {
                                                                       false);
     // NOTE: prior rev of this test was failing to first
     // call next here:
-    assertTrue(positions.nextDoc() != DocsEnum.NO_MORE_DOCS);
+    assertTrue(positions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertTrue(positions.docID() == 0);
     assertTrue(positions.nextPosition() >= 0);
   }    
@@ -178,9 +179,9 @@ public class TestSegmentReader extends LuceneTestCase {
     for (int i=0; i<DocHelper.fields.length; i++) {
       IndexableField f = DocHelper.fields[i];
       if (f.fieldType().indexed()) {
-        assertEquals(reader.hasNorms(f.name()), !f.fieldType().omitNorms());
-        assertEquals(reader.hasNorms(f.name()), !DocHelper.noNorms.containsKey(f.name()));
-        if (!reader.hasNorms(f.name())) {
+        assertEquals(reader.normValues(f.name()) != null, !f.fieldType().omitNorms());
+        assertEquals(reader.normValues(f.name()) != null, !DocHelper.noNorms.containsKey(f.name()));
+        if (reader.normValues(f.name()) == null) {
           // test for norms of null
           DocValues norms = MultiDocValues.getNormDocValues(reader, f.name());
           assertNull(norms);
@@ -192,7 +193,7 @@ public class TestSegmentReader extends LuceneTestCase {
   public void testTermVectors() throws IOException {
     Terms result = reader.getTermVectors(0).terms(DocHelper.TEXT_FIELD_2_KEY);
     assertNotNull(result);
-    assertEquals(3, result.getUniqueTermCount());
+    assertEquals(3, result.size());
     TermsEnum termsEnum = result.iterator(null);
     while(termsEnum.next() != null) {
       String term = termsEnum.term().utf8ToString();
@@ -203,6 +204,6 @@ public class TestSegmentReader extends LuceneTestCase {
 
     Fields results = reader.getTermVectors(0);
     assertTrue(results != null);
-    assertEquals("We do not have 3 term freq vectors", 3, results.getUniqueFieldCount());      
+    assertEquals("We do not have 3 term freq vectors", 3, results.size());
   }    
 }

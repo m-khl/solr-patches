@@ -150,7 +150,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
         // the CMD_GET_FILE_LIST command.
         //
         core.getDeletionPolicy().setReserveDuration(commitPoint.getGeneration(), reserveCommitDuration);
-        rsp.add(CMD_INDEX_VERSION, core.getDeletionPolicy().getCommitTimestamp(commitPoint));
+        rsp.add(CMD_INDEX_VERSION, IndexDeletionPolicyWrapper.getCommitTimestamp(commitPoint));
         rsp.add(GENERATION, commitPoint.getGeneration());
       } else {
         // This happens when replication is not configured to happen after startup and no commit/optimize
@@ -229,7 +229,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
     for (IndexCommit c : commits.values()) {
       try {
         NamedList<Object> nl = new NamedList<Object>();
-        nl.add("indexVersion", core.getDeletionPolicy().getCommitTimestamp(c));
+        nl.add("indexVersion", IndexDeletionPolicyWrapper.getCommitTimestamp(c));
         nl.add(GENERATION, c.getGeneration());
         nl.add(CMD_GET_FILE_LIST, c.getFileNames());
         l.add(nl);
@@ -495,18 +495,8 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
   }
 
   @Override
-  public String getSourceId() {
-    return "$Id$";
-  }
-
-  @Override
   public String getSource() {
     return "$URL$";
-  }
-
-  @Override
-  public String getVersion() {
-    return "$Revision$";
   }
 
   private long[] getIndexVersion() {
@@ -642,6 +632,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
       addVal(slave, SnapPuller.REPLICATION_FAILED_AT, props, Date.class);
       addVal(slave, SnapPuller.PREVIOUS_CYCLE_TIME_TAKEN, props, Long.class);
 
+      slave.add("currentDate", new Date().toString());
       slave.add("isPollingDisabled", String.valueOf(isPollingDisabled()));
       boolean isReplicating = isReplicating();
       slave.add("isReplicating", String.valueOf(isReplicating));

@@ -1,4 +1,4 @@
-﻿                      Apache Solr Release Notes
+                      Apache Solr Release Notes
 
 Introduction
 ------------
@@ -21,9 +21,14 @@ See the tutorial at http://lucene.apache.org/solr/tutorial.html
 $Id$
 
 ==================  4.0.0-dev ==================
+More information about this release, including any errata related to the 
+release notes, upgrade instructions, or other changes may be found online at:
+   https://wiki.apache.org/solr/Solr4.0
+
+
 Versions of Major Components
 ---------------------
-Apache Tika 1.0
+Apache Tika 1.1
 Carrot2 3.5.0
 Velocity 1.6.4 and Velocity Tools 2.0
 Apache UIMA 2.3.1
@@ -60,7 +65,18 @@ Upgrading from Solr 3.6-dev
 
 * The update request parameter to choose Update Request Processor Chain is 
   renamed from "update.processor" to "update.chain". The old parameter was
-  deprecated but still working since Solr3.2, but is now removed entirely.
+  deprecated but still working since Solr3.2, but is now removed
+  entirely.
+
+* The <indexDefaults> and <mainIndex> sections of solrconfig.xml are discontinued
+  and replaced with the <indexConfig> section. There are also better defaults.
+  When migrating, if you don't know what your old settings mean, simply delete
+  both <indexDefaults> and <mainIndex> sections. If you have customizations,
+  put them in <indexConfig> section - with same syntax as before.
+
+* Two of the SolrServer subclasses in SolrJ were renamed/replaced.
+  CommonsHttpSolrServer is now HttpSolrServer, and 
+  StreamingUpdateSolrServer is now ConcurrentUpdateSolrServer.
 
 
 Detailed Change List
@@ -68,6 +84,9 @@ Detailed Change List
 
 New Features
 ----------------------
+
+* SOLR-3272: Solr filter factory for MorfologikFilter (Polish lemmatisation).
+  (Rafał Kuć via Dawid Weiss, Steven Rowe, Uwe Schindler).
 
 * SOLR-571: The autowarmCount for LRUCaches (LRUCache and FastLRUCache) now 
   supports "percentages" which get evaluated  relative the current size of 
@@ -78,10 +97,6 @@ New Features
   norm, maxdoc, numdocs. (yonik)
 
 * SOLR-1665: Add debug component options for timings, results and query info only (gsingers, hossman, yonik)
-
-* SOLR-2001: The query component will substitute an empty query that matches
-  no documents if the query parser returns null.  This also prevents an
-  exception from being thrown by the default parser if "q" is missing. (yonik)
 
 * SOLR-2112: Solrj API now supports streaming results. (ryan)
 
@@ -111,7 +126,7 @@ New Features
   for more complex results in responses and open the door for function queries
   as results. 
   (ryan with patches from grant, noble, cmale, yonik, Jan Høydahl, 
-  Arul Kalaipandian, hossman)
+  Arul Kalaipandian, Luca Cavanna, hossman)
   SOLR-2037: Thanks to SOLR-1566, documents boosted by the QueryElevationComponent
   can be marked as boosted.  (gsingers, ryan, yonik)
 
@@ -189,7 +204,6 @@ New Features
 * SOLR-2134 Trie* fields should support sortMissingLast=true, and deprecate Sortable* Field Types
   (Ryan McKinley, Mike McCandless, Uwe Schindler, Erick Erickson)
     
-  
 * SOLR-2438 added MultiTermAwareComponent to the various classes to allow automatic lowercasing
   for multiterm queries (wildcards, regex, prefix, range, etc). You can now optionally specify a
   "multiterm" analyzer in our schema.xml, but Solr should "do the right thing" if you don't
@@ -232,6 +246,27 @@ New Features
 * SOLR-3134: Include shard info in distributed response when shards.info=true 
   (Russell Black, ryan)
 
+* SOLR-2898: Support grouped faceting. (Martijn van Groningen)
+
+* SOLR-2949: QueryElevationComponent is now supported with distributed search.
+  (Mark Miller, yonik)
+
+* SOLR-3221: Added the ability to directly configure aspects of the concurrency
+ and thread-pooling used within distributed search in solr. This allows for finer
+ grained controlled and can be tuned by end users to target their own specific
+ requirements. This builds on the work of the HttpCommComponent and uses the same configuration
+ block to configure the thread pool. The default configuration has
+ the same behaviour as solr 3.5, favouring throughput over latency. More
+ information can be found on the wiki (http://wiki.apache.org/solr/SolrConfigXml) (Greg Bowyer)
+
+* SOLR-3278: Negative boost support to the Extended Dismax Query Parser Boost Query (bq).
+  (James Dyer)
+
+* SOLR-3255: OpenExchangeRates.Org Exchange Rate Provider for CurrencyField (janhoy)
+
+* SOLR-3358: Logging events are captured and available from the /admin/logging 
+  request handler. (ryan)
+  
 
 Optimizations
 ----------------------
@@ -263,6 +298,8 @@ Optimizations
 
 Bug Fixes
 ----------------------
+* SOLR-3139: Make ConcurrentUpdateSolrServer send UpdateRequest.getParams()
+  as HTTP request params (siren) 
 
 * SOLR-3165: Cannot use DIH in Solrcloud + Zookeeper (Alexey Serba, 
   Mark Miller, siren)
@@ -333,7 +370,11 @@ Bug Fixes
 
 * SOLR-3062: A join in the main query was not respecting any filters pushed
   down to it via acceptDocs since LUCENE-1536. (Mike Hugo, yonik)
-
+  
+* SOLR-3214: If you use multiple fl entries rather than a comma separated list, all but the first
+  entry can be ignored if you are using distributed search. (Tomas Fernandez Lobbe via Mark Miller)
+ 
+* SOLR-3352: eDismax: pf2 should kick in for a query with 2 terms (janhoy)
 
 Other Changes
 ----------------------
@@ -438,6 +479,26 @@ Other Changes
 
 * SOLR-2607: Removed obsolete client/ folder (ehatcher, Eric Pugh, janhoy)
 
+* SOLR-3202, SOLR-3244: Dropping Support for JSP.  New Admin UI is all client side
+  (ryan, Aliaksandr Zhuhrou, Uwe Schindler)
+
+* SOLR-3159: Upgrade example and tests to run with Jetty 8 (ryan)
+
+* SOLR-3254: Upgrade Solr to Tika 1.1 (janhoy)
+
+* SOLR-3329: Dropped getSourceID() from SolrInfoMBean and using 
+  getClass().getPackage().getSpecificationVersion() for Version. (ryan)
+
+* SOLR-3302: Upgraded SLF4j to version 1.6.4 (hossman)
+
+* SOLR-3322: Add more context to IndexReaderFactory.newReader (ab)
+
+* SOLR-3343: Moved FastWriter, FileUtils, RegexFileFilter, RTimer and SystemIdResolver
+  from org.apache.solr.common to org.apache.solr.util (Chris Male)
+
+* SOLR-3357: ResourceLoader.newInstance now accepts a Class representation of the expected
+instance type (Chris Male)
+
 Documentation
 ----------------------
 
@@ -448,6 +509,10 @@ Documentation
 
 Upgrading from Solr 3.5
 ----------------------
+* SOLR-2983: As a consequence of moving the code which sets a MergePolicy from SolrIndexWriter to SolrIndexConfig,
+  (custom) MergePolicies should now have an empty constructor; thus an IndexWriter should not be passed as constructor
+  parameter but instead set using the setIndexWriter() method.
+
 * As doGet() methods in SimplePostTool was changed to static, the client applications of this
   class need to be recompiled.
 
@@ -459,11 +524,37 @@ Upgrading from Solr 3.5
   HTMLStripCharFilter in Solr version 3.5 and earlier: the old implementation
   (bugs and all) is preserved as LegacyHTMLStripCharFilter.
 
+* As of Solr 3.6, the <indexDefaults> and <mainIndex> sections of solrconfig.xml are deprecated
+  and replaced with a new <indexConfig> section. Read more in SOLR-1052 below.
+
 * SOLR-3040: The DIH's admin UI (dataimport.jsp) now requires DIH request handlers to start with
   a '/'. (dsmiley)
 
+* SOLR-3161: <requestDispatcher handleSelect="false"> is now the default. An existing config will
+  probably work as-is because handleSelect was explicitly enabled in default configs. HandleSelect
+  makes /select work as well as enables the 'qt' parameter. Instead, consider explicitly
+  configuring /select as is done in the example solrconfig.xml, and register your other search
+  handlers with a leading '/' which is a recommended practice.  (David Smiley, Erik Hatcher)
+
+* SOLR-3161: Don't use the 'qt' parameter with a leading '/'.  It probably won't work in 4.0
+  and it's now limited in 3.6 to SearchHandler subclasses that aren't lazy-loaded.
+
+* Bugs found and fixed in the SignatureUpdateProcessor that previously caused 
+  some documents to produce the same signature even when the configured fields 
+  contained distinct (non-String) values.  Users of SignatureUpdateProcessor 
+  are strongly advised that they should re-index as document signatures may 
+  have now changed. (see SOLR-3200 & SOLR-3226 for details)
+
+
 New Features
 ----------------------
+* SOLR-2020: Add Java client that uses Apache Http Components http client (4.x).
+  (Chantal Ackermann, Ryan McKinley, Yonik Seeley, siren)
+
+* SOLR-2854: Now load URL content stream data (via stream.url) when called for during request handling,
+  rather than loading URL content streams automatically regardless of use.
+  (David Smiley and Ryan McKinley via ehatcher)
+
 * SOLR-2904: BinaryUpdateRequestHandler should be able to accept multiple update requests from
   a stream (shalin)
 
@@ -527,6 +618,29 @@ New Features
 * SOLR-3033: ReplicationHandler's backup command now supports a 'maxNumberOfBackups' 
   init param that can be used to delete all but the most recent N backups. (Torsten Krah, James Dyer)
 
+* SOLR-2202: Currency FieldType, whith support for currencies and exchange rates
+  (Greg Fodor & Andrew Morrison via janhoy, rmuir, Uwe Schindler)
+
+* SOLR-3026: eDismax: Locking down which fields can be explicitly queried (user fields aka uf)
+  (janhoy, hossmann, Tomás Fernández Löbbe)
+
+* SOLR-2826: URLClassify Update Processor (janhoy)
+
+* SOLR-2764: Create a NorwegianLightStemmer and NorwegianMinimalStemmer (janhoy)
+
+* SOLR-3221: Added the ability to directly configure aspects of the concurrency
+ and thread-pooling used within distributed search in solr. This allows for finer
+ grained controlled and can be tuned by end users to target their own specific
+ requirements. This builds on the work of the HttpCommComponent and uses the same configuration
+ block to configure the thread pool. The default configuration has
+ the same behaviour as solr 3.5, favouring throughput over latency. More
+ information can be found on the wiki (http://wiki.apache.org/solr/SolrConfigXml) (Greg Bowyer)
+
+* SOLR-2001: The query component will substitute an empty query that matches
+  no documents if the query parser returns null.  This also prevents an
+  exception from being thrown by the default parser if "q" is missing. (yonik)
+  SOLR-435: if q is "" then it's also acceptable. (dsmiley, hoss)
+
 Optimizations
 ----------------------
 * SOLR-1931: Speedup for LukeRequestHandler and admin/schema browser. New parameter
@@ -543,6 +657,14 @@ Optimizations
 
 Bug Fixes
 ----------------------
+* SOLR-3187 SystemInfoHandler leaks filehandles (siren)
+
+* LUCENE-3820: Fixed invalid position indexes by reimplementing PatternReplaceCharFilter.
+  This change also drops real support for boundary characters -- all input is prebuffered
+  for pattern matching. (Dawid Weiss)
+
+* SOLR-3068: Fixed NPE in ThreadDumpHandler (siren)
+
 * SOLR-2912: Fixed File descriptor leak in ShowFileRequestHandler (Michael Ryan, shalin)
 
 * SOLR-2819: Improved speed of parsing hex entities in HTMLStripCharFilter
@@ -556,6 +678,11 @@ Bug Fixes
 
 * SOLR-2956: Fixed inconsistencies in the flags (and flag key) reported by 
   the LukeRequestHandler (hossman)
+
+* SOLR-1730: Made it clearer when a core failed to load as well as better logging when the
+  QueryElevationComponent fails to properly initialize (gsingers)
+
+* SOLR-1520: QueryElevationComponent now supports non-string ids (gsingers)
 
 * SOLR-3024: Fixed JSONTestUtil.matchObj, in previous releases it was not 
   respecting the 'delta' arg (David Smiley via hossman)
@@ -617,7 +744,7 @@ Bug Fixes
 * SOLR-3073: Fixed 'Invalid UUID string' error when having an UUID field as
   the unique key and executing a distributed grouping request. (Devon Krisman, Martijn van Groningen)
 
-* SOLR-3084: Fixed initialiazation error when using 
+* SOLR-3084: Fixed initialization error when using 
   <queryResponseWriter default="true" ... /> (Bernd Fehling and hossman)
 
 * SOLR-3109: Fixed numerous redundant shard requests when using distributed grouping.
@@ -632,6 +759,45 @@ Bug Fixes
 * SOLR-3168: ReplicationHandler "numberToKeep" & "maxNumberOfBackups" parameters
   would keep only 1 backup, even if more than 1 was specified (Neil Hooey, James Dyer)
 
+* SOLR-3009: hitGrouped.vm isn't shipped with 3.x (ehatcher, janhoy)
+
+* SOLR-3195: timeAllowed is ignored for grouping queries
+  (Russell Black via Martijn van Groningen)
+
+* SOLR-2124: Do not log stack traces for "Service Disabled" / 503 Exceptions (PingRequestHandler, etc)
+  (James Dyer, others)
+  
+* SOLR-3260: DataImportHandler: ScriptTransformer gives better error messages when 
+  problems arise on initalization (no Script Engine, invalid script, etc). (James Dyer)
+
+* SOLR-2959: edismax now respects the magic fields '_val_' and '_query_'
+  (Michael Watts, hossman)
+
+* SOLR-3074: fix SolrPluginUtils.docListToSolrDocumentList to respect the 
+  list of fields specified.  This fix also deprecates 
+  DocumentBuilder.loadStoredFields which is not used anywhere in Solr, 
+  and was fundamentally broken/bizarre.
+  (hossman, Ahmet Arslan)
+
+* SOLR-3264: Fix CoreContainer and SolrResourceLoader logging to be more 
+  clear about when SolrCores are being created, and stop misleading people 
+  about SolrCore instanceDir's being the "Solr Home Dir" (hossman)
+
+* SOLR-3046: Fix whitespace typo in DIH response "Time taken" (hossman)
+
+* SOLR-3261: Fix edismax to respect query operators when literal colons 
+  are used in query string.  (Juan Grande via hossman)
+
+* SOLR-3226: Fix SignatureUpdateProcessor to no longer ignore non-String 
+  field values (Spyros Kapnissis, hossman)
+
+* SOLR-3200: Fix SignatureUpdateProcessor "all fields" mode to use all 
+  fields of each document instead of the fields specified by the first 
+  document indexed (Spyros Kapnissis via hossman)
+
+* SOLR-3316: Distributed grouping failed when rows parameter was set to 0 and sometimes returned a wrong
+  hit count as matches. (Cody Young, Martijn van Groningen)
+
 Other Changes
 ----------------------
 * SOLR-2922: Upgrade commons-io and commons-lang to 2.1 and 2.6, respectively. (koji)
@@ -640,7 +806,7 @@ Other Changes
   AppendedSolrParams into factory methods.
   (David Smiley via hossman)
 
-* Solr-3032: Deprecate logOnce from SolrException logOnce and all the supporting
+* SOLR-3032: Deprecate logOnce from SolrException logOnce and all the supporting
   structure will disappear in 4.0. Errors should be caught and logged at the
   top-most level or logged and NOT propagated up the chain. (Erick Erickson)
 
@@ -654,9 +820,45 @@ Other Changes
 * SOLR-3097, SOLR-3105: Add analysis configurations for different languages to 
   the example.  (Christian Moen, Robert Muir)
 
+* SOLR-3005: Default QueryResponseWriters are now initialized via init() with an empty
+  NamedList. (Gasol Wu, Chris Male)
+
+* SOLR-3140: Upgrade schema version to 1.5, where omitNorms defaults to "true" for all
+  primitive (non-analyzed) field types such as int, float, date, bool, string.. (janhoy)
+
+* SOLR-3077: Better error messages when attempting to use "blank" field names 
+  (Antony Stubbs via hossman)
+
+* SOLR-2712: expecting fl=score to return all fields is now deprecated.
+  In solr 4.0, this will only return the score.  (ryan)
+
+* SOLR-3156: Check for Lucene directory locks at startup. In previous versions
+  this check was only performed during modifying (e.g. adding and deleting
+  documents) the index. (Luca Cavanna via Martijn van Groningen)
+
+* SOLR-1052: Deprecated <indexDefaults> and <mainIndex> in solrconfig.xml
+  From now, all settings go in the new <indexConfig> tag, and some defaults are
+  changed: useCompoundFile=false, ramBufferSizeMB=32, lockType=native, so that
+  the effect of NOT specifying <indexConfig> at all gives same result as the
+  example config used to give in 3.5 (janhoy, gsingers)
+
 Build
 ----------------------
 * SOLR-2487: Add build target to package war without slf4j jars (janhoy)
+
+* SOLR-3112: Fix tests not to write to src/test-files (Luca Cavanna via Robert Muir)
+
+* LUCENE-3753: Restructure the Solr build system. (Steve Rowe)
+
+* SOLR-3204: The packaged pre-release artifact of Commons CSV used the original
+  package name (org.apache.commons.csv). This created a compatibility issue as
+  the Apache Commons team works toward an official release of Commons CSV.
+  The source of Commons CSV was added under a separate package name to the
+  Solr source code.  (Uwe Schindler, Chris Male, Emmanuel Bourg)  
+ 
+* LUCENE-3930: Changed build system to use Apache Ivy for retrival of 3rd
+  party JAR files.  Please review README.txt for instructions.
+  (Robert Muir, Chris Male, Uwe Schindler, Steven Rowe, Hossman)
 
 ==================  3.5.0  ==================
 
@@ -1812,6 +2014,10 @@ Other Changes
   CESU-8 byte counting in PHPSerializesResponseWriters for broken
   servlet containers was therefore removed and is now ignored if set.
   Output is always UTF-8.  (uschindler, yonik, rmuir)
+
+* SOLR-141: Errors and Exceptions are formated by ResponseWriter.
+  (Mike Sokolov, Rich Cariens, Daniel Naber, ryan)
+
 
 Build
 ----------------------

@@ -70,13 +70,13 @@ public abstract class DataOutput {
   }
 
   /** Writes an int in a variable-length format.  Writes between one and
-   * five bytes.  Smaller values take fewer bytes.  Negative numbers are not
-   * supported.
+   * five bytes.  Smaller values take fewer bytes.  Negative numbers are
+   * supported, but should be avoided.
    * @see DataInput#readVInt()
    */
   public final void writeVInt(int i) throws IOException {
     while ((i & ~0x7F) != 0) {
-      writeByte((byte)((i & 0x7f) | 0x80));
+      writeByte((byte)((i & 0x7F) | 0x80));
       i >>>= 7;
     }
     writeByte((byte)i);
@@ -96,8 +96,9 @@ public abstract class DataOutput {
    * @see DataInput#readVLong()
    */
   public final void writeVLong(long i) throws IOException {
-    while ((i & ~0x7F) != 0) {
-      writeByte((byte)((i & 0x7f) | 0x80));
+    assert i >= 0L;
+    while ((i & ~0x7FL) != 0L) {
+      writeByte((byte)((i & 0x7FL) | 0x80L));
       i >>>= 7;
     }
     writeByte((byte)i);

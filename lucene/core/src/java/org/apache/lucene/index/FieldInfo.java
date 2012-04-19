@@ -20,7 +20,13 @@ import org.apache.lucene.index.DocValues.Type;
  * limitations under the License.
  */
 
-/** @lucene.experimental */
+/**
+ *  Access to the Fieldable Info file that describes document fields and whether or
+ *  not they are indexed. Each segment has a separate Fieldable Info file. Objects
+ *  of this class are thread-safe for multiple readers, but only one thread can
+ *  be adding documents at a time, with no other reader or writer threads
+ *  accessing this object.
+ **/
 public final class FieldInfo {
   public final String name;
   public final int number;
@@ -81,7 +87,7 @@ public final class FieldInfo {
   }
   
   @Override
-  public Object clone() {
+  public FieldInfo clone() {
     return new FieldInfo(name, isIndexed, number, storeTermVector,
                          omitNorms, storePayloads, indexOptions, docValueType, normType);
   }
@@ -122,14 +128,23 @@ public final class FieldInfo {
     }
   }
   
+  /**
+   * @return true if this field has any docValues.
+   */
   public boolean hasDocValues() {
     return docValueType != null;
   }
 
+  /**
+   * @return {@link DocValues.Type} of the docValues. this may be null if the field has no docvalues.
+   */
   public DocValues.Type getDocValuesType() {
     return docValueType;
   }
   
+  /**
+   * @return {@link DocValues.Type} of the norm. this may be null if the field has no norms.
+   */
   public DocValues.Type getNormType() {
     return normType;
   }
@@ -146,11 +161,17 @@ public final class FieldInfo {
     }
   }
   
+  /**
+   * @return true if norms are explicitly omitted for this field
+   */
   public boolean omitNorms() {
     return omitNorms;
   }
   
-  public boolean normsPresent() {
+  /**
+   * @return true if this field actually has any norms.
+   */
+  public boolean hasNorms() {
     return isIndexed && !omitNorms && normType != null;
   }
   

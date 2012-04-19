@@ -17,16 +17,16 @@ package org.apache.solr.search.grouping;
  * limitations under the License.
  */
 
-import org.apache.lucene.search.Collector;
-import org.apache.lucene.search.Filter;
-import org.apache.lucene.search.MultiCollector;
-import org.apache.lucene.search.Query;
+import org.apache.lucene.search.*;
 import org.apache.lucene.search.grouping.AbstractAllGroupHeadsCollector;
 import org.apache.lucene.search.grouping.term.TermAllGroupHeadsCollector;
 import org.apache.lucene.util.OpenBitSet;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.search.*;
+import org.apache.solr.search.QueryUtils;
 import org.apache.solr.search.grouping.distributed.shardresultserializer.ShardResultTransformer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -47,6 +47,7 @@ public class CommandHandler {
     private SolrIndexSearcher searcher;
     private boolean needDocSet = false;
     private boolean truncateGroups = false;
+    private boolean includeHitCount = false;
 
     public Builder setQueryCommand(SolrIndexSearcher.QueryCommand queryCommand) {
       this.queryCommand = queryCommand;
@@ -81,33 +82,46 @@ public class CommandHandler {
       return this;
     }
 
+    public Builder setIncludeHitCount(boolean includeHitCount) {
+      this.includeHitCount = includeHitCount;
+      return this;
+    }
+
     public CommandHandler build() {
       if (queryCommand == null || searcher == null) {
         throw new IllegalStateException("All fields must be set");
       }
 
-      return new CommandHandler(queryCommand, commands, searcher, needDocSet, truncateGroups);
+      return new CommandHandler(queryCommand, commands, searcher, needDocSet, truncateGroups, includeHitCount);
     }
 
   }
+
+  private final static Logger logger = LoggerFactory.getLogger(CommandHandler.class);
 
   private final SolrIndexSearcher.QueryCommand queryCommand;
   private final List<Command> commands;
   private final SolrIndexSearcher searcher;
   private final boolean needDocset;
   private final boolean truncateGroups;
+  private final boolean includeHitCount;
+  private boolean partialResults = false;
+  private int totalHitCount;
 
   private DocSet docSet;
 
   private CommandHandler(SolrIndexSearcher.QueryCommand queryCommand,
                          List<Command> commands,
                          SolrIndexSearcher searcher,
-                         boolean needDocset, boolean truncateGroups) {
+                         boolean needDocset,
+                         boolean truncateGroups,
+                         boolean includeHitCount) {
     this.queryCommand = queryCommand;
     this.commands = commands;
     this.searcher = searcher;
     this.needDocset = needDocset;
     this.truncateGroups = truncateGroups;
+    this.includeHitCount = includeHitCount;
   }
 
   @SuppressWarnings("unchecked")
@@ -124,12 +138,14 @@ public class CommandHandler {
     Filter luceneFilter = pf.filter;
     Query query = QueryUtils.makeQueryable(queryCommand.getQuery());
 
-    if (truncateGroups && nrOfCommands > 0) {
+    if (truncateGroups) {
       docSet = computeGroupedDocSet(query, luceneFilter, collectors);
     } else if (needDocset) {
       docSet = computeDocSet(query, luceneFilter, collectors);
+    } else if (!collectors.isEmpty()) {
+      searchWithTimeLimiter(query, luceneFilter, MultiCollector.wrap(collectors.toArray(new Collector[nrOfCommands])));
     } else {
-      searcher.search(query, luceneFilter, MultiCollector.wrap(collectors.toArray(new Collector[nrOfCommands])));
+      searchWithTimeLimiter(query, luceneFilter, null);
     }
   }
 
@@ -138,10 +154,10 @@ public class CommandHandler {
     AbstractAllGroupHeadsCollector termAllGroupHeadsCollector =
         TermAllGroupHeadsCollector.create(firstCommand.getKey(), firstCommand.getSortWithinGroup());
     if (collectors.isEmpty()) {
-      searcher.search(query, luceneFilter, termAllGroupHeadsCollector);
+      searchWithTimeLimiter(query, luceneFilter, termAllGroupHeadsCollector);
     } else {
       collectors.add(termAllGroupHeadsCollector);
-      searcher.search(query, luceneFilter, MultiCollector.wrap(collectors.toArray(new Collector[collectors.size()])));
+      searchWithTimeLimiter(query, luceneFilter, MultiCollector.wrap(collectors.toArray(new Collector[collectors.size()])));
     }
 
     int maxDoc = searcher.maxDoc();
@@ -158,7 +174,7 @@ public class CommandHandler {
       Collector wrappedCollectors = MultiCollector.wrap(collectors.toArray(new Collector[collectors.size()]));
       docSetCollector = new DocSetDelegateCollector(maxDoc >> 6, maxDoc, wrappedCollectors);
     }
-    searcher.search(query, luceneFilter, docSetCollector);
+    searchWithTimeLimiter(query, luceneFilter, docSetCollector);
     return docSetCollector.getDocSet();
   }
 
@@ -167,7 +183,37 @@ public class CommandHandler {
     if (docSet != null) {
       queryResult.setDocSet(docSet);
     }
+    queryResult.setPartialResults(partialResults);
     return transformer.transform(commands);
   }
 
+  /**
+   * Invokes search with the specified filter and collector.  
+   * If a time limit has been specified then wrap the collector in the TimeLimitingCollector
+   */
+  private void searchWithTimeLimiter(final Query query, final Filter luceneFilter, Collector collector) throws IOException {
+    if (queryCommand.getTimeAllowed() > 0 ) {
+      collector = new TimeLimitingCollector(collector, TimeLimitingCollector.getGlobalCounter(), queryCommand.getTimeAllowed());
+    }
+
+    TotalHitCountCollector hitCountCollector = new TotalHitCountCollector();
+    if (includeHitCount) {
+      collector = MultiCollector.wrap(collector, hitCountCollector);
+    }
+
+    try {
+      searcher.search(query, luceneFilter, collector);
+    } catch (TimeLimitingCollector.TimeExceededException x) {
+      partialResults = true;
+      logger.warn( "Query: " + query + "; " + x.getMessage() );
+    }
+
+    if (includeHitCount) {
+      totalHitCount = hitCountCollector.getTotalHits();
+    }
+  }
+
+  public int getTotalHitCount() {
+    return totalHitCount;
+  }
 }

@@ -20,13 +20,13 @@ to your Solr Home lib directory.  See http://wiki.apache.org/solr/ExtractingRequ
 Tika Dependency
 ---------------
 
-Current Version: Tika 1.0 (released 2011-11-07)
+Current Version: Tika 1.1 (released 2012-03-23)
 
 $Id$
 
 ================== Release 4.0.0-dev ==============
 
-(No Changes)
+* SOLR-3254: Upgrade Solr to Tika 1.1 (janhoy)
 
 ================== Release 3.6.0 ==================
 
@@ -35,6 +35,10 @@ $Id$
   the text file is too short to detect encoding. (koji)
 
 * SOLR-2901: Upgrade Solr to Tika 1.0 (janhoy)
+
+* SOLR-3295: netcdf jar is excluded from the binary release (and disabled in ivy.xml)
+  because it requires java 6. If you want to parse this content and are willing to
+  use java 6, just add the jar. (rmuir)
 
 ================== Release 3.5.0 ==================
 

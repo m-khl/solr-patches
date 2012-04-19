@@ -25,6 +25,7 @@ import java.util.List;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.util.BitUtil;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.MathUtil;
 import org.apache.lucene.util.PagedBytes.PagedBytesDataInput;
 import org.apache.lucene.util.PagedBytes.PagedBytesDataOutput;
 import org.apache.lucene.util.PagedBytes;
@@ -72,7 +73,9 @@ class TermInfosReaderIndex {
     PagedBytes dataPagedBytes = new PagedBytes(estimatePageBits(initialSize));
     PagedBytesDataOutput dataOutput = dataPagedBytes.getDataOutput();
 
-    GrowableWriter indexToTerms = new GrowableWriter(4, indexSize, false);
+    final int bitEstimate = 1+MathUtil.log(tiiFileLength, 2);
+    GrowableWriter indexToTerms = new GrowableWriter(bitEstimate, indexSize, false);
+
     String currentField = null;
     List<String> fieldStrs = new ArrayList<String>();
     int fieldCounter = -1;
@@ -116,7 +119,7 @@ class TermInfosReaderIndex {
   }
 
   void seekEnum(SegmentTermEnum enumerator, int indexOffset) throws IOException {
-    PagedBytesDataInput input = (PagedBytesDataInput) dataInput.clone();
+    PagedBytesDataInput input = dataInput.clone();
     
     input.setPosition(indexToDataOffset.get(indexOffset));
 
@@ -152,7 +155,7 @@ class TermInfosReaderIndex {
   int getIndexOffset(Term term) throws IOException {
     int lo = 0;
     int hi = indexSize - 1;
-    PagedBytesDataInput input = (PagedBytesDataInput) dataInput.clone();
+    PagedBytesDataInput input = dataInput.clone();
     BytesRef scratch = new BytesRef();
     while (hi >= lo) {
       int mid = (lo + hi) >>> 1;
@@ -176,7 +179,7 @@ class TermInfosReaderIndex {
    * @throws IOException
    */
   Term getTerm(int termIndex) throws IOException {
-    PagedBytesDataInput input = (PagedBytesDataInput) dataInput.clone();
+    PagedBytesDataInput input = dataInput.clone();
     input.setPosition(indexToDataOffset.get(termIndex));
 
     // read the term
@@ -206,7 +209,7 @@ class TermInfosReaderIndex {
    * @throws IOException 
    */
   int compareTo(Term term, int termIndex) throws IOException {
-    return compareTo(term, termIndex, (PagedBytesDataInput) dataInput.clone(), new BytesRef());
+    return compareTo(term, termIndex, dataInput.clone(), new BytesRef());
   }
 
   /**

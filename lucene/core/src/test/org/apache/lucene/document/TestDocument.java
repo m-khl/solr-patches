@@ -21,7 +21,6 @@ import java.io.StringReader;
 
 import org.apache.lucene.analysis.EmptyTokenizer;
 import org.apache.lucene.analysis.MockAnalyzer;
-import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.Fields;
@@ -172,7 +171,7 @@ public class TestDocument extends LuceneTestCase {
    */
   public void testGetValuesForIndexedDocument() throws Exception {
     Directory dir = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random, dir);
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir);
     writer.addDocument(makeDocumentWithFields());
     IndexReader reader = writer.getReader();
     
@@ -257,7 +256,7 @@ public class TestDocument extends LuceneTestCase {
     doc.add(new Field("keyword", "test", StringField.TYPE_STORED));
     
     Directory dir = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random, dir);
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir);
     writer.addDocument(doc);
     field.setStringValue("id2");
     writer.addDocument(doc);
@@ -300,7 +299,7 @@ public class TestDocument extends LuceneTestCase {
   // LUCENE-3682
   public void testTransitionAPI() throws Exception {
     Directory dir = newDirectory();
-    RandomIndexWriter w = new RandomIndexWriter(random, dir);
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
 
     Document doc = new Document();
     doc.add(new Field("stored", "abc", Field.Store.YES, Field.Index.NO));
@@ -345,7 +344,7 @@ public class TestDocument extends LuceneTestCase {
       Fields tvFields = r.getTermVectors(0);
       Terms tvs = tvFields.terms(field);
       assertNotNull(tvs);
-      assertEquals(2, tvs.getUniqueTermCount());
+      assertEquals(2, tvs.size());
       TermsEnum tvsEnum = tvs.iterator(null);
       assertEquals(new BytesRef("abc"), tvsEnum.next());
       final DocsAndPositionsEnum dpEnum = tvsEnum.docsAndPositions(null, null, false);
@@ -364,7 +363,7 @@ public class TestDocument extends LuceneTestCase {
   
   public void testBoost() throws Exception {
     Directory dir = newDirectory();
-    IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random));
+    IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
     iwc.setMergePolicy(newLogMergePolicy());
     IndexWriter iw = new IndexWriter(dir, iwc);
     Document doc = new Document();

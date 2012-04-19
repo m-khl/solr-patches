@@ -186,9 +186,16 @@ public class CarrotClusteringEngine extends SearchClusteringEngine {
 
     @Override
     public String toString() {
-      return "SolrResourceLocator, " 
-          + "configDir=" + new File(resourceLoader.getConfigDir()).getAbsolutePath()
-          + ", Carrot2 relative lexicalResourcesDir=";
+      String configDir = "";
+      try {
+        configDir = "configDir=" + new File(resourceLoader.getConfigDir()).getAbsolutePath() + ", ";
+      } catch (Exception ignored) {
+        // If we get the exception, the resource loader implementation 
+        // probably does not support getConfigDir(). Not a big problem.
+      }
+      
+      return "SolrResourceLocator, " + configDir
+          + "Carrot2 relative lexicalResourcesDir=" + carrot2ResourcesDir;
     }
   }
 
@@ -276,14 +283,7 @@ public class CarrotClusteringEngine extends SearchClusteringEngine {
 
     // Make sure the requested Carrot2 clustering algorithm class is available
     String carrotAlgorithmClassName = initParams.get(CarrotParams.ALGORITHM);
-    Class<?> algorithmClass = core.getResourceLoader().findClass(carrotAlgorithmClassName);
-    if (!IClusteringAlgorithm.class.isAssignableFrom(algorithmClass)) {
-      throw new IllegalArgumentException("Class provided as "
-              + CarrotParams.ALGORITHM + " must implement "
-              + IClusteringAlgorithm.class.getName());
-    }
-    this.clusteringAlgorithmClass = (Class<? extends IClusteringAlgorithm>) algorithmClass;
-
+    this.clusteringAlgorithmClass = core.getResourceLoader().findClass(carrotAlgorithmClassName, IClusteringAlgorithm.class);
     return result;
   }
 

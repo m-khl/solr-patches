@@ -23,7 +23,7 @@ import org.apache.lucene.store.DataInput;
 import org.apache.lucene.store.DataOutput;
 
 /**
- * Pairs up two outputs into one.
+ * An FST {@link Outputs} implementation, holding two other outputs.
  *
  * @lucene.experimental
  */
@@ -34,6 +34,7 @@ public class PairOutputs<A,B> extends Outputs<PairOutputs.Pair<A,B>> {
   private final Outputs<A> outputs1;
   private final Outputs<B> outputs2;
 
+  /** Holds a single pair of two outputs. */
   public static class Pair<A,B> {
     public final A output1;
     public final B output2;
@@ -92,18 +93,15 @@ public class PairOutputs<A,B> extends Outputs<PairOutputs.Pair<A,B>> {
     final boolean noOutput2 = pair.output2.equals(outputs2.getNoOutput());
 
     if (noOutput1 && pair.output1 != outputs1.getNoOutput()) {
-      System.out.println("invalid0");
       return false;
     }
 
     if (noOutput2 && pair.output2 != outputs2.getNoOutput()) {
-      System.out.println("invalid1");
       return false;
     }
 
     if (noOutput1 && noOutput2) {
       if (pair != NO_OUTPUT) {
-        System.out.println("invalid2");
         return false;
       } else {
         return true;

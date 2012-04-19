@@ -1,3 +1,5 @@
+package org.apache.solr.handler.dataimport;
+
 /**
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -14,7 +16,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.solr.handler.dataimport;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -41,24 +42,10 @@ public class TestEphemeralCache extends AbstractDataImportHandlerTestCase {
   }
   
   @Test
-  public void testSingleThreaded() throws Exception {
-    assertFullImport(getDataConfigDotXml(0));
+  public void test() throws Exception {
+    assertFullImport(getDataConfigDotXml());
   }
-  
-  @Test
-  public void testWithThreadedParamEqualOne() throws Exception {
-    assertFullImport(getDataConfigDotXml(1));
-  }
-  
-  @Ignore("TODO: fix included in SOLR-3011")
-  @Test
-  public void testMultiThreaded() throws Exception {
-    // Try between 2 and 6 threads
-    int numThreads = random.nextInt(4) + 2;
-    System.out.println("TRYING " + numThreads);
-    assertFullImport(getDataConfigDotXml(numThreads));
-  }
-  
+
   @SuppressWarnings("unchecked")
   private void setupMockData() {
     List parentRows = new ArrayList();
@@ -97,7 +84,7 @@ public class TestEphemeralCache extends AbstractDataImportHandlerTestCase {
     MockDataSource.setIterator("SELECT * FROM CHILD_2", child2Rows.iterator());
     
   }
-  private String getDataConfigDotXml(int numThreads) {
+  private String getDataConfigDotXml() {
     return
       "<dataConfig>" +
       " <dataSource type=\"MockDataSource\" />" +
@@ -108,7 +95,6 @@ public class TestEphemeralCache extends AbstractDataImportHandlerTestCase {
       "     cacheImpl=\"org.apache.solr.handler.dataimport.DestroyCountCache\"" +
       "     cacheName=\"PARENT\"" +
       "     query=\"SELECT * FROM PARENT\"  " +
-      (numThreads==0 ? "" : "threads=\"" + numThreads + "\" ") +
       "   >" +
       "     <entity" +
       "       name=\"CHILD_1\"" +

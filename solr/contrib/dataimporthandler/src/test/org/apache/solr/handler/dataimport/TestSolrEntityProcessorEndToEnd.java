@@ -26,12 +26,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
 import org.apache.commons.io.FileUtils;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
-import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.common.SolrInputDocument;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -145,7 +145,7 @@ public class TestSolrEntityProcessorEndToEnd extends AbstractDataImportHandlerTe
     
     try {
       addDocumentsToSolr(SOLR_DOCS);
-      runFullImport(generateDIHConfig("query='*:*' rows='2' fields='id,desc' onError='skip'", jetty.getLocalPort()));
+      runFullImport(generateDIHConfig("query='*:*' rows='2' fl='id,desc' onError='skip'", jetty.getLocalPort()));
     } catch (Exception e) {
       LOG.error(e.getMessage(), e);
       fail(e.getMessage());
@@ -178,7 +178,7 @@ public class TestSolrEntityProcessorEndToEnd extends AbstractDataImportHandlerTe
     
     try {
       addDocumentsToSolr(generateSolrDocuments(7));
-      runFullImport(generateDIHConfig("query='*:*' fields='id' rows='2'", jetty.getLocalPort()));
+      runFullImport(generateDIHConfig("query='*:*' fl='id' rows='2'", jetty.getLocalPort()));
     } catch (Exception e) {
       LOG.error(e.getMessage(), e);
       fail(e.getMessage());
@@ -231,7 +231,7 @@ public class TestSolrEntityProcessorEndToEnd extends AbstractDataImportHandlerTe
     assertQ(req("*:*"), "//result[@numFound='0']");
     
     try {
-      runFullImport(generateDIHConfig("query='*:*' rows='2' fields='id,desc' onError='skip'", jetty.getLocalPort()));
+      runFullImport(generateDIHConfig("query='*:*' rows='2' fl='id,desc' onError='skip'", jetty.getLocalPort()));
     } catch (Exception e) {
       LOG.error(e.getMessage(), e);
       fail(e.getMessage());
@@ -244,7 +244,7 @@ public class TestSolrEntityProcessorEndToEnd extends AbstractDataImportHandlerTe
     assertQ(req("*:*"), "//result[@numFound='0']");
     
     try {
-      runFullImport(generateDIHConfig("query='bogus:3' rows='2' fields='id,desc' onError='abort'", jetty.getLocalPort()));
+      runFullImport(generateDIHConfig("query='bogus:3' rows='2' fl='id,desc' onError='abort'", jetty.getLocalPort()));
     } catch (Exception e) {
       LOG.error(e.getMessage(), e);
       fail(e.getMessage());
@@ -252,25 +252,7 @@ public class TestSolrEntityProcessorEndToEnd extends AbstractDataImportHandlerTe
     
     assertQ(req("*:*"), "//result[@numFound='0']");
   }
-  
-  public void testFullImportMultiThreaded() {
-    assertQ(req("*:*"), "//result[@numFound='0']");
-    int numDocs = 37;
-    List<Map<String,Object>> docList = generateSolrDocuments(numDocs);
     
-    try {
-      addDocumentsToSolr(docList);
-      Map<String,String> map = new HashMap<String,String>();
-      map.put("rows", "50");
-      runFullImport(generateDIHConfig("query='*:*' rows='6' numThreads='4'", jetty.getLocalPort()), map);
-    } catch (Exception e) {
-      LOG.error(e.getMessage(), e);
-      fail(e.getMessage());
-    }
-    
-    assertQ(req("*:*"), "//result[@numFound='" + numDocs + "']");
-  }
-  
   private static List<Map<String,Object>> generateSolrDocuments(int num) {
     List<Map<String,Object>> docList = new ArrayList<Map<String,Object>>();
     for (int i = 1; i <= num; i++) {
@@ -292,9 +274,9 @@ public class TestSolrEntityProcessorEndToEnd extends AbstractDataImportHandlerTe
       sidl.add(sd);
     }
     
-    HttpClient client = new HttpClient(new MultiThreadedHttpConnectionManager());
+    DefaultHttpClient client = new DefaultHttpClient(new ThreadSafeClientConnManager());
     URL url = new URL(getSourceUrl(jetty.getLocalPort()));
-    CommonsHttpSolrServer solrServer = new CommonsHttpSolrServer(url, client);
+    HttpSolrServer solrServer = new HttpSolrServer(url.toExternalForm(), client);
     solrServer.add(sidl);
     solrServer.commit(true, true);
   }

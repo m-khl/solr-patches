@@ -34,7 +34,6 @@ import org.apache.lucene.search.spell.JaroWinklerDistance;
 import org.apache.lucene.search.spell.LevensteinDistance;
 import org.apache.lucene.search.spell.NGramDistance;
 import org.apache.lucene.search.spell.StringDistance;
-import org.apache.lucene.spatial.DistanceUtils;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.solr.common.SolrException;
@@ -44,7 +43,6 @@ import org.apache.solr.schema.*;
 
 import org.apache.solr.search.function.distance.*;
 import org.apache.solr.util.plugin.NamedListInitializedPlugin;
-import org.omg.PortableInterceptor.RequestInfo;
 
 import java.io.IOException;
 import java.util.*;
@@ -346,7 +344,7 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
           }
           dist = new NGramDistance(ngram);
         } else {
-          dist = (StringDistance) fp.req.getCore().getResourceLoader().newInstance(distClass);
+          dist = fp.req.getCore().getResourceLoader().newInstance(distClass, StringDistance.class);
         }
         return new StringDistanceFunction(str1, str2, dist);
       }
@@ -364,13 +362,13 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
     addParser(new DoubleParser("rad") {
       @Override
       public double func(int doc, FunctionValues vals) {
-        return vals.doubleVal(doc) * DistanceUtils.DEGREES_TO_RADIANS;
+        return vals.doubleVal(doc) * HaversineConstFunction.DEGREES_TO_RADIANS;
       }
     });
     addParser(new DoubleParser("deg") {
       @Override
       public double func(int doc, FunctionValues vals) {
-        return vals.doubleVal(doc) * DistanceUtils.RADIANS_TO_DEGREES;
+        return vals.doubleVal(doc) * HaversineConstFunction.RADIANS_TO_DEGREES;
       }
     });
     addParser(new DoubleParser("sqrt") {

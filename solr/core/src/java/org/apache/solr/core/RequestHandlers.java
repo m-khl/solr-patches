@@ -41,7 +41,6 @@ import org.slf4j.LoggerFactory;
 public final class RequestHandlers {
   public static Logger log = LoggerFactory.getLogger(RequestHandlers.class);
 
-  public static final String DEFAULT_HANDLER_NAME="standard";
   protected final SolrCore core;
   // Use a synchronized map - since the handlers can be changed at runtime, 
   // the map implementation should be thread safe
@@ -182,7 +181,10 @@ public final class RequestHandlers {
       }
     }
 
-    if(get("") == null) register("", get(DEFAULT_HANDLER_NAME));
+    if(get("") == null) register("", get("/select"));//defacto default handler
+    if(get("") == null) register("", get("standard"));//old default handler name; TODO remove?
+    if(get("") == null)
+      log.warn("no default request handler is registered (either '/select' or 'standard')");
   }
     
 
@@ -205,7 +207,7 @@ public final class RequestHandlers {
    * 
    * @since solr 1.2
    */
-  public static final class LazyRequestHandlerWrapper implements SolrRequestHandler, SolrInfoMBean
+  public static final class LazyRequestHandlerWrapper implements SolrRequestHandler
   {
     private final SolrCore core;
     private String _className;
@@ -277,19 +279,10 @@ public final class RequestHandlers {
     }
     
     public String getVersion() {
-        String rev = "$Revision$";
-        if( _handler != null ) {
-          rev += " :: " + _handler.getVersion();
-        }
-        return rev;
-    }
-
-    public String getSourceId() {
-      String rev = "$Id$";
       if( _handler != null ) {
-        rev += " :: " + _handler.getSourceId();
+        return _handler.getVersion();
       }
-      return rev;
+      return null;
     }
 
     public String getSource() {

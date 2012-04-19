@@ -61,6 +61,7 @@ class Direct64 extends PackedInts.ReaderImpl
   }
 
   public long get(final int index) {
+    assert index >= 0 && index < size();
     return values[index];
   }
 
@@ -69,8 +70,7 @@ class Direct64 extends PackedInts.ReaderImpl
   }
 
   public long ramBytesUsed() {
-    return RamUsageEstimator.NUM_BYTES_ARRAY_HEADER +
-            values.length * RamUsageEstimator.NUM_BYTES_LONG;
+    return RamUsageEstimator.sizeOf(values);
   }
 
   public void clear() {

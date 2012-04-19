@@ -21,16 +21,18 @@ import java.io.File;
 import java.net.URL;
 import java.util.Random;
 
-import org.apache.lucene.util.LuceneTestCase;
-
 import org.apache.commons.io.IOUtils;
-import org.apache.solr.SolrTestCaseJ4;
+import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.SystemPropertiesRestoreRule;
 import org.apache.solr.util.ExternalPaths;
-import org.mortbay.jetty.Connector;
-import org.mortbay.jetty.Server;
-import org.mortbay.jetty.bio.SocketConnector;
-import org.mortbay.jetty.servlet.HashSessionIdManager;
-import org.mortbay.jetty.webapp.WebAppContext;
+import org.eclipse.jetty.server.Connector;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.bio.SocketConnector;
+import org.eclipse.jetty.server.session.HashSessionIdManager;
+import org.eclipse.jetty.webapp.WebAppContext;
+import org.junit.Rule;
+import org.junit.rules.RuleChain;
+import org.junit.rules.TestRule;
 
 /**
  *
@@ -40,7 +42,11 @@ public class JettyWebappTest extends LuceneTestCase
 {
   int port = 0;
   static final String context = "/test";
-  
+ 
+  @Rule
+  public TestRule solrTestRules = 
+    RuleChain.outerRule(new SystemPropertiesRestoreRule());
+
   Server server;
   
   @Override
@@ -49,7 +55,7 @@ public class JettyWebappTest extends LuceneTestCase
     super.setUp();
     System.setProperty("solr.solr.home", ExternalPaths.EXAMPLE_HOME);
     
-    File dataDir = new File(SolrTestCaseJ4.TEMP_DIR,
+    File dataDir = new File(LuceneTestCase.TEMP_DIR,
         getClass().getName() + "-" + System.currentTimeMillis());
     dataDir.mkdirs();
     System.setProperty("solr.data.dir", dataDir.getCanonicalPath());
@@ -57,7 +63,7 @@ public class JettyWebappTest extends LuceneTestCase
 
     server = new Server(port);
     // insecure: only use for tests!!!!
-    server.setSessionIdManager(new HashSessionIdManager(new Random(random.nextLong())));
+    server.setSessionIdManager(new HashSessionIdManager(new Random(random().nextLong())));
     new WebAppContext(server, path, context );
 
     SocketConnector connector = new SocketConnector();
@@ -80,29 +86,13 @@ public class JettyWebappTest extends LuceneTestCase
     super.tearDown();
   }
   
-  public void testJSP() throws Exception
+  public void testAdminUI() throws Exception
   {
     // Currently not an extensive test, but it does fire up the JSP pages and make 
     // sure they compile ok
     
     String adminPath = "http://localhost:"+port+context+"/";
     byte[] bytes = IOUtils.toByteArray( new URL(adminPath).openStream() );
-    assertNotNull( bytes ); // real error will be an exception
-
-    adminPath += "admin/";
-    bytes = IOUtils.toByteArray( new URL(adminPath).openStream() );
-    assertNotNull( bytes ); // real error will be an exception
-
-    // analysis
-    bytes = IOUtils.toByteArray( new URL(adminPath+"analysis.jsp").openStream() );
-    assertNotNull( bytes ); // real error will be an exception
-
-    // schema browser
-    bytes = IOUtils.toByteArray( new URL(adminPath+"schema.jsp").openStream() );
-    assertNotNull( bytes ); // real error will be an exception
-
-    // schema browser
-    bytes = IOUtils.toByteArray( new URL(adminPath+"threaddump.jsp").openStream() );
     assertNotNull( bytes ); // real error will be an exception
   }
 }

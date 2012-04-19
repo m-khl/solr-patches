@@ -17,7 +17,6 @@ package org.apache.lucene.util;
  * limitations under the License.
  */
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,13 +45,16 @@ public final class PagedBytes {
 
   private static final byte[] EMPTY_BYTES = new byte[0];
 
-  public final static class Reader implements Closeable {
+  /** Provides methods to read BytesRefs from a frozen
+   *  PagedBytes.
+   *
+   * @see #freeze */
+  public final static class Reader {
     private final byte[][] blocks;
     private final int[] blockEnds;
     private final int blockBits;
     private final int blockMask;
     private final int blockSize;
-    private final CloseableThreadLocal<byte[]> threadBuffers = new CloseableThreadLocal<byte[]>();
 
     public Reader(PagedBytes pagedBytes) {
       blocks = new byte[pagedBytes.blocks.size()][];
@@ -79,6 +81,7 @@ public final class PagedBytes {
      **/
     public BytesRef fillSlice(BytesRef b, long start, int length) {
       assert length >= 0: "length=" + length;
+      assert length <= blockSize+1;
       final int index = (int) (start >> blockBits);
       final int offset = (int) (start & blockMask);
       b.length = length;
@@ -88,18 +91,10 @@ public final class PagedBytes {
         b.offset = offset;
       } else {
         // Split
-        byte[] buffer = threadBuffers.get();
-        if (buffer == null) {
-          buffer = new byte[length];
-          threadBuffers.set(buffer);
-        } else if (buffer.length < length) {
-          buffer = ArrayUtil.grow(buffer, length);
-          threadBuffers.set(buffer);
-        }
-        b.bytes = buffer;
+        b.bytes = new byte[length];
         b.offset = 0;
-        System.arraycopy(blocks[index], offset, buffer, 0, blockSize-offset);
-        System.arraycopy(blocks[1+index], 0, buffer, blockSize-offset, length-(blockSize-offset));
+        System.arraycopy(blocks[index], offset, b.bytes, 0, blockSize-offset);
+        System.arraycopy(blocks[1+index], 0, b.bytes, blockSize-offset, length-(blockSize-offset));
       }
       return b;
     }
@@ -202,38 +197,47 @@ public final class PagedBytes {
      * @lucene.internal
      **/
     public BytesRef fillSliceWithPrefix(BytesRef b, long start) {
-      final int index = (int) (start >> blockBits);
+      int index = (int) (start >> blockBits);
       int offset = (int) (start & blockMask);
-      final byte[] block = blocks[index];
+      byte[] block = blocks[index];
       final int length;
+      assert offset <= block.length-1;
       if ((block[offset] & 128) == 0) {
         length = block[offset];
         offset = offset+1;
       } else {
-        length = ((block[offset] & 0x7f) << 8) | (block[1+offset] & 0xff);
-        offset = offset+2;
-        assert length > 0;
+        if (offset==block.length-1) {
+          final byte[] nextBlock = blocks[++index];
+          length = ((block[offset] & 0x7f) << 8) | (nextBlock[0] & 0xff);
+          offset = 1;
+          block = nextBlock;
+          assert length > 0; 
+        } else {
+          assert offset < block.length-1;
+          length = ((block[offset] & 0x7f) << 8) | (block[1+offset] & 0xff);
+          offset = offset+2;
+          assert length > 0;
+        }
       }
       assert length >= 0: "length=" + length;
       b.length = length;
+
+      // NOTE: even though copyUsingLengthPrefix always
+      // allocs a new block if the byte[] to be added won't
+      // fit in current block,
+      // VarDerefBytesImpl.finishInternal does its own
+      // prefix + byte[] writing which can span two blocks,
+      // so we support that here on decode:
       if (blockSize - offset >= length) {
         // Within block
         b.offset = offset;
         b.bytes = blocks[index];
       } else {
         // Split
-        byte[] buffer = threadBuffers.get();
-        if (buffer == null) {
-          buffer = new byte[length];
-          threadBuffers.set(buffer);
-        } else if (buffer.length < length) {
-          buffer = ArrayUtil.grow(buffer, length);
-          threadBuffers.set(buffer);
-        }
-        b.bytes = buffer;
+        b.bytes = new byte[length];
         b.offset = 0;
-        System.arraycopy(blocks[index], offset, buffer, 0, blockSize-offset);
-        System.arraycopy(blocks[1+index], 0, buffer, blockSize-offset, length-(blockSize-offset));
+        System.arraycopy(blocks[index], offset, b.bytes, 0, blockSize-offset);
+        System.arraycopy(blocks[1+index], 0, b.bytes, blockSize-offset, length-(blockSize-offset));
       }
       return b;
     }
@@ -246,10 +250,6 @@ public final class PagedBytes {
     /** @lucene.internal */
     public int[] getBlockEnds() {
       return blockEnds;
-    }
-
-    public void close() {
-      threadBuffers.close();
     }
   }
 
@@ -375,6 +375,9 @@ public final class PagedBytes {
   /** Copy bytes in, writing the length as a 1 or 2 byte
    *  vInt prefix. */
   public long copyUsingLengthPrefix(BytesRef bytes) throws IOException {
+    if (bytes.length >= 32768) {
+      throw new IllegalArgumentException("max length is 32767 (got " + bytes.length + ")");
+    }
 
     if (upto + bytes.length + 2 > blockSize) {
       if (bytes.length + 2 > blockSize) {
@@ -412,7 +415,7 @@ public final class PagedBytes {
     }
 
     @Override
-    public Object clone() {
+    public PagedBytesDataInput clone() {
       PagedBytesDataInput clone = getDataInput();
       clone.setPosition(getPosition());
       return clone;

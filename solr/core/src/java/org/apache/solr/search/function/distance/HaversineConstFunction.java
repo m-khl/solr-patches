@@ -26,13 +26,13 @@ import org.apache.lucene.queries.function.valuesource.MultiValueSource;
 import org.apache.lucene.queries.function.valuesource.VectorValueSource;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.spatial.DistanceUtils;
-import org.apache.lucene.spatial.tier.InvalidGeoException;
+import com.spatial4j.core.context.ParseUtils;
+import com.spatial4j.core.distance.DistanceUtils;
+import com.spatial4j.core.exception.InvalidShapeException;
 import org.apache.solr.common.params.SpatialParams;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.FunctionQParser;
 import org.apache.solr.search.ValueSourceParser;
-import org.apache.solr.search.function.*;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -44,6 +44,9 @@ import java.util.Map;
  * Haversine function with one point constant
  */
 public class HaversineConstFunction extends ValueSource {
+  // TODO: these could go in spatial4j somewhere
+  public static final double DEGREES_TO_RADIANS = Math.PI / 180.0;
+  public static final double RADIANS_TO_DEGREES =  180.0 / Math.PI;
 
   public static ValueSourceParser parser = new ValueSourceParser() {
     @Override
@@ -144,8 +147,8 @@ public class HaversineConstFunction extends ValueSource {
     if (pt == null) return null;
     double[] point = null;
     try {
-      point = DistanceUtils.parseLatitudeLongitude(pt);
-    } catch (InvalidGeoException e) {
+      point = ParseUtils.parseLatitudeLongitude(pt);
+    } catch (InvalidShapeException e) {
       throw new ParseException("Bad spatial pt:" + pt);
     }
     return new VectorValueSource(Arrays.<ValueSource>asList(new DoubleConstValueSource(point[0]),new DoubleConstValueSource(point[1])));
@@ -190,7 +193,7 @@ public class HaversineConstFunction extends ValueSource {
     this.p2 = vs;
     this.latSource = p2.getSources().get(0);
     this.lonSource = p2.getSources().get(1);
-    this.latCenterRad_cos = Math.cos(latCenter * DistanceUtils.DEGREES_TO_RADIANS);
+    this.latCenterRad_cos = Math.cos(latCenter * DEGREES_TO_RADIANS);
   }
 
   protected String name() {
@@ -201,15 +204,15 @@ public class HaversineConstFunction extends ValueSource {
   public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
     final FunctionValues latVals = latSource.getValues(context, readerContext);
     final FunctionValues lonVals = lonSource.getValues(context, readerContext);
-    final double latCenterRad = this.latCenter * DistanceUtils.DEGREES_TO_RADIANS;
-    final double lonCenterRad = this.lonCenter * DistanceUtils.DEGREES_TO_RADIANS;
+    final double latCenterRad = this.latCenter * DEGREES_TO_RADIANS;
+    final double lonCenterRad = this.lonCenter * DEGREES_TO_RADIANS;
     final double latCenterRad_cos = this.latCenterRad_cos;
 
     return new DoubleDocValues(this) {
       @Override
       public double doubleVal(int doc) {
-        double latRad = latVals.doubleVal(doc) * DistanceUtils.DEGREES_TO_RADIANS;
-        double lonRad = lonVals.doubleVal(doc) * DistanceUtils.DEGREES_TO_RADIANS;
+        double latRad = latVals.doubleVal(doc) * DEGREES_TO_RADIANS;
+        double lonRad = lonVals.doubleVal(doc) * DEGREES_TO_RADIANS;
         double diffX = latCenterRad - latRad;
         double diffY = lonCenterRad - lonRad;
         double hsinX = Math.sin(diffX * 0.5);

@@ -200,7 +200,7 @@ public class ClusteringComponent extends SearchComponent implements SolrCoreAwar
             className = CarrotClusteringEngine.class.getName();
           }
           SolrResourceLoader loader = core.getResourceLoader();
-          ClusteringEngine clusterer = (ClusteringEngine) loader.newInstance(className);
+          ClusteringEngine clusterer = loader.newInstance(className, ClusteringEngine.class);
           if (clusterer != null) {
             String name = clusterer.init(engineNL, core);
             if (name != null) {
@@ -255,18 +255,7 @@ public class ClusteringComponent extends SearchComponent implements SolrCoreAwar
   }
 
   @Override
-  public String getVersion() {
-    return "$Revision$";
-  }
-
-  @Override
-  public String getSourceId() {
-    return "$Id$";
-  }
-
-  @Override
   public String getSource() {
     return "$URL$";
   }
-
 }

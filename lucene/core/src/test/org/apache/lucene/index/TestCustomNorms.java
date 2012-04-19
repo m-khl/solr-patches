@@ -57,15 +57,15 @@ public class TestCustomNorms extends LuceneTestCase {
     MockDirectoryWrapper dir = newDirectory();
     dir.setCheckIndexOnClose(false); // can't set sim to checkindex yet
     IndexWriterConfig config = newIndexWriterConfig(TEST_VERSION_CURRENT,
-        new MockAnalyzer(random));
+        new MockAnalyzer(random()));
     Similarity provider = new MySimProvider();
     config.setSimilarity(provider);
-    RandomIndexWriter writer = new RandomIndexWriter(random, dir, config);
-    final LineFileDocs docs = new LineFileDocs(random);
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, config);
+    final LineFileDocs docs = new LineFileDocs(random());
     int num = atLeast(100);
     for (int i = 0; i < num; i++) {
       Document doc = docs.nextDoc();
-      float nextFloat = random.nextFloat();
+      float nextFloat = random().nextFloat();
       Field f = new Field(floatTestField, "" + nextFloat, TextField.TYPE_STORED);
       f.setBoost(nextFloat);
 
@@ -83,7 +83,7 @@ public class TestCustomNorms extends LuceneTestCase {
     assertNotNull(normValues);
     Source source = normValues.getSource();
     assertTrue(source.hasArray());
-    assertEquals(Type.FLOAT_32, normValues.type());
+    assertEquals(Type.FLOAT_32, normValues.getType());
     float[] norms = (float[]) source.getArray();
     for (int i = 0; i < open.maxDoc(); i++) {
       Document document = open.document(i);
@@ -92,22 +92,23 @@ public class TestCustomNorms extends LuceneTestCase {
     }
     open.close();
     dir.close();
+    docs.close();
   }
 
   public void testExceptionOnRandomType() throws IOException {
     MockDirectoryWrapper dir = newDirectory();
     dir.setCheckIndexOnClose(false); // can't set sim to checkindex yet
     IndexWriterConfig config = newIndexWriterConfig(TEST_VERSION_CURRENT,
-        new MockAnalyzer(random));
+        new MockAnalyzer(random()));
     Similarity provider = new MySimProvider();
     config.setSimilarity(provider);
-    RandomIndexWriter writer = new RandomIndexWriter(random, dir, config);
-    final LineFileDocs docs = new LineFileDocs(random);
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, config);
+    final LineFileDocs docs = new LineFileDocs(random());
     int num = atLeast(100);
     try {
       for (int i = 0; i < num; i++) {
         Document doc = docs.nextDoc();
-        float nextFloat = random.nextFloat();
+        float nextFloat = random().nextFloat();
         Field f = new Field(exceptionTestField, "" + nextFloat,
             TextField.TYPE_STORED);
         f.setBoost(nextFloat);
@@ -126,6 +127,7 @@ public class TestCustomNorms extends LuceneTestCase {
     writer.commit();
     writer.close();
     dir.close();
+    docs.close();
 
   }
 
@@ -142,7 +144,7 @@ public class TestCustomNorms extends LuceneTestCase {
       if (floatTestField.equals(field)) {
         return new FloatEncodingBoostSimilarity();
       } else if (exceptionTestField.equals(field)) {
-        return new RandomTypeSimilarity(random);
+        return new RandomTypeSimilarity(random());
       } else {
         return delegate;
       }

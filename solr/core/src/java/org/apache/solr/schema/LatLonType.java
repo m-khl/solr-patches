@@ -22,16 +22,21 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
-import org.apache.lucene.queries.function.ValueSourceScorer;
 import org.apache.lucene.queries.function.valuesource.VectorValueSource;
 import org.apache.lucene.search.*;
-import org.apache.lucene.spatial.DistanceUtils;
-import org.apache.lucene.spatial.tier.InvalidGeoException;
+import com.spatial4j.core.context.ParseUtils;
+import com.spatial4j.core.context.SpatialContext;
+import com.spatial4j.core.context.simple.SimpleSpatialContext;
+import com.spatial4j.core.distance.DistanceCalculator;
+import com.spatial4j.core.distance.DistanceUtils;
+import com.spatial4j.core.distance.GeodesicSphereDistCalc;
+import com.spatial4j.core.exception.InvalidShapeException;
+import com.spatial4j.core.shape.Rectangle;
 import org.apache.lucene.util.Bits;
 import org.apache.solr.common.SolrException;
-import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.response.TextResponseWriter;
 import org.apache.solr.search.*;
+import org.apache.solr.search.function.distance.HaversineConstFunction;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -45,7 +50,7 @@ import java.util.Set;
  */
 public class LatLonType extends AbstractSubTypeFieldType implements SpatialQueryable {
   protected static final int LAT = 0;
-  protected static final int LONG = 1;
+  protected static final int LON = 1;
 
   @Override
   protected void init(IndexSchema schema, Map<String, String> args) {
@@ -63,15 +68,17 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
       int i = 0;
       double[] latLon;
       try {
-        latLon = DistanceUtils.parseLatitudeLongitude(null, externalVal);
-      } catch (InvalidGeoException e) {
+        latLon = ParseUtils.parseLatitudeLongitude(null, externalVal);
+      } catch (InvalidShapeException e) {
         throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, e);
       }
       //latitude
-      f[i] = subField(field, i).createField(String.valueOf(latLon[LAT]), boost);
+      SchemaField lat = subField(field, i);
+      f[i] = lat.createField(String.valueOf(latLon[LAT]), lat.omitNorms() ? 1F : boost);
       i++;
       //longitude
-      f[i] = subField(field, i).createField(String.valueOf(latLon[LONG]), boost);
+      SchemaField lon = subField(field, i);
+      f[i] = lon.createField(String.valueOf(latLon[LON]), lon.omitNorms() ? 1F : boost);
 
     }
 
@@ -91,9 +98,9 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
     String[] p1;
     String[] p2;
     try {
-      p1 = DistanceUtils.parsePoint(null, part1, dimension);
-      p2 = DistanceUtils.parsePoint(null, part2, dimension);
-    } catch (InvalidGeoException e) {
+      p1 = ParseUtils.parsePoint(null, part1, dimension);
+      p2 = ParseUtils.parsePoint(null, part2, dimension);
+    } catch (InvalidShapeException e) {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, e);
     }
     BooleanQuery result = new BooleanQuery(true);
@@ -112,8 +119,8 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
     
     String[] p1 = new String[0];
     try {
-      p1 = DistanceUtils.parsePoint(null, externalVal, dimension);
-    } catch (InvalidGeoException e) {
+      p1 = ParseUtils.parsePoint(null, externalVal, dimension);
+    } catch (InvalidShapeException e) {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, e);
     }
     BooleanQuery bq = new BooleanQuery(true);
@@ -131,69 +138,36 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
   public Query createSpatialQuery(QParser parser, SpatialOptions options) {
     double[] point = null;
     try {
-      point = DistanceUtils.parseLatitudeLongitude(options.pointStr);
-    } catch (InvalidGeoException e) {
+      point = ParseUtils.parseLatitudeLongitude(options.pointStr);
+    } catch (InvalidShapeException e) {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, e);
     }
 
     // lat & lon in degrees
     double latCenter = point[LAT];
-    double lonCenter = point[LONG];
-
-    point[0] = point[0] * DistanceUtils.DEGREES_TO_RADIANS;
-    point[1] = point[1] * DistanceUtils.DEGREES_TO_RADIANS;
-    //Get the distance
-
-    double[] tmp = new double[2];
-    //these calculations aren't totally accurate, but it should be good enough
-    //TODO: Optimize to do in single calculations.  Would need to deal with poles, prime meridian, etc.
-    double [] north = DistanceUtils.pointOnBearing(point[LAT], point[LONG], options.distance, 0, tmp, options.radius);
-    //This returns the point as radians, but we need degrees b/c that is what the field is stored as
-    double ur_lat = north[LAT] * DistanceUtils.RADIANS_TO_DEGREES;//get it now, as we are going to reuse tmp
-    double [] east = DistanceUtils.pointOnBearing(point[LAT], point[LONG], options.distance, DistanceUtils.DEG_90_AS_RADS, tmp, options.radius);
-    double ur_lon = east[LONG] * DistanceUtils.RADIANS_TO_DEGREES;
-    double [] south = DistanceUtils.pointOnBearing(point[LAT], point[LONG], options.distance, DistanceUtils.DEG_180_AS_RADS, tmp, options.radius);
-    double ll_lat = south[LAT] * DistanceUtils.RADIANS_TO_DEGREES;
-    double [] west = DistanceUtils.pointOnBearing(point[LAT], point[LONG], options.distance, DistanceUtils.DEG_270_AS_RADS, tmp, options.radius);
-    double ll_lon = west[LONG] * DistanceUtils.RADIANS_TO_DEGREES;
+    double lonCenter = point[LON];
     
-
-    //TODO: can we reuse our bearing calculations?
-    double angDist = DistanceUtils.angularDistance(options.distance,
-            options.radius);//in radians
-
-    double latMin = -90.0, latMax = 90.0, lonMin = -180.0, lonMax = 180.0;
-    double lon2Min = -180.0, lon2Max = 180.0;  // optional second longitude restriction
-
-    // for the poles, do something slightly different - a polar "cap".
-    // Also, note point[LAT] is in radians, but ur and ll are in degrees
-    if (point[LAT] + angDist > DistanceUtils.DEG_90_AS_RADS) { // we cross the north pole
-      //we don't need a longitude boundary at all
-      latMin = Math.min(ll_lat, ur_lat);
-    } else if (point[LAT] - angDist < -DistanceUtils.DEG_90_AS_RADS) { // we cross the south pole
-      latMax = Math.max(ll_lat, ur_lat);
+    DistanceCalculator distCalc = new GeodesicSphereDistCalc.Haversine(options.units.earthRadius());
+    SpatialContext ctx = new SimpleSpatialContext(options.units,distCalc,null);
+    Rectangle bbox = DistanceUtils.calcBoxByDistFromPtDEG(latCenter, lonCenter, options.distance, ctx);
+    double latMin = bbox.getMinY();
+    double latMax = bbox.getMaxY();
+    double lonMin, lonMax, lon2Min, lon2Max;
+    if (bbox.getCrossesDateLine()) {
+       lonMin = -180;
+       lonMax = bbox.getMaxX();
+       lon2Min = bbox.getMinX();
+       lon2Max = 180;
     } else {
-      // set the latitude restriction as normal
-      latMin = ll_lat;
-      latMax = ur_lat;
-
-      if (ll_lon > ur_lon) {
-         // we crossed the +-180 deg longitude... need to make
-        // range queries of (-180 TO ur) OR (ll TO 180)
-        lonMin = -180;
-        lonMax = ur_lon;
-        lon2Min = ll_lon;
-        lon2Max = 180;
-      } else {
-        lonMin = ll_lon;
-        lonMax = ur_lon;
-      }
+       lonMin = bbox.getMinX();
+       lonMax = bbox.getMaxX();
+       lon2Min = -180;
+       lon2Max = 180;
     }
-
     
     // Now that we've figured out the ranges, build them!
     SchemaField latField = subField(options.field, LAT);
-    SchemaField lonField = subField(options.field, LONG);
+    SchemaField lonField = subField(options.field, LON);
 
     SpatialDistanceQuery spatial = new SpatialDistanceQuery();
 
@@ -349,8 +323,8 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
 
     public SpatialWeight(IndexSearcher searcher) throws IOException {
       this.searcher = searcher;
-      this.latContext = latSource.newContext(searcher);
-      this.lonContext = lonSource.newContext(searcher);
+      this.latContext = ValueSource.newContext(searcher);
+      this.lonContext = ValueSource.newContext(searcher);
       latSource.createWeight(latContext, searcher);
       lonSource.createWeight(lonContext, searcher);
     }
@@ -427,8 +401,8 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
       this.lon2 = SpatialDistanceQuery.this.lon2;
       this.calcDist = SpatialDistanceQuery.this.calcDist;
 
-      this.latCenterRad = SpatialDistanceQuery.this.latCenter * DistanceUtils.DEGREES_TO_RADIANS;
-      this.lonCenterRad = SpatialDistanceQuery.this.lonCenter * DistanceUtils.DEGREES_TO_RADIANS;
+      this.latCenterRad = SpatialDistanceQuery.this.latCenter * HaversineConstFunction.DEGREES_TO_RADIANS;
+      this.lonCenterRad = SpatialDistanceQuery.this.lonCenter * HaversineConstFunction.DEGREES_TO_RADIANS;
       this.latCenterRad_cos = this.calcDist ? Math.cos(latCenterRad) : 0;
       this.dist = SpatialDistanceQuery.this.dist;
       this.planetRadius = SpatialDistanceQuery.this.planetRadius;
@@ -457,8 +431,8 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
     }
 
     double dist(double lat, double lon) {
-      double latRad = lat * DistanceUtils.DEGREES_TO_RADIANS;
-      double lonRad = lon * DistanceUtils.DEGREES_TO_RADIANS;
+      double latRad = lat * HaversineConstFunction.DEGREES_TO_RADIANS;
+      double lonRad = lon * HaversineConstFunction.DEGREES_TO_RADIANS;
       
       // haversine, specialized to avoid a cos() call on latCenterRad
       double diffX = latCenterRad - latRad;

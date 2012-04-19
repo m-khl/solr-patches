@@ -48,11 +48,6 @@
   </scm>
   <dependencies>
     <dependency>
-      <groupId>org.apache.solr</groupId>
-      <artifactId>solr-noggit</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
       <groupId>org.apache.zookeeper</groupId>
       <artifactId>zookeeper</artifactId>
       <exclusions>
@@ -82,10 +77,25 @@
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>log4j-over-slf4j</artifactId>
+      <optional>true</optional>  <!-- let the end user decide... they may be using log4j directly! -->
     </dependency>
     <dependency>
-      <groupId>commons-httpclient</groupId>
-      <artifactId>commons-httpclient</artifactId>
+      <groupId>org.slf4j</groupId>
+      <artifactId>jcl-over-slf4j</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.httpcomponents</groupId>
+      <artifactId>httpmime</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>commons-io</groupId>
+      <artifactId>commons-io</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.httpcomponents</groupId>
+      <artifactId>httpclient</artifactId>
+      <!-- HttpSolrServer requires this dependency. -->
       <exclusions>
         <exclusion>
           <groupId>commons-logging</groupId>
@@ -94,12 +104,9 @@
       </exclusions>
     </dependency>
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>jcl-over-slf4j</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>commons-io</groupId>
-      <artifactId>commons-io</artifactId>
+      <groupId>org.apache.httpcomponents</groupId>
+      <artifactId>httpmime</artifactId>
+      <!-- HttpSolrServer requires this dependency. -->
     </dependency>
     <!-- Technically, this is optional in SolrJ; but it's fast. SOLR-2852 -->
     <dependency>

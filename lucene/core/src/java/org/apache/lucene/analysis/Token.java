@@ -22,6 +22,7 @@ import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.FlagsAttribute;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
+import org.apache.lucene.analysis.tokenattributes.PositionLengthAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 import org.apache.lucene.index.Payload;
 import org.apache.lucene.index.DocsAndPositionsEnum; // for javadoc
@@ -121,13 +122,14 @@ import org.apache.lucene.util.AttributeReflector;
 */
 public class Token extends CharTermAttributeImpl 
                    implements TypeAttribute, PositionIncrementAttribute,
-                              FlagsAttribute, OffsetAttribute, PayloadAttribute {
+                              FlagsAttribute, OffsetAttribute, PayloadAttribute, PositionLengthAttribute {
 
   private int startOffset,endOffset;
   private String type = DEFAULT_TYPE;
   private int flags;
   private Payload payload;
   private int positionIncrement = 1;
+  private int positionLength = 1;
 
   /** Constructs a Token will null text. */
   public Token() {
@@ -270,6 +272,20 @@ public class Token extends CharTermAttributeImpl
     return positionIncrement;
   }
 
+  /** Set the position length.
+   * @see PositionLengthAttribute */
+  @Override
+  public void setPositionLength(int positionLength) {
+    this.positionLength = positionLength;
+  }
+
+  /** Get the position length.
+   * @see PositionLengthAttribute */
+  @Override
+  public int getPositionLength() {
+    return positionLength;
+  }
+
   /** Returns this Token's starting offset, the position of the first character
     corresponding to this token in the source text.
 
@@ -366,11 +382,11 @@ public class Token extends CharTermAttributeImpl
   }
 
   @Override
-  public Object clone() {
+  public Token clone() {
     Token t = (Token)super.clone();
     // Do a deep clone
     if (payload != null) {
-      t.payload = (Payload) payload.clone();
+      t.payload = payload.clone();
     }
     return t;
   }
@@ -386,7 +402,7 @@ public class Token extends CharTermAttributeImpl
     t.flags = flags;
     t.type = type;
     if (payload != null)
-      t.payload = (Payload) payload.clone();
+      t.payload = payload.clone();
     return t;
   }
 
@@ -577,13 +593,13 @@ public class Token extends CharTermAttributeImpl
       to.reinit(this);
       // reinit shares the payload, so clone it:
       if (payload !=null) {
-        to.payload = (Payload) payload.clone();
+        to.payload = payload.clone();
       }
     } else {
       super.copyTo(target);
       ((OffsetAttribute) target).setOffset(startOffset, endOffset);
       ((PositionIncrementAttribute) target).setPositionIncrement(positionIncrement);
-      ((PayloadAttribute) target).setPayload((payload == null) ? null : (Payload) payload.clone());
+      ((PayloadAttribute) target).setPayload((payload == null) ? null : payload.clone());
       ((FlagsAttribute) target).setFlags(flags);
       ((TypeAttribute) target).setType(type);
     }

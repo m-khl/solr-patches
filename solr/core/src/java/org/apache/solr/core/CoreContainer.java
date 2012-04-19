@@ -57,19 +57,23 @@ import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.cloud.ZooKeeperException;
 import org.apache.solr.common.params.CoreAdminParams;
-import org.apache.solr.common.util.DOMUtil;
-import org.apache.solr.common.util.FileUtils;
-import org.apache.solr.common.util.SystemIdResolver;
+import org.apache.solr.util.DOMUtil;
+import org.apache.solr.util.FileUtils;
+import org.apache.solr.util.SystemIdResolver;
 import org.apache.solr.core.SolrXMLSerializer.SolrCoreXMLDef;
 import org.apache.solr.core.SolrXMLSerializer.SolrXMLDef;
 import org.apache.solr.handler.admin.CoreAdminHandler;
 import org.apache.solr.handler.component.HttpShardHandlerFactory;
 import org.apache.solr.handler.component.ShardHandlerFactory;
+import org.apache.solr.logging.ListenerConfig;
+import org.apache.solr.logging.LogWatcher;
+import org.apache.solr.logging.jul.JulWatcher;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.update.SolrCoreState;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.impl.StaticLoggerBinder;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
@@ -114,7 +118,7 @@ public class CoreContainer
   private ZkController zkController;
   private SolrZkServer zkServer;
   private ShardHandlerFactory shardHandlerFactory;
-
+  protected LogWatcher logging = null;
   private String zkHost;
   private Map<SolrCore,String> coreToOrigName = new ConcurrentHashMap<SolrCore,String>();
 
@@ -123,8 +127,14 @@ public class CoreContainer
     log.info("New CoreContainer " + System.identityHashCode(this));
   }
 
+  /**
+   * Deprecated
+   * @deprecated use the single arg constructure with locateSolrHome()
+   * @see SolrResourceLoader#locateSolrHome
+   */
+  @Deprecated
   public CoreContainer() {
-    solrHome = SolrResourceLoader.locateSolrHome();
+    this(SolrResourceLoader.locateSolrHome());
   }
 
   /**
@@ -138,6 +148,7 @@ public class CoreContainer
    */
   public CoreContainer(String dir, File configFile) throws ParserConfigurationException, IOException, SAXException
   {
+    this(dir);
     this.load(dir, configFile);
   }
 
@@ -146,8 +157,8 @@ public class CoreContainer
    * @param loader the CoreContainer resource loader
    */
   public CoreContainer(SolrResourceLoader loader) {
+    this(loader.getInstanceDir());
     this.loader = loader;
-    this.solrHome = loader.getInstanceDir();
   }
 
   public CoreContainer(String solrHome) {
@@ -287,7 +298,7 @@ public class CoreContainer
       File fconf = new File(solrHome, containerConfigFilename == null ? "solr.xml"
           : containerConfigFilename);
       log.info("looking for solr.xml: " + fconf.getAbsolutePath());
-      cores = new CoreContainer();
+      cores = new CoreContainer(solrHome);
       
       if (fconf.exists()) {
         cores.load(solrHome, fconf);
@@ -355,6 +366,13 @@ public class CoreContainer
    */
   public void load(String dir, InputSource cfgis)
       throws ParserConfigurationException, IOException, SAXException {
+
+    if (null == dir) {
+      // don't rely on SolrResourceLoader(), determine explicitly first
+      dir = SolrResourceLoader.locateSolrHome();
+    }
+    log.info("Loading CoreContainer using Solr Home: '{}'", dir);
+
     this.loader = new SolrResourceLoader(dir);
     solrHome = loader.getInstanceDir();
     
@@ -368,6 +386,55 @@ public class CoreContainer
     }
     
     cfg.substituteProperties();
+    
+    // Initialize Logging
+    if(cfg.getBool("solr/logging/@enabled",true)) {
+      String slf4jImpl = null;
+      String fname = cfg.get("solr/logging/watcher/@class", null);
+      try {
+        slf4jImpl = StaticLoggerBinder.getSingleton().getLoggerFactoryClassStr();
+        if(fname==null) {
+          if( slf4jImpl.indexOf("Log4j") > 0) {
+            fname = "Log4j";
+          }
+          else if( slf4jImpl.indexOf("JDK") > 0) {
+            fname = "JUL";
+          }
+        }
+      }
+      catch(Exception ex) {
+        log.warn("Unable to read SLF4J version", ex);
+      }
+      
+      // Now load the framework
+      if(fname!=null) {
+        if("JUL".equalsIgnoreCase(fname)) {
+          logging = new JulWatcher(slf4jImpl);
+        }
+//        else if( "Log4j".equals(fname) ) {
+//          logging = new Log4jWatcher(slf4jImpl);
+//        }
+        else {
+          try {
+            logging = loader.newInstance(fname, LogWatcher.class);
+          }
+          catch (Exception e) {
+            throw new SolrException(ErrorCode.SERVER_ERROR, e);
+          }
+        }
+        
+        if( logging != null ) {
+          ListenerConfig v = new ListenerConfig();
+          v.size = cfg.getInt("solr/logging/watcher/@size",50);
+          v.threshold = cfg.get("solr/logging/watcher/@threshold",null);
+          if(v.size>0) {
+            log.info("Registering Log Listener");
+            logging.registerListener(v, this);
+          }
+        }
+      }
+    }
+    
     
     String dcoreName = cfg.get("solr/cores/@defaultCoreName", null);
     if(dcoreName != null) {
@@ -675,7 +742,8 @@ public class CoreContainer
       idir = new File(solrHome, dcore.getInstanceDir());
     }
     String instanceDir = idir.getPath();
-    
+    log.info("Creating SolrCore '{}' using instanceDir: {}", 
+             dcore.getName(), instanceDir);
     // Initialize the solr config
     SolrResourceLoader solrLoader = null;
     
@@ -831,6 +899,9 @@ public class CoreContainer
     if (!instanceDir.isAbsolute()) {
       instanceDir = new File(getSolrHome(), cd.getInstanceDir());
     }
+
+    log.info("Reloading SolrCore '{}' using instanceDir: {}", 
+             cd.getName(), instanceDir.getAbsolutePath());
     
     SolrResourceLoader solrLoader;
     if(zkController == null) {
@@ -956,15 +1027,9 @@ public class CoreContainer
    * @return a CoreAdminHandler
    */
   protected CoreAdminHandler createMultiCoreHandler(final String adminHandlerClass) {
-    SolrResourceLoader loader = new SolrResourceLoader(null, libLoader, null);
-    Object obj = loader.newAdminHandlerInstance(CoreContainer.this, adminHandlerClass);
-    if ( !(obj instanceof CoreAdminHandler))
-    {
-      throw new SolrException( SolrException.ErrorCode.SERVER_ERROR,
-          "adminHandlerClass is not of type "+ CoreAdminHandler.class );
-      
-    }
-    return (CoreAdminHandler) obj;
+    // :TODO: why create a new SolrResourceLoader? why not use this.loader ???
+    SolrResourceLoader loader = new SolrResourceLoader(solrHome, libLoader, null);
+    return loader.newAdminHandlerInstance(CoreContainer.this, adminHandlerClass);
   }
 
   public CoreAdminHandler getMultiCoreHandler() {
@@ -1008,6 +1073,13 @@ public class CoreContainer
    */
   public void setManagementPath(String path) {
     this.managementPath = path;
+  }
+  
+  public LogWatcher getLogging() {
+    return logging;
+  }
+  public void setLogging(LogWatcher v) {
+    logging = v;
   }
   
   public File getConfigFile() {

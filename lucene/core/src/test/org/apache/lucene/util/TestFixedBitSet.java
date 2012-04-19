@@ -43,7 +43,7 @@ public class TestFixedBitSet extends LuceneTestCase {
   }
 
   void doPrevSetBit(BitSet a, FixedBitSet b) {
-    int aa = a.size() + random.nextInt(100);
+    int aa = a.size() + random().nextInt(100);
     int bb = aa;
     do {
       // aa = a.prevSetBit(aa-1);
@@ -75,7 +75,7 @@ public class TestFixedBitSet extends LuceneTestCase {
     DocIdSetIterator iterator = b.iterator();
     do {
       aa = a.nextSetBit(aa+1);
-      bb = (bb < b.length() && random.nextBoolean()) ? iterator.nextDoc() : iterator.advance(bb + 1);
+      bb = (bb < b.length() && random().nextBoolean()) ? iterator.nextDoc() : iterator.advance(bb + 1);
       assertEquals(aa == -1 ? DocIdSetIterator.NO_MORE_DOCS : aa, bb);
     } while (aa>=0);
   }
@@ -85,7 +85,7 @@ public class TestFixedBitSet extends LuceneTestCase {
     DocIdSetIterator iterator = b.iterator();
     do {
       aa = a.nextSetBit(aa+1);
-      bb = random.nextBoolean() ? iterator.nextDoc() : iterator.advance(bb + 1);
+      bb = random().nextBoolean() ? iterator.nextDoc() : iterator.advance(bb + 1);
       assertEquals(aa == -1 ? DocIdSetIterator.NO_MORE_DOCS : aa, bb);
     } while (aa>=0);
   }
@@ -95,29 +95,29 @@ public class TestFixedBitSet extends LuceneTestCase {
     FixedBitSet b0=null;
 
     for (int i=0; i<iter; i++) {
-      int sz = _TestUtil.nextInt(random, 2, maxSize);
+      int sz = _TestUtil.nextInt(random(), 2, maxSize);
       BitSet a = new BitSet(sz);
       FixedBitSet b = new FixedBitSet(sz);
 
       // test the various ways of setting bits
       if (sz>0) {
-        int nOper = random.nextInt(sz);
+        int nOper = random().nextInt(sz);
         for (int j=0; j<nOper; j++) {
           int idx;         
 
-          idx = random.nextInt(sz);
+          idx = random().nextInt(sz);
           a.set(idx);
           b.set(idx);
           
-          idx = random.nextInt(sz);
+          idx = random().nextInt(sz);
           a.clear(idx);
           b.clear(idx);
           
-          idx = random.nextInt(sz);
+          idx = random().nextInt(sz);
           a.flip(idx);
           b.flip(idx, idx+1);
 
-          idx = random.nextInt(sz);
+          idx = random().nextInt(sz);
           a.flip(idx);
           b.flip(idx, idx+1);
 
@@ -136,26 +136,26 @@ public class TestFixedBitSet extends LuceneTestCase {
 
       // test ranges, including possible extension
       int fromIndex, toIndex;
-      fromIndex = random.nextInt(sz/2);
-      toIndex = fromIndex + random.nextInt(sz - fromIndex);
+      fromIndex = random().nextInt(sz/2);
+      toIndex = fromIndex + random().nextInt(sz - fromIndex);
       BitSet aa = (BitSet)a.clone(); aa.flip(fromIndex,toIndex);
-      FixedBitSet bb = (FixedBitSet)b.clone(); bb.flip(fromIndex,toIndex);
+      FixedBitSet bb = b.clone(); bb.flip(fromIndex,toIndex);
 
       doIterate(aa,bb, mode);   // a problem here is from flip or doIterate
 
-      fromIndex = random.nextInt(sz/2);
-      toIndex = fromIndex + random.nextInt(sz - fromIndex);
+      fromIndex = random().nextInt(sz/2);
+      toIndex = fromIndex + random().nextInt(sz - fromIndex);
       aa = (BitSet)a.clone(); aa.clear(fromIndex,toIndex);
-      bb = (FixedBitSet)b.clone(); bb.clear(fromIndex,toIndex);
+      bb = b.clone(); bb.clear(fromIndex,toIndex);
 
       doNextSetBit(aa,bb); // a problem here is from clear() or nextSetBit
       
       doPrevSetBit(aa,bb);
 
-      fromIndex = random.nextInt(sz/2);
-      toIndex = fromIndex + random.nextInt(sz - fromIndex);
+      fromIndex = random().nextInt(sz/2);
+      toIndex = fromIndex + random().nextInt(sz - fromIndex);
       aa = (BitSet)a.clone(); aa.set(fromIndex,toIndex);
-      bb = (FixedBitSet)b.clone(); bb.set(fromIndex,toIndex);
+      bb = b.clone(); bb.set(fromIndex,toIndex);
 
       doNextSetBit(aa,bb); // a problem here is from set() or nextSetBit
     
@@ -168,9 +168,9 @@ public class TestFixedBitSet extends LuceneTestCase {
         BitSet a_or = (BitSet)a.clone(); a_or.or(a0);
         BitSet a_andn = (BitSet)a.clone(); a_andn.andNot(a0);
 
-        FixedBitSet b_and = (FixedBitSet)b.clone(); assertEquals(b,b_and); b_and.and(b0);
-        FixedBitSet b_or = (FixedBitSet)b.clone(); b_or.or(b0);
-        FixedBitSet b_andn = (FixedBitSet)b.clone(); b_andn.andNot(b0);
+        FixedBitSet b_and = b.clone(); assertEquals(b,b_and); b_and.and(b0);
+        FixedBitSet b_or = b.clone(); b_or.or(b0);
+        FixedBitSet b_andn = b.clone(); b_andn.andNot(b0);
 
         assertEquals(a0.cardinality(), b0.cardinality());
         assertEquals(a_or.cardinality(), b_or.cardinality());
@@ -206,13 +206,13 @@ public class TestFixedBitSet extends LuceneTestCase {
 
   public void testEquals() {
     // This test can't handle numBits==0:
-    final int numBits = random.nextInt(2000) + 1;
+    final int numBits = random().nextInt(2000) + 1;
     FixedBitSet b1 = new FixedBitSet(numBits);
     FixedBitSet b2 = new FixedBitSet(numBits);
     assertTrue(b1.equals(b2));
     assertTrue(b2.equals(b1));
     for(int iter=0;iter<10*RANDOM_MULTIPLIER;iter++) {
-      int idx = random.nextInt(numBits);
+      int idx = random().nextInt(numBits);
       if (!b1.get(idx)) {
         b1.set(idx);
         assertFalse(b1.equals(b2));
@@ -229,13 +229,13 @@ public class TestFixedBitSet extends LuceneTestCase {
   
   public void testHashCodeEquals() {
     // This test can't handle numBits==0:
-    final int numBits = random.nextInt(2000) + 1;
+    final int numBits = random().nextInt(2000) + 1;
     FixedBitSet b1 = new FixedBitSet(numBits);
     FixedBitSet b2 = new FixedBitSet(numBits);
     assertTrue(b1.equals(b2));
     assertTrue(b2.equals(b1));
     for(int iter=0;iter<10*RANDOM_MULTIPLIER;iter++) {
-      int idx = random.nextInt(numBits);
+      int idx = random().nextInt(numBits);
       if (!b1.get(idx)) {
         b1.set(idx);
         assertFalse(b1.equals(b2));

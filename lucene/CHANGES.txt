@@ -3,7 +3,13 @@ Lucene Change Log
 For more information on past and future Lucene versions, please see:
 http://s.apache.org/luceneversions
 
+For "contrib" changes prior to 4.0, please see:
+http://svn.apache.org/repos/asf/lucene/dev/tags/lucene_solr_3_6_0/lucene/contrib/CHANGES.txt
+
 ======================= Trunk (not yet released) =======================
+More information about this release, including any errata related to the 
+release notes, upgrade instructions, or other changes may be found online at:
+   https://wiki.apache.org/lucene-java/Lucene4.0
 
 Changes in backwards compatibility policy
 
@@ -254,6 +260,11 @@ Changes in backwards compatibility policy
   you can use SlowCompositeReaderWrapper to make all parallel readers atomic
   and use ParallelAtomicReader.  (Uwe Schindler, Mike McCandless, Robert Muir)
 
+* LUCENE-2000: clone() now returns covariant types where possible. (ryan)
+
+* LUCENE-3970: Rename Fields.getUniqueFieldCount -> .size() and
+  Terms.getUniqueTermCount -> .size().  (Iulius Curt via Mike McCandless)
+
 Changes in Runtime Behavior
 
 * LUCENE-2846: omitNorms now behaves like omitTermFrequencyAndPositions, if you
@@ -346,7 +357,15 @@ Changes in Runtime Behavior
   tokenized or not.  In general you should not rely on stored fields
   to record any "metadata" from indexing (tokenized, omitNorms,
   IndexOptions, boost, etc.)  (Mike McCandless)
-  
+
+ * LUCENE-3309: Fast vector highlighter now inserts the
+   MultiValuedSeparator for NOT_ANALYZED fields (in addition to
+   ANALYZED fields).  To ensure your offsets are correct you should
+   provide an analyzer that returns 1 from the offsetGap method.
+   (Mike McCandless)
+
+ * LUCENE-2621: Removed contrib/instantiated.  (Robert Muir)
+
 API Changes
 
 * LUCENE-2302, LUCENE-1458, LUCENE-2111, LUCENE-2514: Terms are no longer
@@ -409,6 +428,37 @@ API Changes
   SearcherManager remains a concrete class, but due to the refactoring, the 
   method maybeReopen has been deprecated in favor of maybeRefresh().
   (Shai Erera, Mike McCandless, Simon Willnauer)
+
+* LUCENE-3859: AtomicReader.hasNorms(field) is deprecated, instead you
+  can inspect the FieldInfo yourself to see if norms are present, which
+  also allows you to get the type.  (Robert Muir)
+
+* LUCENE-2606: Changed RegexCapabilities interface to fix thread 
+  safety, serialization, and performance problems. If you have
+  written a custom RegexCapabilities it will need to be updated
+  to the new API.  (Robert Muir, Uwe Schindler)
+
+* LUCENE-2638 MakeHighFreqTerms.TermStats public to make it more useful
+  for API use. (Andrzej Bialecki)
+
+* LUCENE-2912: The field-specific hashmaps in SweetSpotSimilarity were removed.
+  Instead, use PerFieldSimilarityWrapper to return different SweetSpotSimilaritys
+  for different fields, this way all parameters (such as TF factors) can be 
+  customized on a per-field basis.  (Robert Muir)
+
+* LUCENE-3308: DuplicateFilter keepMode and processingMode have been converted to
+  enums DuplicateFilter.KeepMode and DuplicateFilter.ProcessingMode repsectively.
+
+* LUCENE-3483: Move Function grouping collectors from Solr to grouping module.
+  (Martijn van Groningen)
+   
+* LUCENE-3606: FieldNormModifier was deprecated, because IndexReader's
+  setNorm() was deprecated. Furthermore, this class is broken, as it does
+  not take position overlaps into account while recalculating norms.
+  (Uwe Schindler, Robert Muir)
+
+* LUCENE-3936: Renamed StringIndexDocValues to DocTermsIndexDocValues.
+  (Martijn van Groningen)
 
 New features
 
@@ -644,6 +694,49 @@ New features
   value, custom similarities can now set a integer, float or byte value to the
   given Norm object. (Simon Willnauer)  
 
+* LUCENE-2604: Added RegexpQuery support to contrib/queryparser.
+  (Simon Willnauer, Robert Muir)
+
+* LUCENE-2373: Added a Codec implementation that works with append-only
+  filesystems (such as e.g. Hadoop DFS). SegmentInfos writing/reading
+  code is refactored to support append-only FS, and to allow for future
+  customization of per-segment information. (Andrzej Bialecki)
+
+* LUCENE-2479: Added ability to provide a sort comparator for spelling suggestions along
+  with two implementations.  The existing comparator (score, then frequency) is the default (Grant Ingersoll)
+
+* LUCENE-2608: Added the ability to specify the accuracy at method time in the SpellChecker.  The per class
+  method is also still available.  (Grant Ingersoll)
+    
+* LUCENE-2507: Added DirectSpellChecker, which retrieves correction candidates directly 
+  from the term dictionary using levenshtein automata.  (Robert Muir)
+
+* LUCENE-3527: Add LuceneLevenshteinDistance, which computes string distance in a compatible
+  way as DirectSpellChecker. This can be used to merge top-N results from more than one
+  SpellChecker.  (James Dyer via Robert Muir)
+
+* LUCENE-3496: Support grouping by DocValues. (Martijn van Groningen)
+
+* LUCENE-2795: Generified DirectIOLinuxDirectory to work across any
+  unix supporting the O_DIRECT flag when opening a file (tested on
+  Linux and OS X but likely other Unixes will work), and improved it
+  so it can be used for indexing and searching.  The directory uses
+  direct IO when doing large merges to avoid  unnecessarily evicting
+  cached IO pages due to large merges.  (Varun Thacker, Mike
+  McCandless)
+
+* LUCENE-3827: DocsAndPositionsEnum from MemoryIndex implements
+  start/endOffset, if offsets are indexed. (Alan Woodward via Mike
+  McCandless)
+
+* LUCENE-3802, LUCENE-3856: Support for grouped faceting. (Martijn van Groningen)
+
+* LUCENE-3444: Added a second pass grouping collector that keeps track of distinct
+  values for a specified field for the top N group. (Martijn van Groningen)
+
+* LUCENE-3778: Added a grouping utility class that makes it easier to use result
+  grouping for pure Lucene apps. (Martijn van Groningen)
+
 Optimizations
 
 * LUCENE-2588: Don't store unnecessary suffixes when writing the terms
@@ -678,6 +771,16 @@ Optimizations
   should be rounded up for better performance. This option only applies for docvalues types bytes fixed sorted
   and bytes var sorted. (Simon Willnauer, Martijn van Groningen)
   
+* LUCENE-3795: Replace contrib/spatial with modules/spatial.  This includes 
+  a basic spatial strategy interface.  (David Smiley, Chris Male, ryan)
+    
+* LUCENE-3932: Lucene3x codec loads terms index faster, by
+  pre-allocating the packed ints array based on the .tii file size
+  (Sean Bridges via Mike McCandless)
+
+* LUCENE-3468: Replaced last() and remove() with pollLast() in
+  FirstPassGroupingCollector (Martijn van Groningen)
+             
 Bug fixes
 
 * LUCENE-2803: The FieldCache can miss values if an entry for a reader
@@ -700,10 +803,44 @@ Bug fixes
 * LUCENE-3589: BytesRef copy(short) didnt set length.
   (Peter Chang via Robert Muir)
 
-* SOLR-3076: ToParent/ChildBlockJoinQuery was not handling an incoming
-  filter nor deleted docs correctly (Mikhail Khludnev via Mike
-  McCandless).
-  
+* LUCENE-3045: fixed QueryNodeImpl.containsTag(String key) that was
+  not lowercasing the key before checking for the tag (Adriano Crestani)
+
+* LUCENE-3890: Fixed NPE for grouped faceting on multi-valued fields.
+  (Michael McCandless, Martijn van Groningen)
+
+Documentation
+
+* LUCENE-3958: Javadocs corrections for IndexWriter.
+  (Iulius Curt via Robert Muir)
+
+Build
+
+* LUCENE-3808: Refactoring of testing infrastructure to use randomizedtesting
+  package: http://labs.carrotsearch.com/randomizedtesting.html (Dawid Weiss)
+
+* LUCENE-3964: Added target stage-maven-artifacts, which stages
+  Maven release artifacts to a Maven staging repository in preparation
+  for release.  (Steve Rowe)
+
+* LUCENE-2845: Moved contrib/benchmark to lucene/benchmark.
+
+* LUCENE-2995: Moved contrib/spellchecker into lucene/suggest.
+
+* LUCENE-3285: Moved contrib/queryparser into lucene/queryparser
+
+* LUCENE-3285: Moved contrib/xml-query-parser's demo into lucene/demo
+
+* LUCENE-3271: Moved contrib/queries BooleanFilter, BoostingQuery, 
+  ChainedFilter, FilterClause and TermsFilter into lucene/queries
+
+* LUCENE-3381: Moved contrib/queries regex.*, DuplicateFilter,
+  FuzzyLikeThisQuery and SlowCollated* into lucene/sandbox.
+  Removed contrib/queries.
+
+* LUCENE-3286: Moved remainder of contrib/xml-query-parser to lucene/queryparser.
+  Classes now found at org.apache.lucene.queryparser.xml.*
+
 ======================= Lucene 3.6.0 =======================
 
 Changes in backwards compatibility policy
@@ -761,21 +898,47 @@ Changes in backwards compatibility policy
 * LUCENE-3712: Removed unused and untested ReaderUtil#subReader methods.
   (Uwe Schindler)
 
-* LUCENE-3672: Deprecate Directory.fileModified and
-  IndexCommit.getTimestamp and .getVersion. (Andrzej Bialecki, Robert
-  Muir, Mike McCandless)
+* LUCENE-3672: Deprecate Directory.fileModified,
+  IndexCommit.getTimestamp and .getVersion and
+  IndexReader.lastModified and getCurrentVersion (Andrzej Bialecki,
+  Robert Muir, Mike McCandless)
 
 * LUCENE-3760: In IndexReader/DirectoryReader, deprecate static
   methods getCurrentVersion and getCommitUserData, and non-static
   method getCommitUserData (use getIndexCommit().getUserData()
   instead).  (Ryan McKinley, Robert Muir, Mike McCandless)
   
+* LUCENE-3867: Deprecate instance creation of RamUsageEstimator, instead
+  the new static method sizeOf(Object) should be used. As the algorithm
+  is now using Hotspot(TM) internals (reference size, header sizes,
+  object alignment), the abstract o.a.l.util.MemoryModel class was
+  completely removed (without replacement). The new static methods
+  no longer support String intern-ness checking, interned strings
+  now count to memory usage as any other Java object.
+  (Dawid Weiss, Uwe Schindler, Shai Erera)
+  
+* LUCENE-3738: All readXxx methods in BufferedIndexInput were made
+  final. Subclasses should only override protected readInternal /
+  seekInternal.  (Uwe Schindler)
+  
 Changes in Runtime Behavior
 
-* LUCENE-3796: Throw an exception if you try to set an index-time
+* LUCENE-3796, SOLR-3241: Throw an exception if you try to set an index-time
   boost on a field that omits norms. Because the index-time boost
   is multiplied into the norm, previously your boost would be 
-  silently discarded.  (Robert Muir)
+  silently discarded.  (Tomás Fernández Löbbe, Hoss Man, Robert Muir)
+
+* LUCENE-3848: Fix tokenstreams to not produce a stream with an initial
+  position increment of 0: which is out of bounds (overlapping with a
+  non-existent previous term). Consumers such as IndexWriter and QueryParser
+  still check for and silently correct this situation today, but at some point 
+  in the future they may throw an exception.  (Mike McCandless, Robert Muir)
+  
+* LUCENE-3738: DataInput/DataOutput no longer allow negative vLongs. Negative
+  vInts are still supported (for index backwards compatibility), but
+  should not be used in new code. The read method for negative vLongs
+  was already broken since Lucene 3.1.
+  (Uwe Schindler, Mike McCandless, Robert Muir)
   
 Security fixes
 
@@ -822,10 +985,14 @@ API Changes
   create two NRTManagers (one always applying deletes and the other
   never applying deletes).  (MJB, Shai Erera, Mike McCandless)
 
+* LUCENE-3761: Generalize SearcherManager into an abstract ReferenceManager.
+  SearcherManager remains a concrete class, but due to the refactoring, the
+  method maybeReopen has been deprecated in favor of maybeRefresh().
+  (Shai Erera, Mike McCandless, Simon Willnauer)
+
 * LUCENE-3776: You now acquire/release the IndexSearcher directly from
   NRTManager.  (Mike McCandless)
   
-
 New Features
 
 * LUCENE-3593: Added a FieldValueFilter that accepts all documents that either
@@ -853,14 +1020,20 @@ New Features
 * LUCENE-3671: Add TypeTokenFilter that filters tokens based on
   their TypeAttribute.  (Tommaso Teofili via Uwe Schindler)
 
-* LUCENE-3690: Added HTMLStripCharFilter, a CharFilter that strips HTML
-  markup. (Steve Rowe)
+* LUCENE-3690,LUCENE-3913: Added HTMLStripCharFilter, a CharFilter that strips
+  HTML markup. (Steve Rowe)
 
 * LUCENE-3725: Added optional packing to FST building; this uses extra
   RAM during building but results in a smaller FST.  (Mike McCandless)
 
 * LUCENE-3714: Add top N shortest cost paths search for FST.
   (Robert Muir, Dawid Weiss, Mike McCandless)
+
+* LUCENE-3789: Expose MTQ TermsEnum via RewriteMethod for non package private
+  access (Simon Willnauer)
+
+* LUCENE-3881: Added UAX29URLEmailAnalyzer: a standard analyzer that recognizes
+  URLs and emails. (Steve Rowe)
 
 Bug fixes
 
@@ -915,7 +1088,34 @@ Bug fixes
   from the delegate DocIdSet.iterator(), which is allowed to return
   null by DocIdSet specification when no documents match.
   (Shay Banon via Uwe Schindler)
+  
+* LUCENE-3821: SloppyPhraseScorer missed documents that ExactPhraseScorer finds
+  When phrase query had repeating terms (e.g. "yes no yes")  
+  sloppy query missed documents that exact query matched. 
+  Fixed except when for repeating multiterms (e.g. "yes no yes|no").
+  (Robert Muir, Doron Cohen)
 
+* LUCENE-3841: Fix CloseableThreadLocal to also purge stale entries on
+  get(); this fixes certain cases where we were holding onto objects
+  for dead threads for too long (Matthew Bellew, Mike McCandless)
+
+* LUCENE-3872: IndexWriter.close() now throws IllegalStateException if
+  you call it after calling prepareCommit() without calling commit()
+  first.  (Tim Bogaert via Mike McCandless)
+
+* LUCENE-3874: Throw IllegalArgumentException from IndexWriter (rather
+  than producing a corrupt index), if a positionIncrement would cause
+  integer overflow. This can happen, for example when using a buggy
+  TokenStream that forgets to call clearAttributes() in combination
+  with a StopFilter. (Robert Muir)
+
+* LUCENE-3876: Fix bug where positions for a document exceeding
+  Integer.MAX_VALUE/2 would produce a corrupt index.  
+  (Simon Willnauer, Mike Mccandless, Robert Muir)
+
+* LUCENE-3880: UAX29URLEmailTokenizer now recognizes emails when the mailto:
+  scheme is prepended. (Kai Gülzau, Steve Rowe)
+    
 Optimizations
 
 * LUCENE-3653: Improve concurrency in VirtualMethod and AttributeSource by
@@ -924,9 +1124,31 @@ Optimizations
 
 Documentation
 
-* LUCENE-3597: Fixed incorrect grouping documentation. (Martijn van Groningen, Robert Muir)
+* LUCENE-3597: Fixed incorrect grouping documentation. (Martijn van Groningen,
+  Robert Muir)
+
+* LUCENE-3926: Improve documentation of RAMDirectory, because this
+  class is not intended to work with huge indexes. Everything beyond
+  several hundred megabytes will waste resources (GC cycles), because
+  it uses an internal buffer size of 1024 bytes, producing millions of 
+  byte[1024] arrays. This class is optimized for small memory-resident
+  indexes. It also has bad concurrency on multithreaded environments.
+  It is recommended to materialize large indexes on disk and use
+  MMapDirectory, which is a high-performance directory implementation
+  working directly on the file system cache of the operating system,
+  so copying data to Java heap space is not useful.  (Uwe Schindler,
+  Mike McCandless, Robert Muir)
 
 Build
+
+* LUCENE-3857: exceptions from other threads in beforeclass/etc do not fail 
+  the test (Dawid Weiss)
+
+* LUCENE-3847: LuceneTestCase will now check for modifications of System 
+  properties before and after each test (and suite). If changes are detected,
+  the test will fail. A rule can be used to reset system properties to
+  before-scope state (and this has been used to make Solr tests pass).
+  (Dawid Weiss, Uwe Schindler).
 
 * LUCENE-3228: Stop downloading external javadoc package-list files:
 
@@ -970,6 +1192,15 @@ Build
 
 * LUCENE-3762: Upgrade JUnit to 4.10, refactor state-machine of detecting 
   setUp/tearDown call chaining in LuceneTestCase. (Dawid Weiss, Robert Muir)
+
+* LUCENE-3944: Make the 'generate-maven-artifacts' target use filtered POMs
+  placed under lucene/build/poms/, rather than in each module's base
+  directory.  The 'clean' target now removes them.
+  (Steve Rowe, Robert Muir)
+
+* LUCENE-3930: Changed build system to use Apache Ivy for retrival of 3rd
+  party JAR files.  Please review BUILD.txt for instructions.
+  (Robert Muir, Chris Male, Uwe Schindler, Steven Rowe, Hossman)
 
 
 ======================= Lucene 3.5.0 =======================
@@ -1113,9 +1344,6 @@ New Features
   
 * LUCENE-3558: Moved SearcherManager, NRTManager & SearcherLifetimeManager into
   core. All classes are contained in o.a.l.search. (Simon Willnauer)
-
-* LUCENE-3789: Expose MTQ TermsEnum via RewriteMethod for non package private
-  access (Simon Willnauer)
 
 Optimizations
 

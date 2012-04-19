@@ -30,6 +30,9 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 
+/**
+ * Utility class for asserting expected hits in tests.
+ */
 public class CheckHits {
   
   /**
@@ -88,7 +91,6 @@ public class CheckHits {
    * @param searcher the searcher to test the query against
    * @param defaultFieldName used for displaying the query in assertion messages
    * @param results a list of documentIds that must match the query
-   * @see Searcher#search(Query,Collector)
    * @see #checkHits
    */
   public static void checkHitCollector(Random random, Query query, String defaultFieldName,
@@ -119,6 +121,9 @@ public class CheckHits {
     }
   }
 
+  /**
+   * Just collects document ids into a set.
+   */
   public static class SetCollector extends Collector {
     final Set<Integer> bag;
     public SetCollector(Set<Integer> bag) {
@@ -152,7 +157,6 @@ public class CheckHits {
    * @param searcher the searcher to test the query against
    * @param defaultFieldName used for displaing the query in assertion messages
    * @param results a list of documentIds that must match the query
-   * @see Searcher#search(Query, int)
    * @see #checkHitCollector
    */
   public static void checkHits(

@@ -73,7 +73,7 @@ public class PulsingPostingsReader extends PostingsReaderBase {
     private byte[] inlinedBytes;
 
     @Override
-    public Object clone() {
+    public PulsingTermState clone() {
       PulsingTermState clone;
       clone = (PulsingTermState) super.clone();
       if (postingsSize != -1) {
@@ -475,7 +475,7 @@ public class PulsingPostingsReader extends PostingsReaderBase {
           payloadLength = postings.readVInt();
           //System.out.println("PR     new payload len=" + payloadLength);
         }
-        position += code >> 1;
+        position += code >>> 1;
         payloadRetrieved = false;
       } else {
         position += postings.readVInt();

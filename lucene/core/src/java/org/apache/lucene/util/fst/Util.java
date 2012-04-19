@@ -23,7 +23,7 @@ import java.util.*;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IntsRef;
 
-/** Static helper methods
+/** Static helper methods.
  *
  * @lucene.experimental */
 public final class Util {
@@ -490,10 +490,14 @@ public final class Util {
         }
       }
     
-      return results.toArray(new MinResult[results.size()]);
+      @SuppressWarnings({"rawtypes","unchecked"}) final MinResult<T>[] arr =
+        (MinResult<T>[]) new MinResult[results.size()];
+      return results.toArray(arr);
     }
   }
 
+  /** Holds a single input (IntsRef) + output, returned by
+   *  {@link #shortestPaths}. */
   public final static class MinResult<T> implements Comparable<MinResult<T>> {
     public final IntsRef input;
     public final T output;
@@ -530,10 +534,10 @@ public final class Util {
    * Dumps an {@link FST} to a GraphViz's <code>dot</code> language description
    * for visualization. Example of use:
    * 
-   * <pre>
-   * PrintStream ps = new PrintStream(&quot;out.dot&quot;);
-   * fst.toDot(ps);
-   * ps.close();
+   * <pre class="prettyprint">
+   * PrintWriter pw = new PrintWriter(&quot;out.dot&quot;);
+   * Util.toDot(fst, pw, true, true);
+   * pw.close();
    * </pre>
    * 
    * and then, from command line:

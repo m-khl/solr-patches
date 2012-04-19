@@ -41,9 +41,9 @@ import org.apache.lucene.util._TestUtil;
 
 import static org.apache.lucene.util.LuceneTestCase.TEST_VERSION_CURRENT;
 
-
-
-
+/**
+ * Utility class for sanity-checking queries.
+ */
 public class QueryUtils {
 
   /** Check the types of things query objects should be able to do. */
@@ -53,10 +53,10 @@ public class QueryUtils {
 
   /** check very basic hashCode and equals */
   public static void checkHashEquals(Query q) {
-    Query q2 = (Query)q.clone();
+    Query q2 = q.clone();
     checkEqual(q,q2);
 
-    Query q3 = (Query)q.clone();
+    Query q3 = q.clone();
     q3.setBoost(7.21792348f);
     checkUnequal(q,q3);
 
@@ -120,7 +120,7 @@ public class QueryUtils {
         }
         checkExplanations(q1,s);
         
-        Query q2 = (Query)q1.clone();
+        Query q2 = q1.clone();
         checkEqual(s.rewrite(q1),
                    s.rewrite(q2));
       }

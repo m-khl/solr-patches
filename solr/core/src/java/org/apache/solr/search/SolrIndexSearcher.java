@@ -117,7 +117,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
 
   public SolrIndexSearcher(SolrCore core, String path, IndexSchema schema, SolrIndexConfig config, String name, boolean enableCache, DirectoryFactory directoryFactory) throws IOException {
     // we don't need to reserve the directory because we get it from the factory
-    this(core, schema,name, core.getIndexReaderFactory().newReader(directoryFactory.get(path, config.lockType)), true, enableCache, false, directoryFactory);
+    this(core, schema,name, core.getIndexReaderFactory().newReader(directoryFactory.get(path, config.lockType), core), true, enableCache, false, directoryFactory);
   }
 
   public SolrIndexSearcher(SolrCore core, IndexSchema schema, String name, DirectoryReader r, boolean closeReader, boolean enableCache, boolean reserveDirectory, DirectoryFactory directoryFactory) throws IOException {
@@ -188,8 +188,11 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       cacheMap = noGenericCaches;
       cacheList= noCaches;
     }
-    optimizer = solrConfig.filtOptEnabled ? new LuceneQueryOptimizer(solrConfig.filtOptCacheSize,solrConfig.filtOptThreshold) : null;
-
+    
+    // TODO: This option has been dead/noop since 3.1, should we re-enable it?
+//    optimizer = solrConfig.filtOptEnabled ? new LuceneQueryOptimizer(solrConfig.filtOptCacheSize,solrConfig.filtOptThreshold) : null;
+    optimizer = null;
+    
     fieldNames = new HashSet<String>();
     for(FieldInfo fieldInfo : atomicReader.getFieldInfos()) {
       fieldNames.add(fieldInfo.name);
@@ -382,6 +385,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     return qr;
   }
 
+//  FIXME: This option has been dead/noop since 3.1, should we re-enable or remove it?
 //  public Hits search(Query query, Filter filter, Sort sort) throws IOException {
 //    // todo - when Solr starts accepting filters, need to
 //    // change this conditional check (filter!=null) and create a new filter
@@ -1981,10 +1985,6 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
 
   public Category getCategory() {
     return Category.CORE;
-  }
-
-  public String getSourceId() {
-    return "$Id$";
   }
 
   public String getSource() {

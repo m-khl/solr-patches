@@ -30,13 +30,6 @@ import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
 
 /**
- * similar to "admin/registry.jsp" 
- * 
- * NOTE: the response format is still likely to change.  It should be designed so
- * that it works nicely with an XSLT transformation.  Until we have a nice
- * XSLT front end for /admin, the format is still open to change.
- * 
- *
  * @since solr 1.2
  */
 public class PluginInfoHandler extends RequestHandlerBase
@@ -70,8 +63,6 @@ public class PluginInfoHandler extends RequestHandlerBase
         info.add( "name",        (m.getName()       !=null ? m.getName()        : na) );
         info.add( "version",     (m.getVersion()    !=null ? m.getVersion()     : na) );
         info.add( "description", (m.getDescription()!=null ? m.getDescription() : na) );
-
-        info.add( "sourceId",    (m.getSourceId()   !=null ? m.getSourceId()    : na) );
         info.add( "source",      (m.getSource()     !=null ? m.getSource()      : na) );
 
         URL[] urls = m.getDocs();
@@ -97,16 +88,6 @@ public class PluginInfoHandler extends RequestHandlerBase
   @Override
   public String getDescription() {
     return "Registry";
-  }
-
-  @Override
-  public String getVersion() {
-      return "$Revision$";
-  }
-
-  @Override
-  public String getSourceId() {
-    return "$Id$";
   }
 
   @Override

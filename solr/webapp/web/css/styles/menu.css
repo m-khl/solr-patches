@@ -1,242 +1,242 @@
 #menu-wrapper
 {
-    float: left;
-    width: 20%;
+  position: absolute;
+  top: 0;
+  width: 150px;
+}
+
+#menu-wrapper a
+{
+  display: block;
+  padding: 4px 2px;
+}
+
+#menu-wrapper .active p
+{
+  background-color: #fafafa;
+  border-color: #c0c0c0;
+}
+
+#menu-wrapper p a
+{
+  background-position: 5px 50%;
+  padding-left: 26px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+#menu-wrapper p a:hover
+{
+  background-color: #f0f0f0;
+}
+
+#menu-wrapper .active p a
+{
+  background-color: #c0c0c0;
+  font-weight: bold;
 }
 
 #menu p.loader
 {
-    background-position: 5px 50%;
-    color: #c0c0c0;
-    margin-top: 5px;
-    padding-left: 26px;
-}
-
-#menu a
-{
-    display: block;
-    padding: 4px 2px;
-}
-
-#menu .active
-{
-    background-color: #fafafa;
-}
-
-#menu p a
-{
-    background-position: 97% 50%;
-    background-image: url( ../../img/ico/status-offline.png );
-    padding-left: 5px;
-    padding-top: 5px;
-    padding-bottom: 5px;
-}
-
-#menu p a:hover
-{
-    background-color: #f0f0f0;
-}
-
-#menu .active p a
-{
-    background-color: #c0c0c0; /* #a5a5a6 */
-    font-weight: bold;
+  background-position: 5px 50%;
+  color: #c0c0c0;
+  margin-top: 5px;
+  padding-left: 26px;
 }
 
 #menu p a small
 {
-    color: #b5b5b5;
-    font-weight: normal;
+  color: #b5b5b5;
+  font-weight: normal;
 }
 
 #menu p a small span.txt
 {
-    display: none;
+  display: none;
 }
 
 #menu p a small:hover span.txt
 {
-    display: inline;
+  display: inline;
 }
 
 #menu .busy
 {
-    border-right-color: #f6f5d9;
+  border-right-color: #f6f5d9;
 }
 
 #menu .busy p a
 {
-    background-color: #f6f5d9;
-    background-image: url( ../../img/ico/status-away.png );
+  background-color: #f6f5d9;
+  background-image: url( ../../img/ico/status-away.png );
 }
 
 #menu .offline
 {
-    border-right-color: #eccfcf;
+  border-right-color: #eccfcf;
 }
 
 #menu .offline p a
 {
-    background-color: #eccfcf;
-    background-image: url( ../../img/ico/status-busy.png );
+  background-color: #eccfcf;
+  background-image: url( ../../img/ico/status-busy.png );
 }
 
 #menu .online
 {
-    border-right-color: #cfecd3;
+  border-right-color: #cfecd3;
 }
 
 #menu .online p a
 {
-    background-color: #cfecd3;
-    background-image: url( ../../img/ico/status.png );
+  background-color: #cfecd3;
+  background-image: url( ../../img/ico/status.png );
 }
 
 #menu .ping small
 {
-    color: #000
+  color: #000
 }
 
 #menu li
 {
-    border-bottom: 1px solid #c0c0c0;
+  border-bottom: 1px solid #f0f0f0;
 }
 
-#menu li p
+#menu li:last-child
 {
-    border-right: 1px solid #c0c0c0;
+  border-bottom: 0;
 }
 
 #menu li.optional
 {
-    display: none;
+  display: none;
 }
 
-#menu li.active:last-child
+#menu-selector
 {
-    border-bottom: 0;
+  margin-top: 20px;
 }
 
-#menu ul ul
+#menu-selector p
 {
-    background-image: url( ../../img/div.gif );
-    background-position: 100% 0;
-    background-repeat: repeat-y;
-    display: none;
-    padding-top: 5px;
-    padding-bottom: 10px;
+  border-top: 1px solid #f0f0f0;
 }
 
-#menu ul .active ul
+#menu-selector li:first-child p
 {
-    display: block;
+  border-top: 0;
 }
 
-#menu ul li.active:last-child ul
+#menu-selector p a
 {
-    border-bottom: 1px solid #f0f0f0;
+  background-image: url( ../../img/ico/status-offline.png );
 }
 
-#menu ul ul li
+#menu-selector .active p a
 {
-    border-bottom: 0;
-    /*border-right: 0;*/
-    border-right: 1px solid #f0f0f0;
+  background-image: url( ../../img/ico/box.png );
 }
 
-#menu ul ul li a
+#menu-selector ul
 {
-    background-position: 7px 50%;
-    border-bottom: 1px solid #f0f0f0;
-    color: #bbb;
-    margin-left: 15px;
-    padding-left: 26px;
+  display: none;
+  padding-top: 5px;
+  padding-bottom: 10px;
 }
 
-#menu ul ul li:last-child a
+#menu-selector .active ul
 {
-    border-bottom: 0;
+  display: block;
 }
 
-#menu ul ul li a:hover
+#menu-selector ul li a
 {
-    background-color: #f0f0f0;
-    color: #333;
+  background-position: 7px 50%;
+  border-bottom: 1px solid #f0f0f0;
+  color: #bbb;
+  margin-left: 15px;
+  padding-left: 26px;
 }
 
-#menu ul ul li.active
+#menu-selector ul li:last-child a
 {
-    background-color: #fff;
-    border-right-color: #fff;
+  border-bottom: 0;
 }
 
-#menu ul ul li.active a
+#menu-selector ul li a:hover
 {
-    color: #333;
+  background-color: #f0f0f0;
+  color: #333;
 }
 
-#menu ul ul li.active a:hover
+#menu-selector ul li.active a
 {
-    background-color: transparent;
+  background-color: #d0d0d0;
+  border-color: #d0d0d0;
+  color: #333;
 }
 
-#menu .global p a
+#menu #index p a { background-image: url( ../../img/ico/dashboard.png ); }
+#menu #logging p a { background-image: url( ../../img/ico/inbox-document-text.png ); }
+#menu #java-properties p a { background-image: url( ../../img/ico/jar.png ); }
+#menu #threads p a { background-image: url( ../../img/ico/ui-accordion.png ); }
+#menu #cores p a { background-image: url( ../../img/ico/databases.png ); }
+#menu #cloud p a { background-image: url( ../../img/ico/network-cloud.png ); }
+
+#menu-selector .ping.error a
 {
-    background-position: 5px 50%;
-    padding-left: 26px;
+  
+  background-color: #ffcccc;
+  background-image: url( ../../img/ico/system-monitor--exclamation.png );
+  border-color: #ffcccc;
+  cursor: help;
 }
 
-#menu #index p a
+#menu-selector .query a { background-image: url( ../../img/ico/magnifier.png ); }
+#menu-selector .schema a { background-image: url( ../../img/ico/table.png ); }
+#menu-selector .config a { background-image: url( ../../img/ico/gear.png ); }
+#menu-selector .analysis a { background-image: url( ../../img/ico/funnel.png ); }
+#menu-selector .schema-browser a { background-image: url( ../../img/ico/book-open-text.png ); }
+#menu-selector .replication a { background-image: url( ../../img/ico/node.png ); }
+#menu-selector .distribution a { background-image: url( ../../img/ico/node-select.png ); }
+#menu-selector .ping a { background-image: url( ../../img/ico/system-monitor.png ); }
+#menu-selector .logging a { background-image: url( ../../img/ico/inbox-document-text.png ); }
+#menu-selector .plugins a { background-image: url( ../../img/ico/block.png ); }
+#menu-selector .dataimport a { background-image: url( ../../img/ico/document-import.png ); }
+
+
+#content #navigation
 {
-    background-image: url( ../../img/ico/dashboard.png );
+  border-right: 1px solid #e0e0e0;
 }
 
-#menu #logging p a
+#content #navigation a
 {
-    background-image: url( ../../img/ico/inbox-document-text.png );
+  display: block;
+  padding: 4px 2px;
 }
 
-#menu #java-properties p a
+#content #navigation .current
 {
-    background-image: url( ../../img/ico/jar.png );
+  border-color: #e0e0e0;
 }
 
-#menu #threads p a
+#content #navigation a
 {
-    background-image: url( ../../img/ico/ui-accordion.png );
+  background-position: 5px 50%;
+  padding-left: 26px;
+  padding-top: 5px;
+  padding-bottom: 5px;
 }
 
-#menu #cores p a
+#content #navigation a:hover
 {
-    background-image: url( ../../img/ico/databases.png );
+  background-color: #f0f0f0;
 }
 
-#menu #cloud p a
+#content #navigation .current a
 {
-    background-image: url( ../../img/ico/network-cloud.png );
-}
-
-#menu .query a { background-image: url( ../../img/ico/magnifier.png ); }
-#menu .schema a { background-image: url( ../../img/ico/table.png ); }
-#menu .config a { background-image: url( ../../img/ico/gear.png ); }
-#menu .analysis a { background-image: url( ../../img/ico/funnel.png ); }
-#menu .schema-browser a { background-image: url( ../../img/ico/book-open-text.png ); }
-#menu .replication a { background-image: url( ../../img/ico/node.png ); }
-#menu .distribution a { background-image: url( ../../img/ico/node-select.png ); }
-#menu .ping a { background-image: url( ../../img/ico/system-monitor.png ); }
-#menu .logging a { background-image: url( ../../img/ico/inbox-document-text.png ); }
-#menu .plugins a { background-image: url( ../../img/ico/block.png ); }
-#menu .dataimport a { background-image: url( ../../img/ico/document-import.png ); }
-
-#menu .ping.error
-{
-    background-color: #f7f7e9;
-    background-color: #ffcccc;
-}
-
-#menu .ping.error a
-{
-    background-color: transparent;
-    background-image: url( ../../img/ico/system-monitor--exclamation.png );
-    cursor: help;
+  background-color: #e0e0e0;
+  font-weight: bold;
 }

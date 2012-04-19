@@ -18,16 +18,7 @@ package org.apache.lucene.index;
  */
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -35,6 +26,7 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.document.IntField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
@@ -51,9 +43,10 @@ import org.apache.lucene.util.automaton.DaciukMihovAutomatonBuilder;
 public class TestTermsEnum extends LuceneTestCase {
 
   public void test() throws Exception {
+    Random random = new Random(random().nextLong());
     final LineFileDocs docs = new LineFileDocs(random, defaultCodecSupportsDocValues());
     final Directory d = newDirectory();
-    final RandomIndexWriter w = new RandomIndexWriter(random, d);
+    final RandomIndexWriter w = new RandomIndexWriter(random(), d);
     final int numDocs = atLeast(10);
     for(int docCount=0;docCount<numDocs;docCount++) {
       w.addDocument(docs.nextDoc());
@@ -75,7 +68,7 @@ public class TestTermsEnum extends LuceneTestCase {
     final int iters = atLeast(200);
     for(int iter=0;iter<iters;iter++) {
       final boolean isEnd;
-      if (upto != -1 && random.nextBoolean()) {
+      if (upto != -1 && random().nextBoolean()) {
         // next
         if (VERBOSE) {
           System.out.println("TEST: iter next");
@@ -99,28 +92,28 @@ public class TestTermsEnum extends LuceneTestCase {
 
         final BytesRef target;
         final String exists;
-        if (random.nextBoolean()) {
+        if (random().nextBoolean()) {
           // likely fake term
-          if (random.nextBoolean()) {
-            target = new BytesRef(_TestUtil.randomSimpleString(random));
+          if (random().nextBoolean()) {
+            target = new BytesRef(_TestUtil.randomSimpleString(random()));
           } else {
-            target = new BytesRef(_TestUtil.randomRealisticUnicodeString(random));
+            target = new BytesRef(_TestUtil.randomRealisticUnicodeString(random()));
           }
           exists = "likely not";
         } else {
           // real term
-          target = terms.get(random.nextInt(terms.size()));
+          target = terms.get(random().nextInt(terms.size()));
           exists = "yes";
         }
 
         upto = Collections.binarySearch(terms, target);
 
-        if (random.nextBoolean()) {
+        if (random().nextBoolean()) {
           if (VERBOSE) {
             System.out.println("TEST: iter seekCeil target=" + target.utf8ToString() + " exists=" + exists);
           }
           // seekCeil
-          final TermsEnum.SeekStatus status = termsEnum.seekCeil(target, random.nextBoolean());
+          final TermsEnum.SeekStatus status = termsEnum.seekCeil(target, random().nextBoolean());
           if (VERBOSE) {
             System.out.println("  got " + status);
           }
@@ -160,6 +153,7 @@ public class TestTermsEnum extends LuceneTestCase {
 
     r.close();
     d.close();
+    docs.close();
   }
 
   private void addDoc(RandomIndexWriter w, Collection<String> terms, Map<BytesRef,Integer> termToID, int id) throws IOException {
@@ -189,7 +183,7 @@ public class TestTermsEnum extends LuceneTestCase {
   public void testIntersectRandom() throws IOException {
 
     final Directory dir = newDirectory();
-    final RandomIndexWriter w = new RandomIndexWriter(random, dir);
+    final RandomIndexWriter w = new RandomIndexWriter(random(), dir);
     
     final int numTerms = atLeast(300);
 
@@ -202,7 +196,7 @@ public class TestTermsEnum extends LuceneTestCase {
       if (!terms.contains(s)) {
         terms.add(s);
         pendingTerms.add(s);
-        if (random.nextInt(20) == 7) {
+        if (random().nextInt(20) == 7) {
           addDoc(w, pendingTerms, termToID, id++);
         }
       }
@@ -242,7 +236,7 @@ public class TestTermsEnum extends LuceneTestCase {
       // automaton:
       final Set<String> acceptTerms = new HashSet<String>();
       final TreeSet<BytesRef> sortedAcceptTerms = new TreeSet<BytesRef>();
-      final double keepPct = random.nextDouble();
+      final double keepPct = random().nextDouble();
       Automaton a;
       if (iter == 0) {
         if (VERBOSE) {
@@ -255,7 +249,7 @@ public class TestTermsEnum extends LuceneTestCase {
         }
         for (String s : terms) {
           final String s2;
-          if (random.nextDouble() <= keepPct) {
+          if (random().nextDouble() <= keepPct) {
             s2 = s;
           } else {
             s2 = getRandomString();
@@ -287,7 +281,7 @@ public class TestTermsEnum extends LuceneTestCase {
       }
 
       for(int iter2=0;iter2<100;iter2++) {
-        final BytesRef startTerm = acceptTermsArray.length == 0 || random.nextBoolean() ? null : acceptTermsArray[random.nextInt(acceptTermsArray.length)];
+        final BytesRef startTerm = acceptTermsArray.length == 0 || random().nextBoolean() ? null : acceptTermsArray[random().nextInt(acceptTermsArray.length)];
 
         if (VERBOSE) {
           System.out.println("\nTEST: iter2=" + iter2 + " startTerm=" + (startTerm == null ? "<null>" : startTerm.utf8ToString()));
@@ -331,9 +325,9 @@ public class TestTermsEnum extends LuceneTestCase {
           }
           assertEquals(expected, actual);
           assertEquals(1, te.docFreq());
-          docsEnum = _TestUtil.docs(random, te, null, docsEnum, false);
+          docsEnum = _TestUtil.docs(random(), te, null, docsEnum, false);
           final int docID = docsEnum.nextDoc();
-          assertTrue(docID != DocsEnum.NO_MORE_DOCS);
+          assertTrue(docID != DocIdSetIterator.NO_MORE_DOCS);
           assertEquals(docIDToID[docID], termToID.get(expected).intValue());
           do {
             loc++;
@@ -355,13 +349,13 @@ public class TestTermsEnum extends LuceneTestCase {
 
   private IndexReader makeIndex(String... terms) throws Exception {
     d = newDirectory();
-    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random));
+    IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
 
     /*
     iwc.setCodec(new StandardCodec(minTermsInBlock, maxTermsInBlock));
     */
 
-    final RandomIndexWriter w = new RandomIndexWriter(random, d, iwc);
+    final RandomIndexWriter w = new RandomIndexWriter(random(), d, iwc);
     for(String term : terms) {
       Document doc = new Document();
       Field f = newField(FIELD, term, StringField.TYPE_UNSTORED);
@@ -501,7 +495,7 @@ public class TestTermsEnum extends LuceneTestCase {
 
   public void testZeroTerms() throws Exception {
     d = newDirectory();
-    final RandomIndexWriter w = new RandomIndexWriter(random, d);
+    final RandomIndexWriter w = new RandomIndexWriter(random(), d);
     Document doc = new Document();
     doc.add(newField("field", "one two three", TextField.TYPE_UNSTORED));
     doc = new Document();
@@ -524,18 +518,18 @@ public class TestTermsEnum extends LuceneTestCase {
 
   private String getRandomString() {
     //return _TestUtil.randomSimpleString(random);
-    return _TestUtil.randomRealisticUnicodeString(random);
+    return _TestUtil.randomRealisticUnicodeString(random());
   }
 
   public void testRandomTerms() throws Exception {
-    final String[] terms = new String[_TestUtil.nextInt(random, 1, atLeast(1000))];
+    final String[] terms = new String[_TestUtil.nextInt(random(), 1, atLeast(1000))];
     final Set<String> seen = new HashSet<String>();
 
-    final boolean allowEmptyString = random.nextBoolean();
+    final boolean allowEmptyString = random().nextBoolean();
 
-    if (random.nextInt(10) == 7 && terms.length > 2) {
+    if (random().nextInt(10) == 7 && terms.length > 2) {
       // Sometimes add a bunch of terms sharing a longish common prefix:
-      final int numTermsSamePrefix = random.nextInt(terms.length/2);
+      final int numTermsSamePrefix = random().nextInt(terms.length/2);
       if (numTermsSamePrefix > 0) {
         String prefix;
         while(true) {
@@ -570,7 +564,7 @@ public class TestTermsEnum extends LuceneTestCase {
 
   // sugar
   private boolean seekExact(TermsEnum te, String term) throws IOException {
-    return te.seekExact(new BytesRef(term), random.nextBoolean());
+    return te.seekExact(new BytesRef(term), random().nextBoolean());
   }
 
   // sugar
@@ -627,7 +621,7 @@ public class TestTermsEnum extends LuceneTestCase {
       final BytesRef t;
       int loc;
       final TermState termState;
-      if (random.nextInt(6) == 4) {
+      if (random().nextInt(6) == 4) {
         // pick term that doens't exist:
         t = getNonExistTerm(validTerms);
         termState = null;
@@ -635,8 +629,8 @@ public class TestTermsEnum extends LuceneTestCase {
           System.out.println("\nTEST: invalid term=" + t.utf8ToString());
         }
         loc = Arrays.binarySearch(validTerms, t);
-      } else if (termStates.size() != 0 && random.nextInt(4) == 1) {
-        final TermAndState ts = termStates.get(random.nextInt(termStates.size()));
+      } else if (termStates.size() != 0 && random().nextInt(4) == 1) {
+        final TermAndState ts = termStates.get(random().nextInt(termStates.size()));
         t = ts.term;
         loc = Arrays.binarySearch(validTerms, t);
         assertTrue(loc >= 0);
@@ -646,7 +640,7 @@ public class TestTermsEnum extends LuceneTestCase {
         }
       } else {
         // pick valid term
-        loc = random.nextInt(validTerms.length);
+        loc = random().nextInt(validTerms.length);
         t = BytesRef.deepCopyOf(validTerms[loc]);
         termState = null;
         if (VERBOSE) {
@@ -655,7 +649,7 @@ public class TestTermsEnum extends LuceneTestCase {
       }
 
       // seekCeil or seekExact:
-      final boolean doSeekExact = random.nextBoolean();
+      final boolean doSeekExact = random().nextBoolean();
       if (termState != null) {
         if (VERBOSE) {
           System.out.println("  seekExact termState");
@@ -665,13 +659,13 @@ public class TestTermsEnum extends LuceneTestCase {
         if (VERBOSE) {
           System.out.println("  seekExact");
         }
-        assertEquals(loc >= 0, te.seekExact(t, random.nextBoolean()));
+        assertEquals(loc >= 0, te.seekExact(t, random().nextBoolean()));
       } else {
         if (VERBOSE) {
           System.out.println("  seekCeil");
         }
 
-        final TermsEnum.SeekStatus result = te.seekCeil(t, random.nextBoolean());
+        final TermsEnum.SeekStatus result = te.seekCeil(t, random().nextBoolean());
         if (VERBOSE) {
           System.out.println("  got " + result);
         }
@@ -699,7 +693,7 @@ public class TestTermsEnum extends LuceneTestCase {
       }
 
       // Do a bunch of next's after the seek
-      final int numNext = random.nextInt(validTerms.length);
+      final int numNext = random().nextInt(validTerms.length);
 
       for(int nextCount=0;nextCount<numNext;nextCount++) {
         if (VERBOSE) {
@@ -712,7 +706,7 @@ public class TestTermsEnum extends LuceneTestCase {
           break;
         } else {
           assertEquals(validTerms[loc], t2);
-          if (random.nextInt(40) == 17 && termStates.size() < 100) {
+          if (random().nextInt(40) == 17 && termStates.size() < 100) {
             termStates.add(new TermAndState(validTerms[loc], te.termState()));
           }
         }

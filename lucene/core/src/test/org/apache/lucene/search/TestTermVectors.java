@@ -46,7 +46,7 @@ public class TestTermVectors extends LuceneTestCase {
   @BeforeClass
   public static void beforeClass() throws Exception {                  
     directory = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random, directory, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random, MockTokenizer.SIMPLE, true)).setMergePolicy(newLogMergePolicy()));
+    RandomIndexWriter writer = new RandomIndexWriter(random(), directory, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.SIMPLE, true)).setMergePolicy(newLogMergePolicy()));
     //writer.setUseCompoundFile(true);
     //writer.infoStream = System.out;
     for (int i = 0; i < 1000; i++) {
@@ -98,7 +98,7 @@ public class TestTermVectors extends LuceneTestCase {
     for (int i = 0; i < hits.length; i++) {
       Fields vectors = searcher.reader.getTermVectors(hits[i].doc);
       assertNotNull(vectors);
-      assertEquals("doc=" + hits[i].doc + " tv=" + vectors, 1, vectors.getUniqueFieldCount());
+      assertEquals("doc=" + hits[i].doc + " tv=" + vectors, 1, vectors.size());
     }
     Terms vector;
     vector = searcher.reader.getTermVectors(hits[0].doc).terms("noTV");
@@ -107,7 +107,7 @@ public class TestTermVectors extends LuceneTestCase {
   
   public void testTermVectorsFieldOrder() throws IOException {
     Directory dir = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random, dir, new MockAnalyzer(random, MockTokenizer.SIMPLE, true));
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, new MockAnalyzer(random(), MockTokenizer.SIMPLE, true));
     Document doc = new Document();
     FieldType ft = new FieldType(TextField.TYPE_STORED);
     ft.setStoreTermVectors(true);
@@ -121,13 +121,13 @@ public class TestTermVectors extends LuceneTestCase {
     IndexReader reader = writer.getReader();
     writer.close();
     Fields v = reader.getTermVectors(0);
-    assertEquals(4, v.getUniqueFieldCount());
+    assertEquals(4, v.size());
     String[] expectedFields = new String[]{"a", "b", "c", "x"};
     int[] expectedPositions = new int[]{1, 2, 0};
     FieldsEnum fieldsEnum = v.iterator();
     for(int i=0;i<expectedFields.length;i++) {
       assertEquals(expectedFields[i], fieldsEnum.next());
-      assertEquals(3, v.terms(expectedFields[i]).getUniqueTermCount());
+      assertEquals(3, v.terms(expectedFields[i]).size());
 
       DocsAndPositionsEnum dpEnum = null;
       Terms terms = fieldsEnum.terms();
@@ -135,19 +135,19 @@ public class TestTermVectors extends LuceneTestCase {
       TermsEnum termsEnum = terms.iterator(null);
       assertEquals("content", termsEnum.next().utf8ToString());
       dpEnum = termsEnum.docsAndPositions(null, dpEnum, false);
-      assertTrue(dpEnum.nextDoc() != DocsEnum.NO_MORE_DOCS);
+      assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
       assertEquals(1, dpEnum.freq());
       assertEquals(expectedPositions[0], dpEnum.nextPosition());
 
       assertEquals("here", termsEnum.next().utf8ToString());
       dpEnum = termsEnum.docsAndPositions(null, dpEnum, false);
-      assertTrue(dpEnum.nextDoc() != DocsEnum.NO_MORE_DOCS);
+      assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
       assertEquals(1, dpEnum.freq());
       assertEquals(expectedPositions[1], dpEnum.nextPosition());
 
       assertEquals("some", termsEnum.next().utf8ToString());
       dpEnum = termsEnum.docsAndPositions(null, dpEnum, false);
-      assertTrue(dpEnum.nextDoc() != DocsEnum.NO_MORE_DOCS);
+      assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
       assertEquals(1, dpEnum.freq());
       assertEquals(expectedPositions[2], dpEnum.nextPosition());
 
@@ -166,7 +166,7 @@ public class TestTermVectors extends LuceneTestCase {
     for (int i = 0; i < hits.length; i++) {
       Fields vectors = searcher.reader.getTermVectors(hits[i].doc);
       assertNotNull(vectors);
-      assertEquals(1, vectors.getUniqueFieldCount());
+      assertEquals(1, vectors.size());
       
       TermsEnum termsEnum = vectors.terms("field").iterator(null);
       assertNotNull(termsEnum.next());
@@ -178,7 +178,7 @@ public class TestTermVectors extends LuceneTestCase {
         while(true) {
           dpEnum = termsEnum.docsAndPositions(null, dpEnum, shouldBeOffVector);
           assertNotNull(dpEnum);
-          assertTrue(dpEnum.nextDoc() != DocsEnum.NO_MORE_DOCS);
+          assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
 
           dpEnum.nextPosition();
 
@@ -205,7 +205,7 @@ public class TestTermVectors extends LuceneTestCase {
     for (int i = 0; i < hits.length; i++) {
       Fields vectors = searcher.reader.getTermVectors(hits[i].doc);
       assertNotNull(vectors);
-      assertEquals(1, vectors.getUniqueFieldCount());
+      assertEquals(1, vectors.size());
     }
   }
 
@@ -238,8 +238,8 @@ public class TestTermVectors extends LuceneTestCase {
     
     Directory dir = newDirectory();
     
-    RandomIndexWriter writer = new RandomIndexWriter(random, dir, 
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random, MockTokenizer.SIMPLE, true))
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, 
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.SIMPLE, true))
           .setOpenMode(OpenMode.CREATE)
           .setMergePolicy(newLogMergePolicy())
           .setSimilarity(new DefaultSimilarity()));
@@ -261,9 +261,9 @@ public class TestTermVectors extends LuceneTestCase {
 
       while (termsEnum.next() != null) {
         String text = termsEnum.term().utf8ToString();
-        docs = _TestUtil.docs(random, termsEnum, MultiFields.getLiveDocs(knownSearcher.reader), docs, true);
+        docs = _TestUtil.docs(random(), termsEnum, MultiFields.getLiveDocs(knownSearcher.reader), docs, true);
         
-        while (docs.nextDoc() != DocsEnum.NO_MORE_DOCS) {
+        while (docs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
           int docId = docs.docID();
           int freq = docs.freq();
           //System.out.println("Doc Id: " + docId + " freq " + freq);
@@ -303,7 +303,7 @@ public class TestTermVectors extends LuceneTestCase {
     Terms vector = knownSearcher.reader.getTermVectors(hits[1].doc).terms("field");
     assertNotNull(vector);
     //System.out.println("Vector: " + vector);
-    assertEquals(10, vector.getUniqueTermCount());
+    assertEquals(10, vector.size());
     TermsEnum termsEnum = vector.iterator(null);
     while(termsEnum.next() != null) {
       String term = termsEnum.term().utf8ToString();
@@ -333,8 +333,8 @@ public class TestTermVectors extends LuceneTestCase {
 
   // Test only a few docs having vectors
   public void testRareVectors() throws IOException {
-    RandomIndexWriter writer = new RandomIndexWriter(random, directory, 
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random, MockTokenizer.SIMPLE, true))
+    RandomIndexWriter writer = new RandomIndexWriter(random(), directory, 
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.SIMPLE, true))
         .setOpenMode(OpenMode.CREATE));
     if (VERBOSE) {
       System.out.println("TEST: now add non-vectors");
@@ -371,7 +371,7 @@ public class TestTermVectors extends LuceneTestCase {
 
       Fields vectors = searcher.reader.getTermVectors(hits[i].doc);
       assertNotNull(vectors);
-      assertEquals(1, vectors.getUniqueFieldCount());
+      assertEquals(1, vectors.size());
     }
     reader.close();
   }
@@ -380,9 +380,9 @@ public class TestTermVectors extends LuceneTestCase {
   // In a single doc, for the same field, mix the term
   // vectors up
   public void testMixedVectrosVectors() throws IOException {
-    RandomIndexWriter writer = new RandomIndexWriter(random, directory, 
+    RandomIndexWriter writer = new RandomIndexWriter(random(), directory, 
         newIndexWriterConfig(TEST_VERSION_CURRENT, 
-        new MockAnalyzer(random, MockTokenizer.SIMPLE, true)).setOpenMode(OpenMode.CREATE));
+        new MockAnalyzer(random(), MockTokenizer.SIMPLE, true)).setOpenMode(OpenMode.CREATE));
     Document doc = new Document();
     
     FieldType ft2 = new FieldType(TextField.TYPE_STORED);
@@ -418,17 +418,17 @@ public class TestTermVectors extends LuceneTestCase {
 
     Fields vectors = searcher.reader.getTermVectors(hits[0].doc);
     assertNotNull(vectors);
-    assertEquals(1, vectors.getUniqueFieldCount());
+    assertEquals(1, vectors.size());
     Terms vector = vectors.terms("field");
     assertNotNull(vector);
-    assertEquals(1, vector.getUniqueTermCount());
+    assertEquals(1, vector.size());
     TermsEnum termsEnum = vector.iterator(null);
     assertNotNull(termsEnum.next());
     assertEquals("one", termsEnum.term().utf8ToString());
     assertEquals(5, termsEnum.totalTermFreq());
     DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null, false);
     assertNotNull(dpEnum);
-    assertTrue(dpEnum.nextDoc() != DocsEnum.NO_MORE_DOCS);
+    assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(5, dpEnum.freq());
     for(int i=0;i<5;i++) {
       assertEquals(i, dpEnum.nextPosition());
@@ -436,7 +436,7 @@ public class TestTermVectors extends LuceneTestCase {
 
     dpEnum = termsEnum.docsAndPositions(null, dpEnum, true);
     assertNotNull(dpEnum);
-    assertTrue(dpEnum.nextDoc() != DocsEnum.NO_MORE_DOCS);
+    assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals(5, dpEnum.freq());
     for(int i=0;i<5;i++) {
       dpEnum.nextPosition();
@@ -448,7 +448,7 @@ public class TestTermVectors extends LuceneTestCase {
 
   private IndexWriter createWriter(Directory dir) throws IOException {
     return new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT,
-        new MockAnalyzer(random)).setMaxBufferedDocs(2));
+        new MockAnalyzer(random())).setMaxBufferedDocs(2));
   }
 
   private void createDir(Directory dir) throws IOException {

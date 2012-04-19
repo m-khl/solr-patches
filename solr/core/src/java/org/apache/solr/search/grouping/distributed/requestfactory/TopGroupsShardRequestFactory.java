@@ -110,7 +110,7 @@ public class TopGroupsShardRequestFactory implements ShardRequestFactory {
       sreq.params.set(CommonParams.ROWS, rb.getSortSpec().getOffset() + rb.getSortSpec().getCount());
     }
 
-    sreq.params.set("group.distributed.second", "true");
+    sreq.params.set(GroupParams.GROUP_DISTRIBUTED_SECOND, "true");
     for (Map.Entry<String, Collection<SearchGroup<BytesRef>>> entry : rb.mergedSearchGroups.entrySet()) {
       for (SearchGroup<BytesRef> searchGroup : entry.getValue()) {
         String groupValue;
@@ -121,7 +121,7 @@ public class TopGroupsShardRequestFactory implements ShardRequestFactory {
         } else {
           groupValue = GROUP_NULL_VALUE;
         }
-        sreq.params.add("group.topgroups." + entry.getKey(), groupValue);
+        sreq.params.add(GroupParams.GROUP_DISTRIBUTED_TOPGROUPS_PREFIX + entry.getKey(), groupValue);
       }
     }
 
@@ -129,6 +129,11 @@ public class TopGroupsShardRequestFactory implements ShardRequestFactory {
       sreq.params.set(CommonParams.FL, rb.req.getSchema().getUniqueKeyField().getName() + ",score");
     } else {
       sreq.params.set(CommonParams.FL, rb.req.getSchema().getUniqueKeyField().getName());
+    }
+    
+    int origTimeAllowed = sreq.params.getInt(CommonParams.TIME_ALLOWED, -1);
+    if (origTimeAllowed > 0) {
+      sreq.params.set(CommonParams.TIME_ALLOWED, Math.max(1,origTimeAllowed - rb.firstPhaseElapsedTime));
     }
 
     return new ShardRequest[] {sreq};

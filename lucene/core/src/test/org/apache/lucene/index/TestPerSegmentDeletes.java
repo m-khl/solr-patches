@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Random;
 
 import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.RAMDirectory;
@@ -36,9 +37,9 @@ import org.apache.lucene.util._TestUtil;
 public class TestPerSegmentDeletes extends LuceneTestCase {
   public void testDeletes1() throws Exception {
     //IndexWriter.debug2 = System.out;
-    Directory dir = new MockDirectoryWrapper(new Random(random.nextLong()), new RAMDirectory());
+    Directory dir = new MockDirectoryWrapper(new Random(random().nextLong()), new RAMDirectory());
     IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT,
-        new MockAnalyzer(random));
+        new MockAnalyzer(random()));
     iwc.setMergeScheduler(new SerialMergeScheduler());
     iwc.setMaxBufferedDocs(5000);
     iwc.setRAMBufferSizeMB(100);
@@ -219,13 +220,13 @@ public class TestPerSegmentDeletes extends LuceneTestCase {
     }
   }
 
-  public static int[] toDocsArray(Term term, Bits bits, IndexReader reader)
+  public int[] toDocsArray(Term term, Bits bits, IndexReader reader)
       throws IOException {
     Fields fields = MultiFields.getFields(reader);
     Terms cterms = fields.terms(term.field);
     TermsEnum ctermsEnum = cterms.iterator(null);
     if (ctermsEnum.seekExact(new BytesRef(term.text()), false)) {
-      DocsEnum docsEnum = _TestUtil.docs(random, ctermsEnum, bits, null, false);
+      DocsEnum docsEnum = _TestUtil.docs(random(), ctermsEnum, bits, null, false);
       return toArray(docsEnum);
     }
     return null;
@@ -233,7 +234,7 @@ public class TestPerSegmentDeletes extends LuceneTestCase {
 
   public static int[] toArray(DocsEnum docsEnum) throws IOException {
     List<Integer> docs = new ArrayList<Integer>();
-    while (docsEnum.nextDoc() != DocsEnum.NO_MORE_DOCS) {
+    while (docsEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
       int docID = docsEnum.docID();
       docs.add(docID);
     }

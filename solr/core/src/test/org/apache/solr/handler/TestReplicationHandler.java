@@ -35,12 +35,13 @@ import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.SimpleFSDirectory;
+import org.apache.solr.BaseDistributedSearchTestCase;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.TestDistributedSearch;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
-import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
@@ -130,7 +131,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     try {
       // setup the server...
       String url = "http://localhost:" + port + context;
-      CommonsHttpSolrServer s = new CommonsHttpSolrServer(url);
+      HttpSolrServer s = new HttpSolrServer(url);
       s.setDefaultMaxConnectionsPerHost(100);
       s.setMaxTotalConnections(100);
       return s;
@@ -389,7 +390,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     assertEquals(nDocs, slaveQueryResult.getNumFound());
 
     //compare results
-    String cmp = TestDistributedSearch.compare(masterQueryResult, slaveQueryResult, 0, null);
+    String cmp = BaseDistributedSearchTestCase.compare(masterQueryResult, slaveQueryResult, 0, null);
     assertEquals(null, cmp);
 
     //start config files replication test
@@ -447,7 +448,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     assertEquals(nDocs, slaveQueryResult.getNumFound());
 
     //compare results
-    String cmp = TestDistributedSearch.compare(masterQueryResult, slaveQueryResult, 0, null);
+    String cmp = BaseDistributedSearchTestCase.compare(masterQueryResult, slaveQueryResult, 0, null);
     assertEquals(null, cmp);
 
     // start stop polling test
@@ -527,7 +528,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     SolrDocumentList slaveQueryResult = (SolrDocumentList) slaveQueryRsp.get("response");
     assertEquals(nDocs, slaveQueryResult.getNumFound());
     //compare results
-    String cmp = TestDistributedSearch.compare(masterQueryResult, slaveQueryResult, 0, null);
+    String cmp = BaseDistributedSearchTestCase.compare(masterQueryResult, slaveQueryResult, 0, null);
     assertEquals(null, cmp);
 
     System.out.println("replicate slave to master");
@@ -599,7 +600,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     assertEquals(nDocs, slaveQueryResult.getNumFound());
 
     //compare results
-    String cmp = TestDistributedSearch.compare(masterQueryResult, slaveQueryResult, 0, null);
+    String cmp = BaseDistributedSearchTestCase.compare(masterQueryResult, slaveQueryResult, 0, null);
     assertEquals(null, cmp);
 
     // NOTE: the master only replicates after startup now!
@@ -654,7 +655,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     assertEquals(10, slaveQueryResult.getNumFound());
     
     //compare results
-    String cmp = TestDistributedSearch.compare(masterQueryResult, slaveQueryResult, 0, null);
+    String cmp = BaseDistributedSearchTestCase.compare(masterQueryResult, slaveQueryResult, 0, null);
     assertEquals(null, cmp);
     
     Object version = getIndexVersion(masterClient).get("indexversion");
@@ -714,7 +715,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     assertEquals(nDocs, slaveQueryResult.getNumFound());
 
     //compare results
-    String cmp = TestDistributedSearch.compare(masterQueryResult, slaveQueryResult, 0, null);
+    String cmp = BaseDistributedSearchTestCase.compare(masterQueryResult, slaveQueryResult, 0, null);
     assertEquals(null, cmp);
 
     //start config files replication test
@@ -772,7 +773,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     String configFile = "solrconfig-master1.xml";
     boolean addNumberToKeepInRequest = true;
     String backupKeepParamName = ReplicationHandler.NUMBER_BACKUPS_TO_KEEP_REQUEST_PARAM;
-    if(random.nextBoolean()) {
+    if(random().nextBoolean()) {
       configFile = "solrconfig-master1-keepOneBackup.xml";
       addNumberToKeepInRequest = false;
       backupKeepParamName = ReplicationHandler.NUMBER_BACKUPS_TO_KEEP_INIT_PARAM;

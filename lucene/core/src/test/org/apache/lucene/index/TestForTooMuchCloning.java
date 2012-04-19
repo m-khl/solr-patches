@@ -17,8 +17,6 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import java.util.*;
-
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
@@ -41,13 +39,13 @@ public class TestForTooMuchCloning extends LuceneTestCase {
     final MockDirectoryWrapper dir = newDirectory();
     final TieredMergePolicy tmp = new TieredMergePolicy();
     tmp.setMaxMergeAtOnce(2);
-    final RandomIndexWriter w = new RandomIndexWriter(random, dir,
-                                                      newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMaxBufferedDocs(2).setMergePolicy(tmp));
+    final RandomIndexWriter w = new RandomIndexWriter(random(), dir,
+                                                      newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMaxBufferedDocs(2).setMergePolicy(tmp));
     final int numDocs = 20;
     for(int docs=0;docs<numDocs;docs++) {
       StringBuilder sb = new StringBuilder();
       for(int terms=0;terms<100;terms++) {
-        sb.append(_TestUtil.randomRealisticUnicodeString(random));
+        sb.append(_TestUtil.randomRealisticUnicodeString(random()));
         sb.append(' ');
       }
       final Document doc = new Document();

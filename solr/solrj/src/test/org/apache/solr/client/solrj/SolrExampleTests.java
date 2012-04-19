@@ -23,18 +23,18 @@ import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 import junit.framework.Assert;
 
 import org.apache.lucene.util._TestUtil;
 import org.apache.solr.SolrJettyTestBase;
 import org.apache.solr.client.solrj.impl.BinaryResponseParser;
-import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.impl.XMLResponseParser;
 import org.apache.solr.client.solrj.request.DirectXmlRequest;
 import org.apache.solr.client.solrj.request.LukeRequest;
 import org.apache.solr.client.solrj.request.QueryRequest;
-import org.apache.solr.client.solrj.request.SolrPing;
 import org.apache.solr.client.solrj.response.FieldStatsInfo;
 import org.apache.solr.client.solrj.request.UpdateRequest;
 import org.apache.solr.client.solrj.request.ContentStreamUpdateRequest;
@@ -48,9 +48,11 @@ import org.apache.solr.client.solrj.response.UpdateResponse;
 import org.apache.solr.client.solrj.util.ClientUtils;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
+import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.util.XML;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.params.AnalysisParams;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.FacetParams;
 import org.junit.Test;
@@ -259,10 +261,10 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     // we can't just use _TestUtil.randomUnicodeString() or we might get 0xfffe etc
     // (considered invalid by XML)
     
-    int size = random.nextInt(maxLength);
+    int size = random().nextInt(maxLength);
     StringBuilder sb = new StringBuilder();
     for (int i = 0; i < size; i++) {
-      switch(random.nextInt(4)) {
+      switch(random().nextInt(4)) {
         case 0: /* single byte */ 
           sb.append('a'); 
           break;
@@ -280,29 +282,30 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
   }
   
   public void testUnicode() throws Exception {
+    Random random = random();
     int numIterations = atLeast(3);
     
     SolrServer server = getSolrServer();
     
     // save the old parser, so we can set it back.
     ResponseParser oldParser = null;
-    if (server instanceof CommonsHttpSolrServer) {
-      CommonsHttpSolrServer cserver = (CommonsHttpSolrServer) server;
+    if (server instanceof HttpSolrServer) {
+      HttpSolrServer cserver = (HttpSolrServer) server;
       oldParser = cserver.getParser();
     }
     
     try {
       for (int iteration = 0; iteration < numIterations; iteration++) {
         // choose format
-        if (server instanceof CommonsHttpSolrServer) {
+        if (server instanceof HttpSolrServer) {
           if (random.nextBoolean()) {
-            ((CommonsHttpSolrServer) server).setParser(new BinaryResponseParser());
+            ((HttpSolrServer) server).setParser(new BinaryResponseParser());
           } else {
-            ((CommonsHttpSolrServer) server).setParser(new XMLResponseParser());
+            ((HttpSolrServer) server).setParser(new XMLResponseParser());
           }
         }
 
-        int numDocs = _TestUtil.nextInt(random, 1, 10*RANDOM_MULTIPLIER);
+        int numDocs = _TestUtil.nextInt(random(), 1, 10*RANDOM_MULTIPLIER);
         
         // Empty the database...
         server.deleteByQuery("*:*");// delete everything!
@@ -334,7 +337,7 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     } finally {
       if (oldParser != null) {
         // set the old parser back
-        ((CommonsHttpSolrServer)server).setParser(oldParser);
+        ((HttpSolrServer)server).setParser(oldParser);
       }
     }
   }
@@ -463,6 +466,42 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     Assert.fail("commitWithin failed to commit");
   }
 
+  @Test
+  public void testErrorHandling() throws Exception
+  {    
+    SolrServer server = getSolrServer();
+
+    SolrQuery query = new SolrQuery();
+    query.set(CommonParams.QT, "/analysis/field");
+    query.set(AnalysisParams.FIELD_TYPE, "int");
+    query.set(AnalysisParams.FIELD_VALUE, "ignore_exception");
+    try {
+      server.query( query );
+      Assert.fail("should have a number format exception");
+    }
+    catch(SolrException ex) {
+      assertEquals(400, ex.code());
+      assertEquals("Invalid Number: ignore_exception", ex.getMessage());  // The reason should get passed through
+    }
+    catch(Throwable t) {
+      t.printStackTrace();
+      Assert.fail("should have thrown a SolrException! not: "+t);
+    }
+    
+    try {
+      server.deleteByQuery( "??::?? ignore_exception" ); // query syntax error
+      Assert.fail("should have a number format exception");
+    }
+    catch(SolrException ex) {
+      assertEquals(400, ex.code());
+      assertTrue(ex.getMessage().indexOf("??::?? ignore_exception")>0);  // The reason should get passed through
+    }
+    catch(Throwable t) {
+      t.printStackTrace();
+      Assert.fail("should have thrown a SolrException! not: "+t);
+    }
+  }
+
 
   @Test
   public void testAugmentFields() throws Exception
@@ -516,6 +555,33 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     assertEquals( 10, ((Integer)out1.get( "ten" )).intValue() );
   }
 
+  @Test
+  public void testUpdateRequestWithParameters() throws Exception {
+    SolrServer server1 = createNewSolrServer();
+    
+    System.out.println("server:" + server1.getClass().toString());
+
+    server1.deleteByQuery( "*:*" );
+    server1.commit();
+    
+    SolrInputDocument doc = new SolrInputDocument();
+    doc.addField("id", "id1");
+    
+    UpdateRequest req = new UpdateRequest();
+    req.setParam("overwrite", "false");
+    req.add(doc);
+    server1.request(req);
+    server1.request(req);
+    server1.commit();
+    
+    SolrQuery query = new SolrQuery();
+    query.setQuery("*:*");
+    QueryResponse rsp = server1.query(query);
+    
+    SolrDocumentList out = rsp.getResults();
+    assertEquals(2, out.getNumFound());
+  }
+  
  @Test
  public void testContentStreamRequest() throws Exception {
     SolrServer server = getSolrServer();
@@ -673,8 +739,8 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     FieldStatsInfo stats = rsp.getFieldStatsInfo().get( f );
     assertNotNull( stats );
     
-    assertEquals( 23.0, stats.getMin().doubleValue(), 0 );
-    assertEquals( 94.0, stats.getMax().doubleValue(), 0 );
+    assertEquals( 23.0, ((Double)stats.getMin()).doubleValue(), 0 );
+    assertEquals( 94.0, ((Double)stats.getMax()).doubleValue(), 0 );
     assertEquals( new Long(nums.length), stats.getCount() );
     assertEquals( new Long(0), stats.getMissing() );
     assertEquals( "26.4", stats.getStddev().toString().substring(0,4) );
@@ -699,8 +765,8 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     stats = rsp.getFieldStatsInfo().get( f );
     assertNotNull( stats );
     
-    assertEquals( 5.0, stats.getMin().doubleValue(), 0 );
-    assertEquals( 20.0, stats.getMax().doubleValue(), 0 );
+    assertEquals( 5.0, ((Double)stats.getMin()).doubleValue(), 0 );
+    assertEquals( 20.0, ((Double)stats.getMax()).doubleValue(), 0 );
     assertEquals( new Long(nums.length), stats.getCount() );
     assertEquals( new Long(0), stats.getMissing() );
     
@@ -744,7 +810,7 @@ abstract public class SolrExampleTests extends SolrJettyTestBase
     assertEquals( inStockF.getCount(), inStockT.getCount() );
     assertEquals( stats.getCount().longValue(), inStockF.getCount()+inStockT.getCount() );
 
-    assertTrue( "check that min max faceted ok", inStockF.getMin() > inStockT.getMax() );
+    assertTrue( "check that min max faceted ok", ((Double)inStockF.getMin()).doubleValue() < ((Double)inStockF.getMax()).doubleValue() );
     assertEquals( "they have the same distribution", inStockF.getStddev(), inStockT.getStddev() );
   }
 

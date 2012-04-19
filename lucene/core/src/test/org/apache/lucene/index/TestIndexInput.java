@@ -18,11 +18,18 @@ package org.apache.lucene.index;
  */
 
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.store.ByteArrayDataInput;
+import org.apache.lucene.store.ByteArrayDataOutput;
+import org.apache.lucene.store.DataInput;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.RAMDirectory;
 
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
+
 import java.io.IOException;
+import java.util.Random;
 
 public class TestIndexInput extends LuceneTestCase {
 
@@ -32,6 +39,7 @@ public class TestIndexInput extends LuceneTestCase {
     (byte) 0x80, (byte) 0x80, 0x01,
     (byte) 0x81, (byte) 0x80, 0x01,
     (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0x07,
+    (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0x0F,
     (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0x07,
     (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0x7F,
     0x06, 'L', 'u', 'c', 'e', 'n', 'e',
@@ -63,14 +71,57 @@ public class TestIndexInput extends LuceneTestCase {
     // null bytes
     0x01, 0x00,
     0x08, 'L', 'u', 0x00, 'c', 'e', 0x00, 'n', 'e',
+    
+    // tests for Exceptions on invalid values
+    (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0x17,
+    (byte) 0x01, // guard value
+    (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF,
+    (byte) 0x01, // guard value
   };
   
-  private void checkReads(IndexInput is) throws IOException {
+  static final int COUNT = RANDOM_MULTIPLIER * 65536;
+  static int[] INTS;
+  static long[] LONGS;
+  static byte[] RANDOM_TEST_BYTES;
+  
+  @BeforeClass
+  public static void beforeClass() throws IOException {
+    Random random = random();
+    INTS = new int[COUNT];
+    LONGS = new long[COUNT];
+    RANDOM_TEST_BYTES = new byte[COUNT * (5 + 4 + 9 + 8)];
+    final ByteArrayDataOutput bdo = new ByteArrayDataOutput(RANDOM_TEST_BYTES);
+    for (int i = 0; i < COUNT; i++) {
+      final int i1 = INTS[i] = random.nextInt();
+      bdo.writeVInt(i1);
+      bdo.writeInt(i1);
+
+      final long l1;
+      if (rarely()) {
+        // a long with lots of zeroes at the end
+        l1 = LONGS[i] = ((long) Math.abs(random.nextInt())) << 32;
+      } else {
+        l1 = LONGS[i] = Math.abs(random.nextLong());
+      }
+      bdo.writeVLong(l1);
+      bdo.writeLong(l1);
+    }
+  }
+
+  @AfterClass
+  public static void afterClass() {
+    INTS = null;
+    LONGS = null;
+    RANDOM_TEST_BYTES = null;
+  }
+
+  private void checkReads(DataInput is, Class<? extends Exception> expectedEx) throws IOException {
     assertEquals(128,is.readVInt());
     assertEquals(16383,is.readVInt());
     assertEquals(16384,is.readVInt());
     assertEquals(16385,is.readVInt());
     assertEquals(Integer.MAX_VALUE, is.readVInt());
+    assertEquals(-1, is.readVInt());
     assertEquals((long) Integer.MAX_VALUE, is.readVLong());
     assertEquals(Long.MAX_VALUE, is.readVLong());
     assertEquals("Lucene",is.readString());
@@ -87,25 +138,70 @@ public class TestIndexInput extends LuceneTestCase {
     
     assertEquals("\u0000",is.readString());
     assertEquals("Lu\u0000ce\u0000ne",is.readString());
+    
+    try {
+      is.readVInt();
+      fail("Should throw " + expectedEx.getName());
+    } catch (Exception e) {
+      assertTrue(e.getMessage().startsWith("Invalid vInt"));
+      assertTrue(expectedEx.isInstance(e));
+    }
+    assertEquals(1, is.readVInt()); // guard value
+    
+    try {
+      is.readVLong();
+      fail("Should throw " + expectedEx.getName());
+    } catch (Exception e) {
+      assertTrue(e.getMessage().startsWith("Invalid vLong"));
+      assertTrue(expectedEx.isInstance(e));
+    }
+    assertEquals(1L, is.readVLong()); // guard value
+  }
+  
+  private void checkRandomReads(DataInput is) throws IOException {
+    for (int i = 0; i < COUNT; i++) {
+      assertEquals(INTS[i], is.readVInt());
+      assertEquals(INTS[i], is.readInt());
+      assertEquals(LONGS[i], is.readVLong());
+      assertEquals(LONGS[i], is.readLong());
+    }
   }
 
   // this test only checks BufferedIndexInput because MockIndexInput extends BufferedIndexInput
   public void testBufferedIndexInputRead() throws IOException {
-    final IndexInput is = new MockIndexInput(READ_TEST_BYTES);
-    checkReads(is);
+    IndexInput is = new MockIndexInput(READ_TEST_BYTES);
+    checkReads(is, IOException.class);
+    is.close();
+    is = new MockIndexInput(RANDOM_TEST_BYTES);
+    checkRandomReads(is);
     is.close();
   }
 
   // this test checks the raw IndexInput methods as it uses RAMIndexInput which extends IndexInput directly
   public void testRawIndexInputRead() throws IOException {
+    Random random = random();
     final RAMDirectory dir = new RAMDirectory();
-    final IndexOutput os = dir.createOutput("foo", newIOContext(random));
+    IndexOutput os = dir.createOutput("foo", newIOContext(random));
     os.writeBytes(READ_TEST_BYTES, READ_TEST_BYTES.length);
     os.close();
-    final IndexInput is = dir.openInput("foo", newIOContext(random));
-    checkReads(is);
+    IndexInput is = dir.openInput("foo", newIOContext(random));
+    checkReads(is, IOException.class);
+    is.close();
+    
+    os = dir.createOutput("bar", newIOContext(random));
+    os.writeBytes(RANDOM_TEST_BYTES, RANDOM_TEST_BYTES.length);
+    os.close();
+    is = dir.openInput("bar", newIOContext(random));
+    checkRandomReads(is);
     is.close();
     dir.close();
+  }
+
+  public void testByteArrayDataInput() throws IOException {
+    ByteArrayDataInput is = new ByteArrayDataInput(READ_TEST_BYTES);
+    checkReads(is, RuntimeException.class);
+    is = new ByteArrayDataInput(RANDOM_TEST_BYTES);
+    checkRandomReads(is);
   }
 
 }

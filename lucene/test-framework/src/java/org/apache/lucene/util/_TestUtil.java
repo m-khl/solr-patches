@@ -27,10 +27,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.lang.reflect.Method;
 import java.nio.CharBuffer;
-import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -63,6 +60,9 @@ import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.junit.Assert;
 
+/**
+ * General utility methods for Lucene unit tests. 
+ */
 public class _TestUtil {
 
   /** Returns temp dir, based on String arg in its name;
@@ -194,14 +194,14 @@ public class _TestUtil {
   }
 
   public static String randomSimpleString(Random r, int maxLength) {
-    final int end = r.nextInt(maxLength);
+    final int end = nextInt(r, 0, maxLength);
     if (end == 0) {
       // allow 0 length
       return "";
     }
     final char[] buffer = new char[end];
     for (int i = 0; i < end; i++) {
-      buffer[i] = (char) _TestUtil.nextInt(r, 97, 102);
+      buffer[i] = (char) _TestUtil.nextInt(r, 'a', 'z');
     }
     return new String(buffer, 0, end);
   }
@@ -219,7 +219,7 @@ public class _TestUtil {
    * Returns a random string up to a certain length.
    */
   public static String randomUnicodeString(Random r, int maxLength) {
-    final int end = r.nextInt(maxLength);
+    final int end = nextInt(r, 0, maxLength);
     if (end == 0) {
       // allow 0 length
       return "";
@@ -261,7 +261,15 @@ public class _TestUtil {
    * If you call this enough times, you might get a valid regex!
    */
   public static String randomRegexpishString(Random r) {
-    final int end = r.nextInt(20);
+    return randomRegexpishString(r, 20);
+  }
+  
+  /**
+   * Returns a String thats "regexpish" (contains lots of operators typically found in regular expressions)
+   * If you call this enough times, you might get a valid regex!
+   */
+  public static String randomRegexpishString(Random r, int maxLength) {
+    final int end = nextInt(r, 0, maxLength);
     if (end == 0) {
       // allow 0 length
       return "";
@@ -323,7 +331,7 @@ public class _TestUtil {
   };
   
   public static String randomHtmlishString(Random random, int numElements) {
-    final int end = random.nextInt(numElements);
+    final int end = nextInt(random, 0, numElements);
     if (end == 0) {
       // allow 0 length
       return "";
@@ -403,10 +411,48 @@ public class _TestUtil {
         case 20: sb.append(nextInt(random, 0, Integer.MAX_VALUE - 1)); break;
         case 21: sb.append("\n"); break;
         case 22: sb.append("          ".substring(nextInt(random, 0, 10))); break;
+        case 23: {
+          sb.append("<");
+          if (0 == nextInt(random, 0, 3)) {
+            sb.append("          ".substring(nextInt(random, 1, 10)));
+          }
+          if (0 == nextInt(random, 0, 1)) {
+            sb.append("/");
+            if (0 == nextInt(random, 0, 3)) {
+              sb.append("          ".substring(nextInt(random, 1, 10)));
+            }
+          }
+          switch (nextInt(random, 0, 3)) {
+            case 0: sb.append(randomlyRecaseCodePoints(random, "script")); break;
+            case 1: sb.append(randomlyRecaseCodePoints(random, "style")); break;
+            case 2: sb.append(randomlyRecaseCodePoints(random, "br")); break;
+            // default: append nothing
+          }
+          sb.append(">".substring(nextInt(random, 0, 1)));
+          break;
+        }
         default: sb.append(randomSimpleString(random));
       }
     }
     return sb.toString();
+  }
+
+  /**
+   * Randomly upcases, downcases, or leaves intact each code point in the given string
+   */
+  public static String randomlyRecaseCodePoints(Random random, String str) {
+    StringBuilder builder = new StringBuilder();
+    int pos = 0;
+    while (pos < str.length()) {
+      int codePoint = str.codePointAt(pos);
+      pos += Character.charCount(codePoint);
+      switch (nextInt(random, 0, 2)) {
+        case 0: builder.appendCodePoint(Character.toUpperCase(codePoint)); break;
+        case 1: builder.appendCodePoint(Character.toLowerCase(codePoint)); break;
+        case 2: builder.appendCodePoint(codePoint); // leave intact
+      }
+    }
+    return builder.toString();
   }
 
   private static final int[] blockStarts = {
@@ -468,12 +514,12 @@ public class _TestUtil {
   
   /** Returns random string of length up to maxLength codepoints , all codepoints within the same unicode block. */
   public static String randomRealisticUnicodeString(Random r, int maxLength) {
-    return randomRealisticUnicodeString(r, 0, 20);
+    return randomRealisticUnicodeString(r, 0, maxLength);
   }
 
   /** Returns random string of length between min and max codepoints, all codepoints within the same unicode block. */
   public static String randomRealisticUnicodeString(Random r, int minLength, int maxLength) {
-    final int end = minLength + r.nextInt(maxLength);
+    final int end = nextInt(r, minLength, maxLength);
     final int block = r.nextInt(blockStarts.length);
     StringBuilder sb = new StringBuilder();
     for (int i = 0; i < end; i++)

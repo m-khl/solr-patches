@@ -118,11 +118,6 @@ public class ReturnFields
       augmenters.addTransformer( new RenameFieldsTransformer( rename ) );
     }
 
-    // Legacy behavior: "score" == "*,score"  
-    if( fields.size() == 1 && _wantsScore && augmenters.size() == 1 && globs.isEmpty() ) {
-      _wantsAllFields = true;
-    }
-
     if( !_wantsAllFields ) {
       if( !globs.isEmpty() ) {
         // TODO??? need to fill up the fields with matching field names in the index
@@ -142,6 +137,27 @@ public class ReturnFields
     }
   }
 
+
+  // like getId, but also accepts dashes for legacy fields
+  String getFieldName(QueryParsing.StrParser sp) throws ParseException {
+    sp.eatws();
+    int id_start = sp.pos;
+    char ch;
+    if (sp.pos < sp.end && (ch = sp.val.charAt(sp.pos)) != '$' && Character.isJavaIdentifierStart(ch)) {
+      sp.pos++;
+      while (sp.pos < sp.end) {
+        ch = sp.val.charAt(sp.pos);
+        if (!Character.isJavaIdentifierPart(ch) && ch != '.' && ch != '-') {
+          break;
+        }
+        sp.pos++;
+      }
+      return sp.val.substring(id_start, sp.pos);
+    }
+
+    return null;
+  }
+
   private void add(String fl, NamedList<String> rename, DocTransformers augmenters, SolrQueryRequest req) {
     if( fl == null ) {
       return;
@@ -158,7 +174,7 @@ public class ReturnFields
 
         // short circuit test for a really simple field name
         String key = null;
-        String field = sp.getId(null);
+        String field = getFieldName(sp);
         char ch = sp.ch();
 
         if (field != null) {

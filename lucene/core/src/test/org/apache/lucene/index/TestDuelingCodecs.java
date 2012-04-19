@@ -68,11 +68,11 @@ public class TestDuelingCodecs extends LuceneTestCase {
     // so this would make assertEquals complicated.
 
     leftCodec = Codec.forName("SimpleText");
-    rightCodec = new RandomCodec(random, false);
+    rightCodec = new RandomCodec(random(), false);
     leftDir = newDirectory();
     rightDir = newDirectory();
 
-    long seed = random.nextLong();
+    long seed = random().nextLong();
 
     // must use same seed because of random payloads, etc
     Analyzer leftAnalyzer = new MockAnalyzer(new Random(seed));
@@ -129,6 +129,8 @@ public class TestDuelingCodecs extends LuceneTestCase {
     for (int i = 0; i < numdocs; i++) {
       writer.addDocument(lineFileDocs.nextDoc());
     }
+    
+    lineFileDocs.close();
   }
   
   /**
@@ -184,8 +186,8 @@ public class TestDuelingCodecs extends LuceneTestCase {
    * checks that top-level statistics on Fields are the same 
    */
   public void assertFieldStatistics(Fields leftFields, Fields rightFields) throws Exception {
-    if (leftFields.getUniqueFieldCount() != -1 && rightFields.getUniqueFieldCount() != -1) {
-      assertEquals(info, leftFields.getUniqueFieldCount(), rightFields.getUniqueFieldCount());
+    if (leftFields.size() != -1 && rightFields.size() != -1) {
+      assertEquals(info, leftFields.size(), rightFields.size());
     }
     
     if (leftFields.getUniqueTermCount() != -1 && rightFields.getUniqueTermCount() != -1) {
@@ -212,7 +214,7 @@ public class TestDuelingCodecs extends LuceneTestCase {
     if (deep) {
       int numIntersections = atLeast(3);
       for (int i = 0; i < numIntersections; i++) {
-        String re = AutomatonTestUtil.randomRegexp(random);
+        String re = AutomatonTestUtil.randomRegexp(random());
         CompiledAutomaton automaton = new CompiledAutomaton(new RegExp(re, RegExp.NONE).toAutomaton());
         if (automaton.type == CompiledAutomaton.AUTOMATON_TYPE.NORMAL) {
           // TODO: test start term too
@@ -238,8 +240,8 @@ public class TestDuelingCodecs extends LuceneTestCase {
     if (leftTerms.getSumTotalTermFreq() != -1 && rightTerms.getSumTotalTermFreq() != -1) {
       assertEquals(info, leftTerms.getSumTotalTermFreq(), rightTerms.getSumTotalTermFreq());
     }
-    if (leftTerms.getUniqueTermCount() != -1 && rightTerms.getUniqueTermCount() != -1) {
-      assertEquals(info, leftTerms.getUniqueTermCount(), rightTerms.getUniqueTermCount());
+    if (leftTerms.size() != -1 && rightTerms.size() != -1) {
+      assertEquals(info, leftTerms.size(), rightTerms.size());
     }
   }
 
@@ -249,7 +251,7 @@ public class TestDuelingCodecs extends LuceneTestCase {
    */
   public void assertTermsEnum(TermsEnum leftTermsEnum, TermsEnum rightTermsEnum, boolean deep) throws Exception {
     BytesRef term;
-    Bits randomBits = new RandomBits(leftReader.maxDoc(), random.nextDouble(), random);
+    Bits randomBits = new RandomBits(leftReader.maxDoc(), random().nextDouble(), random());
     DocsAndPositionsEnum leftPositions = null;
     DocsAndPositionsEnum rightPositions = null;
     DocsEnum leftDocs = null;
@@ -383,13 +385,13 @@ public class TestDuelingCodecs extends LuceneTestCase {
     int skipInterval = 16;
 
     while (true) {
-      if (random.nextBoolean()) {
+      if (random().nextBoolean()) {
         // nextDoc()
         docid = leftDocs.nextDoc();
         assertEquals(info, docid, rightDocs.nextDoc());
       } else {
         // advance()
-        int skip = docid + (int) Math.ceil(Math.abs(skipInterval + random.nextGaussian() * averageGap));
+        int skip = docid + (int) Math.ceil(Math.abs(skipInterval + random().nextGaussian() * averageGap));
         docid = leftDocs.advance(skip);
         assertEquals(info, docid, rightDocs.advance(skip));
       }
@@ -418,13 +420,13 @@ public class TestDuelingCodecs extends LuceneTestCase {
     int skipInterval = 16;
 
     while (true) {
-      if (random.nextBoolean()) {
+      if (random().nextBoolean()) {
         // nextDoc()
         docid = leftDocs.nextDoc();
         assertEquals(info, docid, rightDocs.nextDoc());
       } else {
         // advance()
-        int skip = docid + (int) Math.ceil(Math.abs(skipInterval + random.nextGaussian() * averageGap));
+        int skip = docid + (int) Math.ceil(Math.abs(skipInterval + random().nextGaussian() * averageGap));
         docid = leftDocs.advance(skip);
         assertEquals(info, docid, rightDocs.advance(skip));
       }
@@ -562,7 +564,7 @@ public class TestDuelingCodecs extends LuceneTestCase {
   public void assertDocValues(DocValues leftDocValues, DocValues rightDocValues) throws Exception {
     assertNotNull(info, leftDocValues);
     assertNotNull(info, rightDocValues);
-    assertEquals(info, leftDocValues.type(), rightDocValues.type());
+    assertEquals(info, leftDocValues.getType(), rightDocValues.getType());
     assertEquals(info, leftDocValues.getValueSize(), rightDocValues.getValueSize());
     assertDocValuesSource(leftDocValues.getDirectSource(), rightDocValues.getDirectSource());
     assertDocValuesSource(leftDocValues.getSource(), rightDocValues.getSource());
@@ -572,8 +574,8 @@ public class TestDuelingCodecs extends LuceneTestCase {
    * checks source API
    */
   public void assertDocValuesSource(DocValues.Source left, DocValues.Source right) throws Exception {
-    DocValues.Type leftType = left.type();
-    assertEquals(info, leftType, right.type());
+    DocValues.Type leftType = left.getType();
+    assertEquals(info, leftType, right.getType());
     switch(leftType) {
       case VAR_INTS:
       case FIXED_INTS_8:

@@ -48,7 +48,20 @@
   <modules>
     <module>core</module>
     <module>test-framework</module>
-    <module>contrib</module>
+    <module>analysis</module>
+    <module>benchmark</module>
+    <module>demo</module>
+    <module>facet</module>
+    <module>grouping</module>
+    <module>highlighter</module>
+    <module>join</module>
+    <module>memory</module>
+    <module>misc</module>
+    <module>queries</module>
+    <module>queryparser</module>
+    <module>sandbox</module>
+    <module>spatial</module>
+    <module>suggest</module>
   </modules>
   <build>
     <directory>build/lucene-parent</directory>

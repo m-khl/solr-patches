@@ -17,8 +17,12 @@ package org.apache.solr;
  * limitations under the License.
  */
 
+import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.response.QueryResponse;
+import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.common.util.NamedList;
 
 /**
  * TODO? perhaps use:
@@ -141,7 +145,7 @@ public class TestDistributedGrouping extends BaseDistributedSearchTestCase {
     query("q", "*:*", "rows", 100, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10, "sort", "id asc, _docid_ asc");
     query("q", "*:*", "rows", 100, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10, "sort", "{!func}add(" + i1 + ",5) asc, id asc");
     query("q", "*:*", "rows", 100, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10, "sort", i1 + " asc, id asc", "facet", "true", "facet.field", t1);
-    query("q", "*:*", "rows", 100, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10, "sort", i1 + " asc, id asc", "stats", "true", "stats.field", i1);
+    query("q", "*:*", "rows", 100, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10, "sort", i1 + " asc, id asc", "stats", "true", "stats.field", tlong);
     query("q", "kings", "rows", 100, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10, "sort", i1 + " asc, id asc", "spellcheck", "true", "spellcheck.build", "true", "qt", "spellCheckCompRH");
     query("q", "*:*", "rows", 100, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10, "sort", i1 + " asc, id asc", "facet", "true", "hl","true","hl.fl",t1);
     query("q", "*:*", "rows", 100, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10, "sort", i1 + " asc, id asc", "group.sort", "id desc");
@@ -165,10 +169,34 @@ public class TestDistributedGrouping extends BaseDistributedSearchTestCase {
     query("q", "*:*", "fq", s1 + ":a", "rows", 100, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10, "sort", i1 + " asc, id asc", "group.truncate", "true");
     query("q", "*:*", "fq", s1 + ":a", "rows", 100, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10, "sort", i1 + " asc, id asc", "group.truncate", "true", "facet", "true", "facet.field", t1);
 
+    query("q", "*:*", "fq", s1 + ":a", "rows", 0, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10, "sort", i1 + " asc, id asc", "facet", "true", "facet.field", t1);
+    query("q", "*:*", "fq", s1 + ":a", "rows", 0, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10, "sort", i1 + " asc, id asc", "group.truncate", "true", "facet", "true", "facet.field", t1);
+
+    ModifiableSolrParams params = new ModifiableSolrParams();
+    Object[] q =  {"q", "*:*", "fq", s1 + ":a", "rows", 1, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10};
+
+    for (int i = 0; i < q.length; i += 2) {
+      params.add(q[i].toString(), q[i + 1].toString());
+    }
+
+    setDistributedParams(params);
+
+    int which = r.nextInt(clients.size());
+    SolrServer client = clients.get(which);
+    QueryResponse rsp = client.query(params);
+    NamedList nl = (NamedList<?>) rsp.getResponse().get("grouped");
+    nl = (NamedList<?>) nl.getVal(0);
+    int matches = (Integer) nl.getVal(0);
+    assertEquals(100 * shardsArr.length, matches);
+
+
     // We cannot validate distributed grouping with scoring as first sort. since there is no global idf. We can check if no errors occur
     simpleQuery("q", "*:*", "rows", 100, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10, "sort", i1 + " desc", "group.sort", "score desc"); // SOLR-2955
     simpleQuery("q", "*:*", "rows", 100, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10, "sort", "score desc, _docid_ asc, id asc");
     simpleQuery("q", "*:*", "rows", 100, "fl", "id," + i1, "group", "true", "group.field", i1, "group.limit", 10);
+
+    // Can't validate the response, but can check if no errors occur.
+    simpleQuery("q", "*:*", "rows", 100, "fl", "id," + i1, "group", "true", "group.query", t1 + ":kings OR " + t1 + ":eggs", "group.limit", 10, "sort", i1 + " asc, id asc", CommonParams.TIME_ALLOWED, 1);
   }
 
   private void simpleQuery(Object... queryParams) throws SolrServerException {

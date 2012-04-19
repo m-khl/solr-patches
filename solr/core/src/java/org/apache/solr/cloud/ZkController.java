@@ -20,7 +20,6 @@ package org.apache.solr.cloud;
 import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
-import java.net.MalformedURLException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -33,7 +32,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.request.CoreAdminRequest.WaitForState;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
@@ -947,10 +946,10 @@ public final class ZkController {
         collectionProps.put(CONFIGNAME_PROP,  configNames.get(0));
         break;
       }
-      log.info("Could not find collection configName - pausing for 2 seconds and trying again - try: " + retry);
-      Thread.sleep(2000);
+      log.info("Could not find collection configName - pausing for 3 seconds and trying again - try: " + retry);
+      Thread.sleep(3000);
     }
-    if (retry == 6) {
+    if (retry == 10) {
       log.error("Could not find configName for collection " + collection);
       throw new ZooKeeperException(
           SolrException.ErrorCode.SERVER_ERROR,
@@ -1119,13 +1118,8 @@ public final class ZkController {
     
     boolean isLeader = leaderProps.getCoreUrl().equals(ourUrl);
     if (!isLeader && !SKIP_AUTO_RECOVERY) {
-      CommonsHttpSolrServer server = null;
-      try {
-        server = new CommonsHttpSolrServer(leaderBaseUrl);
-      } catch (MalformedURLException e) {
-        throw new ZooKeeperException(SolrException.ErrorCode.SERVER_ERROR, "",
-            e);
-      }
+      HttpSolrServer server = null;
+      server = new HttpSolrServer(leaderBaseUrl);
       server.setConnectionTimeout(45000);
       server.setSoTimeout(45000);
       WaitForState prepCmd = new WaitForState();

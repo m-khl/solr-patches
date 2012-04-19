@@ -1,5 +1,22 @@
 package org.apache.lucene.util.junitcompat;
 
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import java.util.Arrays;
 
 import org.apache.lucene.util.LuceneTestCase;
@@ -106,49 +123,49 @@ public class TestReproduceMessage extends WithNestedTests {
   public void testAssumeBeforeClass() throws Exception { 
     type = SoreType.ASSUMPTION; 
     where = SorePoint.BEFORE_CLASS;
-    Assert.assertTrue(runAndReturnSyserr().contains("NOTE: Assume failed in"));
+    Assert.assertTrue(runAndReturnSyserr().isEmpty());
   }
 
   @Test @Ignore
   public void testAssumeInitializer() throws Exception { 
     type = SoreType.ASSUMPTION; 
     where = SorePoint.INITIALIZER;
-    Assert.assertTrue(runAndReturnSyserr().contains("NOTE: Assume failed in"));
+    Assert.assertTrue(runAndReturnSyserr().isEmpty());
   }
 
   @Test
   public void testAssumeRule() throws Exception { 
     type = SoreType.ASSUMPTION; 
     where = SorePoint.RULE;
-    Assert.assertTrue(runAndReturnSyserr().contains("NOTE: Assume failed in"));
+    Assert.assertEquals("", runAndReturnSyserr());
   }
 
   @Test
   public void testAssumeBefore() throws Exception { 
     type = SoreType.ASSUMPTION; 
     where = SorePoint.BEFORE;
-    Assert.assertTrue(runAndReturnSyserr().contains("NOTE: Assume failed in"));
+    Assert.assertTrue(runAndReturnSyserr().isEmpty());
   }
 
   @Test
   public void testAssumeTest() throws Exception { 
     type = SoreType.ASSUMPTION; 
     where = SorePoint.TEST;
-    Assert.assertTrue(runAndReturnSyserr().contains("NOTE: Assume failed in"));
+    Assert.assertTrue(runAndReturnSyserr().isEmpty());
   }
 
   @Test
   public void testAssumeAfter() throws Exception { 
     type = SoreType.ASSUMPTION; 
     where = SorePoint.AFTER;
-    Assert.assertTrue(runAndReturnSyserr().contains("NOTE: Assume failed in"));
+    Assert.assertTrue(runAndReturnSyserr().isEmpty());
   }
 
   @Test @Ignore
   public void testAssumeAfterClass() throws Exception { 
     type = SoreType.ASSUMPTION; 
     where = SorePoint.AFTER_CLASS;
-    Assert.assertTrue(runAndReturnSyserr().contains("NOTE: Assume failed in"));
+    Assert.assertTrue(runAndReturnSyserr().isEmpty());
   }
 
   /*
@@ -173,32 +190,42 @@ public class TestReproduceMessage extends WithNestedTests {
   public void testFailureRule() throws Exception { 
     type = SoreType.FAILURE; 
     where = SorePoint.RULE;
-    Assert.assertTrue(runAndReturnSyserr().contains("NOTE: reproduce with:"));
-    Assert.assertTrue(Arrays.asList(runAndReturnSyserr().split("\\s")).contains("-Dtestmethod=test"));
+
+    final String syserr = runAndReturnSyserr();
+    
+    Assert.assertTrue(syserr.contains("NOTE: reproduce with:"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.method=test"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.class=*." + Nested.class.getSimpleName()));
   }
 
   @Test
   public void testFailureBefore() throws Exception { 
     type = SoreType.FAILURE; 
     where = SorePoint.BEFORE;
-    Assert.assertTrue(runAndReturnSyserr().contains("NOTE: reproduce with:"));
-    Assert.assertTrue(Arrays.asList(runAndReturnSyserr().split("\\s")).contains("-Dtestmethod=test"));
+    final String syserr = runAndReturnSyserr();
+    Assert.assertTrue(syserr.contains("NOTE: reproduce with:"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.method=test"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.class=*." + Nested.class.getSimpleName()));
   }
 
   @Test
   public void testFailureTest() throws Exception { 
     type = SoreType.FAILURE; 
     where = SorePoint.TEST;
-    Assert.assertTrue(runAndReturnSyserr().contains("NOTE: reproduce with:"));
-    Assert.assertTrue(Arrays.asList(runAndReturnSyserr().split("\\s")).contains("-Dtestmethod=test"));
+    final String syserr = runAndReturnSyserr();
+    Assert.assertTrue(syserr.contains("NOTE: reproduce with:"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.method=test"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.class=*." + Nested.class.getSimpleName()));
   }
 
   @Test
   public void testFailureAfter() throws Exception { 
     type = SoreType.FAILURE; 
     where = SorePoint.AFTER;
-    Assert.assertTrue(runAndReturnSyserr().contains("NOTE: reproduce with:"));
-    Assert.assertTrue(Arrays.asList(runAndReturnSyserr().split("\\s")).contains("-Dtestmethod=test"));
+    final String syserr = runAndReturnSyserr();
+    Assert.assertTrue(syserr.contains("NOTE: reproduce with:"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.method=test"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.class=*." + Nested.class.getSimpleName()));
   }
 
   @Test @Ignore
@@ -230,32 +257,40 @@ public class TestReproduceMessage extends WithNestedTests {
   public void testErrorRule() throws Exception { 
     type = SoreType.ERROR; 
     where = SorePoint.RULE;
-    Assert.assertTrue(runAndReturnSyserr().contains("NOTE: reproduce with:"));
-    Assert.assertTrue(Arrays.asList(runAndReturnSyserr().split("\\s")).contains("-Dtestmethod=test"));
+    final String syserr = runAndReturnSyserr();
+    Assert.assertTrue(syserr.contains("NOTE: reproduce with:"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.method=test"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.class=*." + Nested.class.getSimpleName()));
   }
 
   @Test
   public void testErrorBefore() throws Exception { 
     type = SoreType.ERROR; 
     where = SorePoint.BEFORE;
-    Assert.assertTrue(runAndReturnSyserr().contains("NOTE: reproduce with:"));
-    Assert.assertTrue(Arrays.asList(runAndReturnSyserr().split("\\s")).contains("-Dtestmethod=test"));
+    final String syserr = runAndReturnSyserr();
+    Assert.assertTrue(syserr.contains("NOTE: reproduce with:"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.method=test"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.class=*." + Nested.class.getSimpleName()));
   }
 
   @Test
   public void testErrorTest() throws Exception { 
     type = SoreType.ERROR; 
     where = SorePoint.TEST;
-    Assert.assertTrue(runAndReturnSyserr().contains("NOTE: reproduce with:"));
-    Assert.assertTrue(Arrays.asList(runAndReturnSyserr().split("\\s")).contains("-Dtestmethod=test"));
+    final String syserr = runAndReturnSyserr();
+    Assert.assertTrue(syserr.contains("NOTE: reproduce with:"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.method=test"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.class=*." + Nested.class.getSimpleName()));
   }
 
   @Test
   public void testErrorAfter() throws Exception { 
     type = SoreType.ERROR; 
     where = SorePoint.AFTER;
-    Assert.assertTrue(runAndReturnSyserr().contains("NOTE: reproduce with:"));
-    Assert.assertTrue(Arrays.asList(runAndReturnSyserr().split("\\s")).contains("-Dtestmethod=test"));
+    final String syserr = runAndReturnSyserr();
+    Assert.assertTrue(syserr.contains("NOTE: reproduce with:"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.method=test"));
+    Assert.assertTrue(Arrays.asList(syserr.split("\\s")).contains("-Dtests.class=*." + Nested.class.getSimpleName()));
   }
 
   @Test @Ignore
@@ -269,8 +304,8 @@ public class TestReproduceMessage extends WithNestedTests {
     JUnitCore.runClasses(Nested.class);
 
     String err = getSysErr();
-    //super.prevSysErr.println("Type: " + type + ", point: " + where + " resulted in:\n" + err);
-    //super.prevSysErr.println("---");
+    // super.prevSysErr.println("Type: " + type + ", point: " + where + " resulted in:\n" + err);
+    // super.prevSysErr.println("---");
     return err;
   }
 }

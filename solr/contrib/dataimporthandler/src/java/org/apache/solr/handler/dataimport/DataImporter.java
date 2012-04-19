@@ -25,7 +25,7 @@ import org.apache.solr.schema.SchemaField;
 import org.apache.solr.common.util.ContentStream;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.StrUtils;
-import org.apache.solr.common.util.SystemIdResolver;
+import org.apache.solr.util.SystemIdResolver;
 import org.apache.solr.common.util.XMLErrorLogger;
 
 import static org.apache.solr.handler.dataimport.DataImportHandlerException.wrapAndThrow;
@@ -45,7 +45,6 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * <p> Stores all configuration information for pulling and indexing data. </p>
@@ -94,7 +93,7 @@ public class DataImporter {
    * Only for testing purposes
    */
   DataImporter() {
-    coreScopeSession = new ConcurrentHashMap<String, Object>();
+    coreScopeSession = new HashMap<String, Object>();
     createPropertyWriter();
     propWriter.init(this);
     this.handlerName = "dataimport" ;
@@ -246,11 +245,6 @@ public class DataImporter {
       // if in this chain no document root is found()
       e.isDocRoot = true;
     }
-    if (e.allAttributes.get("threads") != null) {
-      if(docRootFound) throw new DataImportHandlerException(DataImportHandlerException.SEVERE, "'threads' not allowed below rootEntity ");
-      config.isMultiThreaded = true;      
-    }
-
     if (e.fields != null) {
       for (DataConfig.Field f : e.fields) {
         if (schema != null) {

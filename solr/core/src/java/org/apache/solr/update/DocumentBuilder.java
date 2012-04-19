@@ -282,13 +282,7 @@ public class DocumentBuilder {
             if( val instanceof String && cf.getMaxChars() > 0 ) {
               val = cf.getLimitedValue((String)val);
             }
-            
-            IndexableField [] fields = destinationField.createFields(val, omitNorms ? 1F : docBoost*boost);
-            if (fields != null) { // null fields are not added
-              for (IndexableField f : fields) {
-                if(f != null) out.add(f);
-              }
-            }
+            addField(out, destinationField, val, destinationField.omitNorms() ? 1F : docBoost*boost);
           }
           
           // In lucene, the boost for a given field is the product of the 
@@ -298,10 +292,13 @@ public class DocumentBuilder {
           boost = docBoost;
         }
       }
+      catch( SolrException ex ) {
+        throw ex;
+      }
       catch( Exception ex ) {
         throw new SolrException( SolrException.ErrorCode.BAD_REQUEST,
             "ERROR: "+getID(doc, schema)+"Error adding field '" + 
-              field.getName() + "'='" +field.getValue()+"'", ex );
+              field.getName() + "'='" +field.getValue()+"' msg=" + ex.getMessage(), ex );
       }
       
       // make sure the field was used somehow...
@@ -326,29 +323,5 @@ public class DocumentBuilder {
       }
     }
     return out;
-  }
-
-  
-  /**
-   * Add fields from the solr document
-   * 
-   * TODO: /!\ NOTE /!\ This semantics of this function are still in flux.  
-   * Something somewhere needs to be able to fill up a SolrDocument from
-   * a lucene document - this is one place that may happen.  It may also be
-   * moved to an independent function
-   * 
-   * @since solr 1.3
-   */
-  public SolrDocument loadStoredFields( SolrDocument doc, Document luceneDoc  )
-  {
-    for( IndexableField field : luceneDoc) {
-      if( field.fieldType().stored() ) {
-        SchemaField sf = schema.getField( field.name() );
-        if( !schema.isCopyFieldTarget( sf ) ) {
-          doc.addField( field.name(), sf.getType().toObject( field ) );
-        }
-      }
-    }
-    return doc;
   }
 }

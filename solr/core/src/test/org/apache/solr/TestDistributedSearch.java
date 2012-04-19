@@ -23,11 +23,13 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.lucene.search.FieldCache;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.cloud.ChaosMonkey;
+import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.ShardParams;
@@ -89,6 +91,9 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
            tdate_b, "2010-01-05T11:00:00Z",
            t1,"all the kings horses and all the kings men");
     indexr(id,9, i1, 7, tlong, 7,t1,"couldn't put humpty together again");
+
+    commit();  // try to ensure there's more than one segment
+
     indexr(id,10, i1, 4321, tlong, 4321,t1,"this too shall pass");
     indexr(id,11, i1, -987, tlong, 987,
            t1,"An eye for eye only ends up making the whole world blind.");
@@ -128,7 +133,7 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
     query("q","*:*", "sort","{!func}testfunc(add("+i1+",5))"+" desc");
     query("q","*:*", "sort",i1+" asc");
     query("q","*:*", "sort",i1+" desc", "fl","*,score");
-    query("q","*:*", "sort","n_tl1 asc", "fl","score");  // test legacy behavior - "score"=="*,score"
+    query("q","*:*", "sort","n_tl1 asc", "fl","*,score"); 
     query("q","*:*", "sort","n_tl1 desc");
     handle.put("maxScore", SKIPVAL);
     query("q","{!func}"+i1);// does not expect maxScore. So if it comes ,ignore it. JavaBinCodec.writeSolrDocumentList()
@@ -167,6 +172,9 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
     query("q","*:*", "rows",0, "facet","true", "facet.query","quick", "facet.query","all", "facet.query","*:*");
     query("q","*:*", "rows",0, "facet","true", "facet.field",t1, "facet.mincount",2);
 
+    // a facet query to test out chars out of the ascii range
+    query("q","*:*", "rows",0, "facet","true", "facet.query","{!term f=foo_s}international\u00ff\u01ff\u2222\u3333");
+
     // simple date facet on one field
     query("q","*:*", "rows",100, "facet","true", 
           "facet.date",tdate_a, 
@@ -203,23 +211,33 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
           "facet.range.start",200, 
           "facet.range.gap",100, 
           "f."+tlong+".facet.range.end",900);
+    
+    //  variations of fl
+    query("q","*:*", "fl","score","sort",i1 + " desc");
+    query("q","*:*", "fl",i1 + ",score","sort",i1 + " desc");
+    query("q","*:*", "fl", i1, "fl","score","sort",i1 + " desc");
+    query("q","*:*", "fl", "id," + i1,"sort",i1 + " desc");
+    query("q","*:*", "fl", "id", "fl",i1,"sort",i1 + " desc");
+    query("q","*:*", "fl",i1, "fl", "id","sort",i1 + " desc");
+    query("q","*:*", "fl", "id", "fl",nint, "fl",tint,"sort",i1 + " desc");
+    query("q","*:*", "fl",nint, "fl", "id", "fl",tint,"sort",i1 + " desc");
 
     stress=0;  // turn off stress... we want to tex max combos in min time
     for (int i=0; i<25*RANDOM_MULTIPLIER; i++) {
-      String f = fieldNames[random.nextInt(fieldNames.length)];
-      if (random.nextBoolean()) f = t1;  // the text field is a really interesting one to facet on (and it's multi-valued too)
+      String f = fieldNames[random().nextInt(fieldNames.length)];
+      if (random().nextBoolean()) f = t1;  // the text field is a really interesting one to facet on (and it's multi-valued too)
 
       // we want a random query and not just *:* so we'll get zero counts in facets also
       // TODO: do a better random query
-      String q = random.nextBoolean() ? "*:*" : "id:(1 3 5 7 9 11 13) OR id:[100 TO " + random.nextInt(50) + "]";
+      String q = random().nextBoolean() ? "*:*" : "id:(1 3 5 7 9 11 13) OR id:[100 TO " + random().nextInt(50) + "]";
 
-      int nolimit = random.nextBoolean() ? -1 : 10000;  // these should be equivalent
+      int nolimit = random().nextBoolean() ? -1 : 10000;  // these should be equivalent
 
       // if limit==-1, we should always get exact matches
-      query("q",q, "rows",0, "facet","true", "facet.field",f, "facet.limit",nolimit, "facet.sort","count", "facet.mincount",random.nextInt(5), "facet.offset",random.nextInt(10));
-      query("q",q, "rows",0, "facet","true", "facet.field",f, "facet.limit",nolimit, "facet.sort","index", "facet.mincount",random.nextInt(5), "facet.offset",random.nextInt(10));
+      query("q",q, "rows",0, "facet","true", "facet.field",f, "facet.limit",nolimit, "facet.sort","count", "facet.mincount",random().nextInt(5), "facet.offset",random().nextInt(10));
+      query("q",q, "rows",0, "facet","true", "facet.field",f, "facet.limit",nolimit, "facet.sort","index", "facet.mincount",random().nextInt(5), "facet.offset",random().nextInt(10));
       // for index sort, we should get exact results for mincount <= 1
-      query("q",q, "rows",0, "facet","true", "facet.field",f, "facet.sort","index", "facet.mincount",random.nextInt(2), "facet.offset",random.nextInt(10), "facet.limit",random.nextInt(11)-1);
+      query("q",q, "rows",0, "facet","true", "facet.field",f, "facet.sort","index", "facet.mincount",random().nextInt(2), "facet.offset",random().nextInt(10), "facet.limit",random().nextInt(11)-1);
     }
     stress = backupStress;  // restore stress
 
@@ -278,6 +296,17 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
       query("q","*:*", "rows",100);
     }
 
+    //SOLR 3161 ensure shards.qt=/update fails (anything but search handler really)
+    // Also see TestRemoteStreaming#testQtUpdateFails()
+    try {
+      ignoreException("isShard is only acceptable");
+      // query("q","*:*","shards.qt","/update","stream.body","<delete><query>*:*</query></delete>");
+      // fail();
+    } catch (SolrException e) {
+      //expected
+    }
+    unIgnoreException("isShard is only acceptable");
+
     // test debugging
     handle.put("explain", UNORDERED);
     handle.put("debug", UNORDERED);
@@ -332,11 +361,15 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
     // TODO: This test currently fails because debug info is obtained only
     // on shards with matches.
     // query("q","matchesnothing","fl","*,score", "debugQuery", "true");
-
+    
     // Thread.sleep(10000000000L);
+
+    purgeFieldCache(FieldCache.DEFAULT);   // avoid FC insanity
   }
   
-  protected void queryPartialResults(final List<String> upShards, List<SolrServer> upClients, Object... q) throws Exception {
+  protected void queryPartialResults(final List<String> upShards, 
+                                     final List<SolrServer> upClients, 
+                                     Object... q) throws Exception {
     
     final ModifiableSolrParams params = new ModifiableSolrParams();
 
@@ -363,8 +396,8 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
           @Override
           public void run() {
             for (int j = 0; j < stress; j++) {
-              int which = r.nextInt(clients.size());
-              SolrServer client = clients.get(which);
+              int which = r.nextInt(upClients.size());
+              SolrServer client = upClients.get(which);
               try {
                 QueryResponse rsp = client.query(new ModifiableSolrParams(params));
                 if (verifyStress) {

@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Random;
 
 public class TestPseudoReturnFields extends SolrTestCaseJ4 {
 
@@ -42,7 +43,7 @@ public class TestPseudoReturnFields extends SolrTestCaseJ4 {
    * values of the fl param that mean all real fields and score
    */
   private static String[] SCORE_AND_REAL_FIELDS = new String[] { 
-    "score", "score,*", "*,score"
+    "score,*", "*,score"
   };
 
   @BeforeClass
@@ -405,6 +406,7 @@ public class TestPseudoReturnFields extends SolrTestCaseJ4 {
 
   @Test
   public void testAugmentersGlobsExplicitAndScoreOhMy() throws Exception {
+    Random random = random();
 
     // NOTE: 'ssto' is the missing one
     final List<String> fl = Arrays.asList

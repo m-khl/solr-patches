@@ -26,11 +26,8 @@ import java.util.TreeMap;
 
 import org.apache.lucene.index.FieldInfo.IndexOptions;
 
-/** Access to the Field Info file that describes document fields and whether or
- *  not they are indexed. Each segment has a separate Field Info file. Objects
- *  of this class are thread-safe for multiple readers, but only one thread can
- *  be adding documents at a time, with no other reader or writer threads
- *  accessing this object.
+/** 
+ * Collection of {@link FieldInfo}s (accessible by number or by name).
  *  @lucene.experimental
  */
 public final class FieldInfos implements Iterable<FieldInfo> {
@@ -166,19 +163,19 @@ public final class FieldInfos implements Iterable<FieldInfo> {
    * Returns a deep clone of this FieldInfos instance.
    */
   @Override
-  synchronized public Object clone() {
+  synchronized public FieldInfos clone() {
     FieldInfos fis = new FieldInfos(globalFieldNumbers);
     fis.hasFreq = hasFreq;
     fis.hasProx = hasProx;
     fis.hasVectors = hasVectors;
     for (FieldInfo fi : this) {
-      FieldInfo clone = (FieldInfo) (fi).clone();
+      FieldInfo clone = fi.clone();
       fis.putInternal(clone);
     }
     return fis;
   }
 
-  /** Returns true if any fields do not positions */
+  /** Returns true if any fields have positions */
   public boolean hasProx() {
     if (isReadOnly()) {
       return hasProx;
@@ -349,6 +346,12 @@ public final class FieldInfos implements Iterable<FieldInfo> {
     return fi;
   }
 
+  /**
+   * lookup the number of a field by name.
+   * 
+   * @param fieldName field's name
+   * @return number of field, or -1 if it does not exist.
+   */
   public int fieldNumber(String fieldName) {
     FieldInfo fi = fieldInfo(fieldName);
     return (fi != null) ? fi.number : -1;
@@ -384,11 +387,17 @@ public final class FieldInfos implements Iterable<FieldInfo> {
     return byNumber.values().iterator();
   }
 
+  /**
+   * @return number of fields
+   */
   public int size() {
     assert byNumber.size() == byName.size();
     return byNumber.size();
   }
 
+  /**
+   * @return true if at least one field has any vectors
+   */
   public boolean hasVectors() {
     if (isReadOnly()) {
       return hasVectors;
@@ -402,9 +411,12 @@ public final class FieldInfos implements Iterable<FieldInfo> {
     return false;
   }
 
+  /**
+   * @return true if at least one field has any norms
+   */
   public boolean hasNorms() {
     for (FieldInfo fi : this) {
-      if (fi.normsPresent()) {
+      if (fi.hasNorms()) {
         return true;
       }
     }
@@ -432,7 +444,7 @@ public final class FieldInfos implements Iterable<FieldInfo> {
     }
     final FieldInfos roFis = new FieldInfos((FieldNumberBiMap)null);
     for (FieldInfo fieldInfo : this) {
-      FieldInfo clone = (FieldInfo) (fieldInfo).clone();
+      FieldInfo clone = fieldInfo.clone();
       roFis.putInternal(clone);
       roFis.hasVectors |= clone.storeTermVector;
       roFis.hasProx |= clone.isIndexed && clone.indexOptions.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0;
@@ -441,7 +453,10 @@ public final class FieldInfos implements Iterable<FieldInfo> {
     return roFis;
   }
 
-  public boolean anyDocValuesFields() {
+  /**
+   * @return true if at least one field has docValues
+   */
+  public boolean hasDocValues() {
     for (FieldInfo fi : this) {
       if (fi.hasDocValues()) { 
         return true;

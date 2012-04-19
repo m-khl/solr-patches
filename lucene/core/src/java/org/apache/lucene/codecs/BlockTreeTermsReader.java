@@ -35,7 +35,6 @@ import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.Terms;
-import org.apache.lucene.index.TermsEnum.SeekStatus;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.ByteArrayDataInput;
 import org.apache.lucene.store.Directory;
@@ -212,11 +211,12 @@ public class BlockTreeTermsReader extends FieldsProducer {
 
   @Override
   public Terms terms(String field) throws IOException {
+    assert field != null;
     return fields.get(field);
   }
 
   @Override
-  public int getUniqueFieldCount() {
+  public int size() {
     return fields.size();
   }
 
@@ -455,7 +455,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
     }
 
     @Override
-    public long getUniqueTermCount() {
+    public long size() {
       return numTerms;
     }
 
@@ -488,7 +488,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
 
       private Frame[] stack;
       
-      @SuppressWarnings("unchecked") private FST.Arc<BytesRef>[] arcs = new FST.Arc[5];
+      @SuppressWarnings({"rawtypes","unchecked"}) private FST.Arc<BytesRef>[] arcs = new FST.Arc[5];
 
       private final RunAutomaton runAutomaton;
       private final CompiledAutomaton compiledAutomaton;
@@ -803,7 +803,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
       @Override
       public TermState termState() throws IOException {
         currentFrame.decodeMetaData();
-        return (TermState) currentFrame.termState.clone();
+        return currentFrame.termState.clone();
       }
 
       private Frame getFrame(int ord) throws IOException {
@@ -821,7 +821,8 @@ public class BlockTreeTermsReader extends FieldsProducer {
 
       private FST.Arc<BytesRef> getArc(int ord) {
         if (ord >= arcs.length) {
-          @SuppressWarnings("unchecked") final FST.Arc<BytesRef>[] next = new FST.Arc[ArrayUtil.oversize(1+ord, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
+          @SuppressWarnings({"rawtypes","unchecked"}) final FST.Arc<BytesRef>[] next =
+            new FST.Arc[ArrayUtil.oversize(1+ord, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
           System.arraycopy(arcs, 0, next, 0, arcs.length);
           for(int arcOrd=arcs.length;arcOrd<next.length;arcOrd++) {
             next[arcOrd] = new FST.Arc<BytesRef>();
@@ -1198,7 +1199,8 @@ public class BlockTreeTermsReader extends FieldsProducer {
       final BytesRef term = new BytesRef();
       private final FST.BytesReader fstReader;
 
-      @SuppressWarnings("unchecked") private FST.Arc<BytesRef>[] arcs = new FST.Arc[1];
+      @SuppressWarnings({"rawtypes","unchecked"}) private FST.Arc<BytesRef>[] arcs =
+          new FST.Arc[1];
 
       public SegmentTermsEnum() throws IOException {
         //if (DEBUG) System.out.println("BTTR.init seg=" + segment);
@@ -1354,7 +1356,8 @@ public class BlockTreeTermsReader extends FieldsProducer {
 
       private FST.Arc<BytesRef> getArc(int ord) {
         if (ord >= arcs.length) {
-          @SuppressWarnings("unchecked") final FST.Arc<BytesRef>[] next = new FST.Arc[ArrayUtil.oversize(1+ord, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
+          @SuppressWarnings({"rawtypes","unchecked"}) final FST.Arc<BytesRef>[] next =
+              new FST.Arc[ArrayUtil.oversize(1+ord, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
           System.arraycopy(arcs, 0, next, 0, arcs.length);
           for(int arcOrd=arcs.length;arcOrd<next.length;arcOrd++) {
             next[arcOrd] = new FST.Arc<BytesRef>();
@@ -1944,6 +1947,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
         }
       }
 
+      @SuppressWarnings("unused")
       private void printSeekState() throws IOException {
         if (currentFrame == staticFrame) {
           System.out.println("  no prior seek");
@@ -2162,7 +2166,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
       public TermState termState() throws IOException {
         assert !eof;
         currentFrame.decodeMetaData();
-        TermState ts = (TermState) currentFrame.state.clone();
+        TermState ts = currentFrame.state.clone();
         //if (DEBUG) System.out.println("BTTR.termState seg=" + segment + " state=" + ts);
         return ts;
       }

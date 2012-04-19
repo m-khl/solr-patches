@@ -27,7 +27,7 @@ import org.apache.solr.common.util.ContentStreamBase;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.ContentStream;
 import org.apache.solr.common.util.StrUtils;
-import org.apache.solr.common.util.SystemIdResolver;
+import org.apache.solr.util.SystemIdResolver;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.SolrResourceLoader;
 import org.apache.solr.handler.RequestHandlerBase;
@@ -333,16 +333,6 @@ public class DataImportHandler extends RequestHandlerBase implements
   @Override
   public String getDescription() {
     return DataImporter.MSG.JMX_DESC;
-  }
-
-  @Override
-  public String getSourceId() {
-    return "$Id$";
-  }
-
-  @Override
-  public String getVersion() {
-    return "1.0";
   }
 
   @Override

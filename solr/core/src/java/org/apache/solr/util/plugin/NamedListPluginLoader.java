@@ -19,7 +19,7 @@ package org.apache.solr.util.plugin;
 
 import java.util.Map;
 
-import org.apache.solr.common.util.DOMUtil;
+import org.apache.solr.util.DOMUtil;
 import org.w3c.dom.Node;
 
 /**
@@ -30,9 +30,8 @@ public class NamedListPluginLoader<T extends NamedListInitializedPlugin> extends
 {
   private final Map<String,T> registry;
   
-  public NamedListPluginLoader( String name, Map<String,T> map )
-  {
-    super( name );
+  public NamedListPluginLoader(String name, Class<T> pluginClassType, Map<String, T> map) {
+    super(name, pluginClassType);
     registry = map;
   }
 

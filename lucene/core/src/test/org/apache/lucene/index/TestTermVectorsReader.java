@@ -200,11 +200,11 @@ public class TestTermVectorsReader extends LuceneTestCase {
   }
 
   public void testReader() throws IOException {
-    TermVectorsReader reader = Codec.getDefault().termVectorsFormat().vectorsReader(dir, seg, fieldInfos, newIOContext(random));
+    TermVectorsReader reader = Codec.getDefault().termVectorsFormat().vectorsReader(dir, seg, fieldInfos, newIOContext(random()));
     for (int j = 0; j < 5; j++) {
       Terms vector = reader.get(j).terms(testFields[0]);
       assertNotNull(vector);
-      assertEquals(testTerms.length, vector.getUniqueTermCount());
+      assertEquals(testTerms.length, vector.size());
       TermsEnum termsEnum = vector.iterator(null);
       for (int i = 0; i < testTerms.length; i++) {
         final BytesRef text = termsEnum.next();
@@ -219,11 +219,11 @@ public class TestTermVectorsReader extends LuceneTestCase {
   }
   
   public void testDocsEnum() throws IOException {
-    TermVectorsReader reader = Codec.getDefault().termVectorsFormat().vectorsReader(dir, seg, fieldInfos, newIOContext(random));
+    TermVectorsReader reader = Codec.getDefault().termVectorsFormat().vectorsReader(dir, seg, fieldInfos, newIOContext(random()));
     for (int j = 0; j < 5; j++) {
       Terms vector = reader.get(j).terms(testFields[0]);
       assertNotNull(vector);
-      assertEquals(testTerms.length, vector.getUniqueTermCount());
+      assertEquals(testTerms.length, vector.size());
       TermsEnum termsEnum = vector.iterator(null);
       DocsEnum docsEnum = null;
       for (int i = 0; i < testTerms.length; i++) {
@@ -233,11 +233,11 @@ public class TestTermVectorsReader extends LuceneTestCase {
         //System.out.println("Term: " + term);
         assertEquals(testTerms[i], term);
         
-        docsEnum = _TestUtil.docs(random, termsEnum, null, docsEnum, false);
+        docsEnum = _TestUtil.docs(random(), termsEnum, null, docsEnum, false);
         assertNotNull(docsEnum);
         int doc = docsEnum.docID();
         assertTrue(doc == -1 || doc == DocIdSetIterator.NO_MORE_DOCS);
-        assertTrue(docsEnum.nextDoc() != DocsEnum.NO_MORE_DOCS);
+        assertTrue(docsEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
         assertEquals(DocIdSetIterator.NO_MORE_DOCS, docsEnum.nextDoc());
       }
       assertNull(termsEnum.next());
@@ -246,11 +246,11 @@ public class TestTermVectorsReader extends LuceneTestCase {
   }
 
   public void testPositionReader() throws IOException {
-    TermVectorsReader reader = Codec.getDefault().termVectorsFormat().vectorsReader(dir, seg, fieldInfos, newIOContext(random));
+    TermVectorsReader reader = Codec.getDefault().termVectorsFormat().vectorsReader(dir, seg, fieldInfos, newIOContext(random()));
     BytesRef[] terms;
     Terms vector = reader.get(0).terms(testFields[0]);
     assertNotNull(vector);
-    assertEquals(testTerms.length, vector.getUniqueTermCount());
+    assertEquals(testTerms.length, vector.size());
     TermsEnum termsEnum = vector.iterator(null);
     DocsAndPositionsEnum dpEnum = null;
     for (int i = 0; i < testTerms.length; i++) {
@@ -264,17 +264,17 @@ public class TestTermVectorsReader extends LuceneTestCase {
       assertNotNull(dpEnum);
       int doc = dpEnum.docID();
       assertTrue(doc == -1 || doc == DocIdSetIterator.NO_MORE_DOCS);
-      assertTrue(dpEnum.nextDoc() != DocsEnum.NO_MORE_DOCS);
+      assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
       assertEquals(dpEnum.freq(), positions[i].length);
       for (int j = 0; j < positions[i].length; j++) {
         assertEquals(positions[i][j], dpEnum.nextPosition());
       }
-      assertEquals(DocsEnum.NO_MORE_DOCS, dpEnum.nextDoc());
+      assertEquals(DocIdSetIterator.NO_MORE_DOCS, dpEnum.nextDoc());
 
       dpEnum = termsEnum.docsAndPositions(null, dpEnum, true);
       doc = dpEnum.docID();
       assertTrue(doc == -1 || doc == DocIdSetIterator.NO_MORE_DOCS);
-      assertTrue(dpEnum.nextDoc() != DocsEnum.NO_MORE_DOCS);
+      assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
       assertNotNull(dpEnum);
       assertEquals(dpEnum.freq(), positions[i].length);
       for (int j = 0; j < positions[i].length; j++) {
@@ -282,12 +282,12 @@ public class TestTermVectorsReader extends LuceneTestCase {
         assertEquals(j*10, dpEnum.startOffset());
         assertEquals(j*10 + testTerms[i].length(), dpEnum.endOffset());
       }
-      assertEquals(DocsEnum.NO_MORE_DOCS, dpEnum.nextDoc());
+      assertEquals(DocIdSetIterator.NO_MORE_DOCS, dpEnum.nextDoc());
     }
 
     Terms freqVector = reader.get(0).terms(testFields[1]); //no pos, no offset
     assertNotNull(freqVector);
-    assertEquals(testTerms.length, freqVector.getUniqueTermCount());
+    assertEquals(testTerms.length, freqVector.size());
     termsEnum = freqVector.iterator(null);
     assertNotNull(termsEnum);
     for (int i = 0; i < testTerms.length; i++) {
@@ -301,12 +301,12 @@ public class TestTermVectorsReader extends LuceneTestCase {
   }
 
   public void testOffsetReader() throws IOException {
-    TermVectorsReader reader = Codec.getDefault().termVectorsFormat().vectorsReader(dir, seg, fieldInfos, newIOContext(random));
+    TermVectorsReader reader = Codec.getDefault().termVectorsFormat().vectorsReader(dir, seg, fieldInfos, newIOContext(random()));
     Terms vector = reader.get(0).terms(testFields[0]);
     assertNotNull(vector);
     TermsEnum termsEnum = vector.iterator(null);
     assertNotNull(termsEnum);
-    assertEquals(testTerms.length, vector.getUniqueTermCount());
+    assertEquals(testTerms.length, vector.size());
     DocsAndPositionsEnum dpEnum = null;
     for (int i = 0; i < testTerms.length; i++) {
       final BytesRef text = termsEnum.next();
@@ -316,15 +316,15 @@ public class TestTermVectorsReader extends LuceneTestCase {
 
       dpEnum = termsEnum.docsAndPositions(null, dpEnum, false);
       assertNotNull(dpEnum);
-      assertTrue(dpEnum.nextDoc() != DocsEnum.NO_MORE_DOCS);
+      assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
       assertEquals(dpEnum.freq(), positions[i].length);
       for (int j = 0; j < positions[i].length; j++) {
         assertEquals(positions[i][j], dpEnum.nextPosition());
       }
-      assertEquals(DocsEnum.NO_MORE_DOCS, dpEnum.nextDoc());
+      assertEquals(DocIdSetIterator.NO_MORE_DOCS, dpEnum.nextDoc());
 
       dpEnum = termsEnum.docsAndPositions(null, dpEnum, true);
-      assertTrue(dpEnum.nextDoc() != DocsEnum.NO_MORE_DOCS);
+      assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
       assertNotNull(dpEnum);
       assertEquals(dpEnum.freq(), positions[i].length);
       for (int j = 0; j < positions[i].length; j++) {
@@ -332,7 +332,7 @@ public class TestTermVectorsReader extends LuceneTestCase {
         assertEquals(j*10, dpEnum.startOffset());
         assertEquals(j*10 + testTerms[i].length(), dpEnum.endOffset());
       }
-      assertEquals(DocsEnum.NO_MORE_DOCS, dpEnum.nextDoc());
+      assertEquals(DocIdSetIterator.NO_MORE_DOCS, dpEnum.nextDoc());
     }
     reader.close();
   }
@@ -343,7 +343,7 @@ public class TestTermVectorsReader extends LuceneTestCase {
   public void testBadParams() throws IOException {
     TermVectorsReader reader = null;
     try {
-      reader = Codec.getDefault().termVectorsFormat().vectorsReader(dir, seg, fieldInfos, newIOContext(random));
+      reader = Codec.getDefault().termVectorsFormat().vectorsReader(dir, seg, fieldInfos, newIOContext(random()));
       //Bad document number, good field number
       reader.get(50);
       fail();
@@ -352,7 +352,7 @@ public class TestTermVectorsReader extends LuceneTestCase {
     } finally {
       reader.close();
     }
-    reader = Codec.getDefault().termVectorsFormat().vectorsReader(dir, seg, fieldInfos, newIOContext(random));
+    reader = Codec.getDefault().termVectorsFormat().vectorsReader(dir, seg, fieldInfos, newIOContext(random()));
     //good document number, bad field
     Terms vector = reader.get(0).terms("f50");
     assertNull(vector);

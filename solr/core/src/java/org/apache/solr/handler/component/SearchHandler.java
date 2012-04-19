@@ -22,7 +22,7 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.ShardParams;
-import org.apache.solr.common.util.RTimer;
+import org.apache.solr.util.RTimer;
 import org.apache.solr.core.CloseHook;
 import org.apache.solr.core.PluginInfo;
 import org.apache.solr.core.SolrCore;
@@ -331,16 +331,6 @@ public class SearchHandler extends RequestHandlerBase implements SolrCoreAware ,
       }
     }
     return sb.toString();
-  }
-
-  @Override
-  public String getVersion() {
-    return "$Revision$";
-  }
-
-  @Override
-  public String getSourceId() {
-    return "$Id$";
   }
 
   @Override

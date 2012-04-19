@@ -40,7 +40,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <p/>
  * <b>This API is experimental and subject to change</b>
  *
- * @version $Id: LFUCache.java 1170772 2011-09-14 19:09:56Z sarowe $
  * @see org.apache.solr.util.ConcurrentLFUCache
  * @see org.apache.solr.search.SolrCache
  * @since solr 3.6
@@ -208,12 +207,8 @@ public class LFUCache<K, V> implements SolrCache<K, V> {
     return Category.CACHE;
   }
 
-  public String getSourceId() {
-    return "$Id: LFUCache.java 1170772 2011-09-14 19:09:56Z sarowe $";
-  }
-
   public String getSource() {
-    return "$URL: http://svn.apache.org/repos/asf/lucene/dev/branches/branch_3x/solr/core/src/java/org/apache/solr/search/LFUCache.java $";
+    return "$URL$";
   }
 
   public URL[] getDocs() {

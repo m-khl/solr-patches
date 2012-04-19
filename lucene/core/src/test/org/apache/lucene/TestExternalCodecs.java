@@ -17,9 +17,6 @@ package org.apache.lucene;
  * limitations under the License.
  */
 
-import java.io.*;
-import java.util.*;
-
 import org.apache.lucene.analysis.*;
 import org.apache.lucene.codecs.*;
 import org.apache.lucene.codecs.lucene40.Lucene40Codec;
@@ -66,7 +63,7 @@ public class TestExternalCodecs extends LuceneTestCase {
     dir.setCheckIndexOnClose(false); // we use a custom codec provider
     IndexWriter w = new IndexWriter(
         dir,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).
         setCodec(new CustomPerFieldCodec()).
             setMergePolicy(newLogMergePolicy(3))
     );

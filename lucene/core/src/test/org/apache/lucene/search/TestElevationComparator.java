@@ -39,7 +39,7 @@ public class TestElevationComparator extends LuceneTestCase {
     Directory directory = newDirectory();
     IndexWriter writer = new IndexWriter(
         directory,
-        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).
+        newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).
             setMaxBufferedDocs(2).
             setMergePolicy(newLogMergePolicy(1000)).
             setSimilarity(new DefaultSimilarity())
@@ -139,7 +139,7 @@ class ElevationComparatorSource extends FieldComparatorSource {
   }
 
   @Override
-  public FieldComparator newComparator(final String fieldname, final int numHits, int sortPos, boolean reversed) throws IOException {
+  public FieldComparator<Integer> newComparator(final String fieldname, final int numHits, int sortPos, boolean reversed) throws IOException {
    return new FieldComparator<Integer>() {
 
      FieldCache.DocTermsIndex idIndex;
@@ -179,7 +179,7 @@ class ElevationComparatorSource extends FieldComparatorSource {
      }
 
      @Override
-     public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
+     public FieldComparator<Integer> setNextReader(AtomicReaderContext context) throws IOException {
        idIndex = FieldCache.DEFAULT.getTermsIndex(context.reader(), fieldname);
        return this;
      }

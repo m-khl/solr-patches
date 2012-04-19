@@ -525,7 +525,7 @@ public class SpellCheckComponent extends SearchComponent implements SolrCoreAwar
           if (className == null)
             className = IndexBasedSpellChecker.class.getName();
           SolrResourceLoader loader = core.getResourceLoader();
-          SolrSpellChecker checker = (SolrSpellChecker) loader.newInstance(className);
+          SolrSpellChecker checker = loader.newInstance(className, SolrSpellChecker.class);
           if (checker != null) {
             String dictionary = checker.init(spellchecker, core);
             if (dictionary != null) {
@@ -563,7 +563,7 @@ public class SpellCheckComponent extends SearchComponent implements SolrCoreAwar
 
       //ensure that there is at least one query converter defined
       if (queryConverters.size() == 0) {
-        LOG.warn("No queryConverter defined, using default converter");
+        LOG.info("No queryConverter defined, using default converter");
         queryConverters.put("queryConverter", new SpellingQueryConverter());
       }
 
@@ -652,16 +652,6 @@ public class SpellCheckComponent extends SearchComponent implements SolrCoreAwar
   @Override
   public String getDescription() {
     return "A Spell Checker component";
-  }
-
-  @Override
-  public String getVersion() {
-    return "$Revision$";
-  }
-
-  @Override
-  public String getSourceId() {
-    return "$Id$";
   }
 
   @Override

@@ -25,7 +25,7 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.util.NamedList;
-import org.apache.solr.common.util.RTimer;
+import org.apache.solr.util.RTimer;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestInfo;
@@ -172,6 +172,9 @@ public class ResponseBuilder
   public final Map<String, TopGroups<BytesRef>> mergedTopGroups = new HashMap<String, TopGroups<BytesRef>>();
   public final Map<String, QueryCommandResult> mergedQueryCommandResults = new HashMap<String, QueryCommandResult>();
   public final Map<Object, SolrDocument> retrievedDocuments = new HashMap<Object, SolrDocument>();
+  public int totalHitCount; // Hit count used when distributed grouping is performed.
+  // Used for timeAllowed parameter. First phase elapsed time is subtracted from the time allowed for the second phase.
+  public int firstPhaseElapsedTime;
 
   /**
    * Utility function to add debugging info.  This will make sure a valid

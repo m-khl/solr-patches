@@ -36,6 +36,7 @@ import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.FloatDocValues;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.ReaderUtil;
 import org.apache.solr.core.SolrCore;
@@ -278,7 +279,7 @@ public class FileFloatSource extends ValueSource {
 
         docsEnum = termsEnum.docs(null, docsEnum, false);
         int doc;
-        while ((doc = docsEnum.nextDoc()) != DocsEnum.NO_MORE_DOCS) {
+        while ((doc = docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
           vals[doc] = fval;
         }
       }
@@ -328,15 +329,5 @@ public class FileFloatSource extends ValueSource {
     public String getSource() {
       return "$URL$";
     }
-
-    @Override
-    public String getSourceId() {
-      return "$Id$";
-    }
-
-    @Override
-    public String getVersion() {
-      return "$Revision$";
-    }    
   }
 }

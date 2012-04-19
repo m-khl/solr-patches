@@ -24,6 +24,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -93,7 +94,7 @@ public class OverseerTest extends SolrTestCaseJ4 {
 
     public void close(){
       try {
-        deleteNode(ZkStateReader.LIVE_NODES_ZKNODE + "/" + "node1");
+        deleteNode(ZkStateReader.LIVE_NODES_ZKNODE + "/" + nodeName);
         zkClient.close();
       } catch (InterruptedException e) {
         //e.printStackTrace();
@@ -127,7 +128,7 @@ public class OverseerTest extends SolrTestCaseJ4 {
           ZkStateReader.toJSON(coreStates.values().toArray(
               new CoreState[coreStates.size()])), true);
       
-      for (int i = 0; i < 10; i++) {
+      for (int i = 0; i < 30; i++) {
         String shardId = getShardId(coreName);
         if (shardId != null) {
           try {
@@ -154,9 +155,9 @@ public class OverseerTest extends SolrTestCaseJ4 {
           collection);
       if (slices != null) {
         for (Slice slice : slices.values()) {
-          if (slice.getShards().containsKey(nodeName + "_" + coreName))
-          ;
-          return slice.getName();
+          if (slice.getShards().containsKey(nodeName + "_" + coreName)) {
+            return slice.getName();
+          }
         }
       }
       return null;
@@ -237,6 +238,8 @@ public class OverseerTest extends SolrTestCaseJ4 {
       assertNotNull(reader.getLeaderUrl("collection1", "shard3", 15000));
       
     } finally {
+      System.clearProperty(ZkStateReader.NUM_SHARDS_PROP);
+      System.clearProperty("bootstrap_confdir");
       if (DEBUG) {
         if (zkController != null) {
           zkClient.printLayoutToStdOut();
@@ -250,8 +253,6 @@ public class OverseerTest extends SolrTestCaseJ4 {
       }
       server.shutdown();
     }
-    
-    System.clearProperty(ZkStateReader.NUM_SHARDS_PROP);
   }
 
   @Test
@@ -259,9 +260,9 @@ public class OverseerTest extends SolrTestCaseJ4 {
     String zkDir = dataDir.getAbsolutePath() + File.separator
         + "zookeeper/server1/data";
 
-    final int nodeCount = random.nextInt(50)+50;   //how many simulated nodes (num of threads)
-    final int coreCount = random.nextInt(100)+100;  //how many cores to register
-    final int sliceCount = random.nextInt(20)+1;  //how many slices
+    final int nodeCount = random().nextInt(50)+50;   //how many simulated nodes (num of threads)
+    final int coreCount = random().nextInt(100)+100;  //how many cores to register
+    final int sliceCount = random().nextInt(20)+1;  //how many slices
     
     ZkTestServer server = new ZkTestServer(zkDir);
 
@@ -394,6 +395,8 @@ public class OverseerTest extends SolrTestCaseJ4 {
       }
 
     } finally {
+      System.clearProperty(ZkStateReader.NUM_SHARDS_PROP);
+      System.clearProperty("bootstrap_confdir");
       if (DEBUG) {
         if (controllers[0] != null) {
           zkClient.printLayoutToStdOut();
@@ -414,8 +417,6 @@ public class OverseerTest extends SolrTestCaseJ4 {
         nodeExecutors[i].shutdownNow();
       }
     }
-    
-    System.clearProperty(ZkStateReader.NUM_SHARDS_PROP);
   }
 
   //wait until collections are available
@@ -645,8 +646,9 @@ public class OverseerTest extends SolrTestCaseJ4 {
       } catch (Throwable t) {
         //t.printStackTrace();
       }
+      Random rnd = random();
       while (run) {
-        if(random.nextInt(20)==1){
+        if(rnd.nextInt(20)==1){
           try {
             overseerClient.close();
             overseerClient = electNewOverseer(zkAddress);

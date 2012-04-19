@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Set;
 
 import org.apache.lucene.util.*;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.*;
 import org.apache.lucene.document.*;
 
@@ -33,7 +34,7 @@ public class TestStressAdvance extends LuceneTestCase {
         System.out.println("\nTEST: iter=" + iter);
       }
       Directory dir = newDirectory();
-      RandomIndexWriter w = new RandomIndexWriter(random, dir);
+      RandomIndexWriter w = new RandomIndexWriter(random(), dir);
       final Set<Integer> aDocs = new HashSet<Integer>();
       final Document doc = new Document();
       final Field f = newField("field", "", StringField.TYPE_UNSTORED);
@@ -42,7 +43,7 @@ public class TestStressAdvance extends LuceneTestCase {
       doc.add(idField);
       int num = atLeast(4097);
       for(int id=0;id<num;id++) {
-        if (random.nextInt(4) == 3) {
+        if (random().nextInt(4) == 3) {
           f.setStringValue("a");
           aDocs.add(id);
         } else {
@@ -75,11 +76,11 @@ public class TestStressAdvance extends LuceneTestCase {
           System.out.println("\nTEST: iter=" + iter + " iter2=" + iter2);
         }
         assertEquals(TermsEnum.SeekStatus.FOUND, te.seekCeil(new BytesRef("a")));
-        de = _TestUtil.docs(random, te, null, de, false);
+        de = _TestUtil.docs(random(), te, null, de, false);
         testOne(de, aDocIDs);
 
         assertEquals(TermsEnum.SeekStatus.FOUND, te.seekCeil(new BytesRef("b")));
-        de = _TestUtil.docs(random, te, null, de, false);
+        de = _TestUtil.docs(random(), te, null, de, false);
         testOne(de, bDocIDs);
       }
 
@@ -99,7 +100,7 @@ public class TestStressAdvance extends LuceneTestCase {
         System.out.println("  cycle upto=" + upto + " of " + expected.size());
       }
       final int docID;
-      if (random.nextInt(4) == 1 || upto == expected.size()-1) {
+      if (random().nextInt(4) == 1 || upto == expected.size()-1) {
         // test nextDoc()
         if (VERBOSE) {
           System.out.println("    do nextDoc");
@@ -108,7 +109,7 @@ public class TestStressAdvance extends LuceneTestCase {
         docID = docs.nextDoc();
       } else {
         // test advance()
-        final int inc = _TestUtil.nextInt(random, 1, expected.size()-1-upto);
+        final int inc = _TestUtil.nextInt(random(), 1, expected.size()-1-upto);
         if (VERBOSE) {
           System.out.println("    do advance inc=" + inc);
         }
@@ -117,14 +118,14 @@ public class TestStressAdvance extends LuceneTestCase {
       }
       if (upto == expected.size()) {
         if (VERBOSE) {
-          System.out.println("  expect docID=" + DocsEnum.NO_MORE_DOCS + " actual=" + docID);
+          System.out.println("  expect docID=" + DocIdSetIterator.NO_MORE_DOCS + " actual=" + docID);
         }
-        assertEquals(DocsEnum.NO_MORE_DOCS, docID);
+        assertEquals(DocIdSetIterator.NO_MORE_DOCS, docID);
       } else {
         if (VERBOSE) {
           System.out.println("  expect docID=" + expected.get(upto) + " actual=" + docID);
         }
-        assertTrue(docID != DocsEnum.NO_MORE_DOCS);
+        assertTrue(docID != DocIdSetIterator.NO_MORE_DOCS);
         assertEquals(expected.get(upto).intValue(), docID);
       }
     }

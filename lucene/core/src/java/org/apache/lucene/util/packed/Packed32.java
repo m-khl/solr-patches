@@ -186,6 +186,7 @@ class Packed32 extends PackedInts.ReaderImpl implements PackedInts.Mutable {
    * @return the value at the given index.
    */
   public long get(final int index) {
+    assert index >= 0 && index < size();
     final long majorBitPos = (long)index * bitsPerValue;
     final int elementPos = (int)(majorBitPos >>> BLOCK_BITS); // / BLOCK_SIZE
     final int bitPos =     (int)(majorBitPos & MOD_MASK); // % BLOCK_SIZE);
@@ -221,7 +222,6 @@ class Packed32 extends PackedInts.ReaderImpl implements PackedInts.Mutable {
   }
 
   public long ramBytesUsed() {
-    return RamUsageEstimator.NUM_BYTES_ARRAY_HEADER
-            + blocks.length * RamUsageEstimator.NUM_BYTES_INT;
+    return RamUsageEstimator.sizeOf(blocks);
   }
 }

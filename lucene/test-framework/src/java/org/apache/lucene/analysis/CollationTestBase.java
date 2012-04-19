@@ -18,36 +18,39 @@ package org.apache.lucene.analysis;
  */
 
 
+import java.io.IOException;
+import java.io.StringReader;
+import java.util.HashMap;
+import java.util.Map;
+
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
-import org.apache.lucene.store.RAMDirectory;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.index.Term;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.TermRangeFilter;
-import org.apache.lucene.search.TermQuery;
-import org.apache.lucene.search.TermRangeQuery;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.Sort;
-import org.apache.lucene.search.SortField;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.TermRangeFilter;
+import org.apache.lucene.search.TermRangeQuery;
+import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IndexableBinaryStringTools;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util._TestUtil;
 
-import java.io.StringReader;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-
+/**
+ * Base test class for testing Unicode collation.
+ */
 public abstract class CollationTestBase extends LuceneTestCase {
 
   protected String firstRangeBeginningOriginal = "\u062F";
@@ -77,15 +80,15 @@ public abstract class CollationTestBase extends LuceneTestCase {
   public void testFarsiRangeFilterCollating(Analyzer analyzer, BytesRef firstBeg, 
                                             BytesRef firstEnd, BytesRef secondBeg,
                                             BytesRef secondEnd) throws Exception {
-    RAMDirectory ramDir = new RAMDirectory();
-    IndexWriter writer = new IndexWriter(ramDir, new IndexWriterConfig(
+    Directory dir = newDirectory();
+    IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(
         TEST_VERSION_CURRENT, analyzer));
     Document doc = new Document();
     doc.add(new Field("content", "\u0633\u0627\u0628", TextField.TYPE_STORED));
     doc.add(new Field("body", "body", StringField.TYPE_STORED));
     writer.addDocument(doc);
     writer.close();
-    IndexReader reader = IndexReader.open(ramDir);
+    IndexReader reader = IndexReader.open(dir);
     IndexSearcher searcher = new IndexSearcher(reader);
     Query query = new TermQuery(new Term("body","body"));
 
@@ -103,13 +106,14 @@ public abstract class CollationTestBase extends LuceneTestCase {
     assertEquals("The index Term should be included.", 1, result.length);
 
     reader.close();
+    dir.close();
   }
  
   public void testFarsiRangeQueryCollating(Analyzer analyzer, BytesRef firstBeg, 
                                             BytesRef firstEnd, BytesRef secondBeg,
                                             BytesRef secondEnd) throws Exception {
-    RAMDirectory ramDir = new RAMDirectory();
-    IndexWriter writer = new IndexWriter(ramDir, new IndexWriterConfig(
+    Directory dir = newDirectory();
+    IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(
         TEST_VERSION_CURRENT, analyzer));
     Document doc = new Document();
 
@@ -120,7 +124,7 @@ public abstract class CollationTestBase extends LuceneTestCase {
     doc.add(new Field("content", "\u0633\u0627\u0628", TextField.TYPE_STORED));
     writer.addDocument(doc);
     writer.close();
-    IndexReader reader = IndexReader.open(ramDir);
+    IndexReader reader = IndexReader.open(dir);
     IndexSearcher searcher = new IndexSearcher(reader);
 
     Query query = new TermRangeQuery("content", firstBeg, firstEnd, true, true);
@@ -131,12 +135,13 @@ public abstract class CollationTestBase extends LuceneTestCase {
     hits = searcher.search(query, null, 1000).scoreDocs;
     assertEquals("The index Term should be included.", 1, hits.length);
     reader.close();
+    dir.close();
   }
 
   public void testFarsiTermRangeQuery(Analyzer analyzer, BytesRef firstBeg,
       BytesRef firstEnd, BytesRef secondBeg, BytesRef secondEnd) throws Exception {
 
-    RAMDirectory farsiIndex = new RAMDirectory();
+    Directory farsiIndex = newDirectory();
     IndexWriter writer = new IndexWriter(farsiIndex, new IndexWriterConfig(
         TEST_VERSION_CURRENT, analyzer));
     Document doc = new Document();
@@ -162,6 +167,8 @@ public abstract class CollationTestBase extends LuceneTestCase {
       ("content", secondBeg, secondEnd, true, true);
     result = search.search(csrq, null, 1000).scoreDocs;
     assertEquals("The index Term should be included.", 1, result.length);
+    reader.close();
+    farsiIndex.close();
   }
   
   // Test using various international locales with accented characters (which
@@ -180,9 +187,9 @@ public abstract class CollationTestBase extends LuceneTestCase {
                                    String frResult,
                                    String svResult,
                                    String dkResult) throws Exception {
-    RAMDirectory indexStore = new RAMDirectory();
+    Directory indexStore = newDirectory();
     IndexWriter writer = new IndexWriter(indexStore, new IndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random, MockTokenizer.WHITESPACE, false)));
+        TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
 
     // document data:
     // the tracer field is used to determine which document was hit
@@ -238,6 +245,7 @@ public abstract class CollationTestBase extends LuceneTestCase {
     sort.setSort(new SortField("Denmark", SortField.Type.STRING));
     assertMatches(searcher, queryY, sort, dkResult);
     reader.close();
+    indexStore.close();
   }
     
   // Make sure the documents returned by the search match the expected list
@@ -259,7 +267,7 @@ public abstract class CollationTestBase extends LuceneTestCase {
 
   public void assertThreadSafe(final Analyzer analyzer) throws Exception {
     int numTestPoints = 100;
-    int numThreads = _TestUtil.nextInt(random, 3, 5);
+    int numThreads = _TestUtil.nextInt(random(), 3, 5);
     final HashMap<String,BytesRef> map = new HashMap<String,BytesRef>();
     
     // create a map<String,SortKey> up front.
@@ -267,7 +275,7 @@ public abstract class CollationTestBase extends LuceneTestCase {
     // and ensure they are the same as the ones we produced in serial fashion.
 
     for (int i = 0; i < numTestPoints; i++) {
-      String term = _TestUtil.randomSimpleString(random);
+      String term = _TestUtil.randomSimpleString(random());
       TokenStream ts = analyzer.tokenStream("fake", new StringReader(term));
       TermToBytesRefAttribute termAtt = ts.addAttribute(TermToBytesRefAttribute.class);
       BytesRef bytes = termAtt.getBytesRef();

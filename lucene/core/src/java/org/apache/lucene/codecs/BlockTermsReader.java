@@ -95,7 +95,7 @@ public class BlockTermsReader extends FieldsProducer {
     }
 
     @Override
-    public Object clone() {
+    public FieldAndTerm clone() {
       return new FieldAndTerm(this);
     }
 
@@ -197,11 +197,12 @@ public class BlockTermsReader extends FieldsProducer {
 
   @Override
   public Terms terms(String field) throws IOException {
+    assert field != null;
     return fields.get(field);
   }
 
   @Override
-  public int getUniqueFieldCount() {
+  public int size() {
     return fields.size();
   }
 
@@ -260,7 +261,7 @@ public class BlockTermsReader extends FieldsProducer {
     }
 
     @Override
-    public long getUniqueTermCount() {
+    public long size() {
       return numTerms;
     }
 
@@ -728,7 +729,7 @@ public class BlockTermsReader extends FieldsProducer {
       public TermState termState() throws IOException {
         //System.out.println("BTR.termState this=" + this);
         decodeMetaData();
-        TermState ts = (TermState) state.clone();
+        TermState ts = state.clone();
         //System.out.println("  return ts=" + ts);
         return ts;
       }
@@ -776,9 +777,6 @@ public class BlockTermsReader extends FieldsProducer {
           throw new UnsupportedOperationException();
         }
         return state.ord;
-      }
-
-      private void doPendingSeek() {
       }
 
       /* Does initial decode of next block of terms; this

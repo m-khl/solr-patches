@@ -26,8 +26,8 @@ import org.apache.lucene.util.fst.FST.INPUT_TYPE; // javadoc
 
 /**
  * Builds a minimal FST (maps an IntsRef term to an arbitrary
- * output) from pre-sorted terms with outputs (the FST
- * becomes an FSA if you use NoOutputs).  The FST is written
+ * output) from pre-sorted terms with outputs.  The FST
+ * becomes an FSA if you use NoOutputs.  The FST is written
  * on-the-fly into a compact serialized format byte array, which can
  * be saved to / loaded from a Directory or used directly
  * for traversal.  The FST is always finite (no cycles).
@@ -68,8 +68,8 @@ public class Builder<T> {
   // current "frontier"
   private UnCompiledNode<T>[] frontier;
 
-  // Expert: you pass an instance of this if you want to do
-  // something "custom" as suffixes are "frozen":
+  /** Expert: this is invoked by Builder whenever a suffix
+   *  is serialized. */
   public static abstract class FreezeTail<T> {
     public abstract void freeze(final UnCompiledNode<T>[] frontier, int prefixLenPlus1, IntsRef prevInput) throws IOException;
   }
@@ -144,7 +144,8 @@ public class Builder<T> {
     }
     NO_OUTPUT = outputs.getNoOutput();
 
-    @SuppressWarnings("unchecked") final UnCompiledNode<T>[] f = (UnCompiledNode<T>[]) new UnCompiledNode[10];
+    @SuppressWarnings({"rawtypes","unchecked"}) final UnCompiledNode<T>[] f =
+        (UnCompiledNode<T>[]) new UnCompiledNode[10];
     frontier = f;
     for(int idx=0;idx<frontier.length;idx++) {
       frontier[idx] = new UnCompiledNode<T>(this, idx);
@@ -239,7 +240,8 @@ public class Builder<T> {
         if (node.inputCount < minSuffixCount2 || (minSuffixCount2 == 1 && node.inputCount == 1 && idx > 1)) {
           // drop all arcs
           for(int arcIdx=0;arcIdx<node.numArcs;arcIdx++) {
-            @SuppressWarnings("unchecked") final UnCompiledNode<T> target = (UnCompiledNode<T>) node.arcs[arcIdx].target;
+            @SuppressWarnings({"rawtypes","unchecked"}) final UnCompiledNode<T> target =
+                (UnCompiledNode<T>) node.arcs[arcIdx].target;
             target.clear();
           }
           node.numArcs = 0;
@@ -356,7 +358,7 @@ public class Builder<T> {
     final int prefixLenPlus1 = pos1+1;
       
     if (frontier.length < input.length+1) {
-      @SuppressWarnings("unchecked") final UnCompiledNode<T>[] next =
+      @SuppressWarnings({"rawtypes","unchecked"}) final UnCompiledNode<T>[] next =
         new UnCompiledNode[ArrayUtil.oversize(input.length+1, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
       System.arraycopy(frontier, 0, next, 0, frontier.length);
       for(int idx=frontier.length;idx<next.length;idx++) {
@@ -458,7 +460,7 @@ public class Builder<T> {
       final Arc<T> arc = node.arcs[arcIdx];
       if (!arc.target.isCompiled()) {
         // not yet compiled
-        @SuppressWarnings("unchecked") final UnCompiledNode<T> n = (UnCompiledNode<T>) arc.target;
+        @SuppressWarnings({"rawtypes","unchecked"}) final UnCompiledNode<T> n = (UnCompiledNode<T>) arc.target;
         if (n.numArcs == 0) {
           //System.out.println("seg=" + segment + "        FORCE final arc=" + (char) arc.label);
           arc.isFinal = n.isFinal = true;
@@ -468,6 +470,7 @@ public class Builder<T> {
     }
   }
 
+  /** Expert: holds a pending (seen but not yet serialized) arc. */
   public static class Arc<T> {
     public int label;                             // really an "unsigned" byte
     public Node target;
@@ -491,6 +494,7 @@ public class Builder<T> {
     }
   }
 
+  /** Expert: holds a pending (seen but not yet serialized) Node. */
   public static final class UnCompiledNode<T> implements Node {
     final Builder<T> owner;
     public int numArcs;
@@ -512,7 +516,7 @@ public class Builder<T> {
      *          LUCENE-2934 (node expansion based on conditions other than the
      *          fanout size).
      */
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"rawtypes","unchecked"})
     public UnCompiledNode(Builder<T> owner, int depth) {
       this.owner = owner;
       arcs = (Arc<T>[]) new Arc[1];
@@ -545,7 +549,7 @@ public class Builder<T> {
       assert label >= 0;
       assert numArcs == 0 || label > arcs[numArcs-1].label: "arc[-1].label=" + arcs[numArcs-1].label + " new label=" + label + " numArcs=" + numArcs;
       if (numArcs == arcs.length) {
-        @SuppressWarnings("unchecked") final Arc<T>[] newArcs =
+        @SuppressWarnings({"rawtypes","unchecked"}) final Arc<T>[] newArcs =
           new Arc[ArrayUtil.oversize(numArcs+1, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
         System.arraycopy(arcs, 0, newArcs, 0, arcs.length);
         for(int arcIdx=numArcs;arcIdx<newArcs.length;arcIdx++) {

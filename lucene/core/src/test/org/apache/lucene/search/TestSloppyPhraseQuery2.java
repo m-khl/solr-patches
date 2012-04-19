@@ -21,12 +21,10 @@ import java.util.Random;
 
 import org.apache.lucene.index.Term;
 import org.apache.lucene.util._TestUtil;
-import org.junit.Ignore;
 
 /**
  * random sloppy phrase query tests
  */
-@Ignore("Put this back when we fix LUCENE-3821")
 public class TestSloppyPhraseQuery2 extends SearchEquivalenceTestBase {
   /** "A B"~N ⊆ "A B"~N+1 */
   public void testIncreasingSloppiness() throws Exception {
@@ -87,8 +85,8 @@ public class TestSloppyPhraseQuery2 extends SearchEquivalenceTestBase {
     Term t1 = randomTerm();
     Term t2 = randomTerm();
     Term t3 = randomTerm();
-    int pos1 = 1 + random.nextInt(3);
-    int pos2 = pos1 + 1 + random.nextInt(3);
+    int pos1 = 1 + random().nextInt(3);
+    int pos2 = pos1 + 1 + random().nextInt(3);
     PhraseQuery q1 = new PhraseQuery();
     q1.add(t1);
     q1.add(t2, pos1);
@@ -157,8 +155,8 @@ public class TestSloppyPhraseQuery2 extends SearchEquivalenceTestBase {
   /** same as the above with posincr */
   public void testRepetitiveIncreasingSloppiness3WithHoles() throws Exception {
     Term t = randomTerm();
-    int pos1 = 1 + random.nextInt(3);
-    int pos2 = pos1 + 1 + random.nextInt(3);
+    int pos1 = 1 + random().nextInt(3);
+    int pos2 = pos1 + 1 + random().nextInt(3);
     PhraseQuery q1 = new PhraseQuery();
     q1.add(t);
     q1.add(t, pos1);
@@ -176,7 +174,7 @@ public class TestSloppyPhraseQuery2 extends SearchEquivalenceTestBase {
   
   /** MultiPhraseQuery~N ⊆ MultiPhraseQuery~N+1 */
   public void testRandomIncreasingSloppiness() throws Exception {
-    long seed = random.nextLong();
+    long seed = random().nextLong();
     MultiPhraseQuery q1 = randomPhraseQuery(seed);
     MultiPhraseQuery q2 = randomPhraseQuery(seed);
     for (int i = 0; i < 10; i++) {

@@ -17,21 +17,25 @@
 
 package org.apache.solr.core;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.lucene.codecs.Codec;
-import org.apache.lucene.index.IndexDeletionPolicy;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexDeletionPolicy;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.LockObtainFailedException;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.CommonParams.EchoParamStyle;
+import org.apache.solr.common.params.ShardParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.handler.admin.ShowFileRequestHandler;
 import org.apache.solr.handler.component.*;
-import org.apache.solr.request.*;
+import org.apache.solr.request.SolrQueryRequest;
+import org.apache.solr.request.SolrRequestHandler;
 import org.apache.solr.response.*;
 import org.apache.solr.response.transform.TransformerFactory;
 import org.apache.solr.schema.IndexSchema;
@@ -45,23 +49,20 @@ import org.apache.solr.update.UpdateHandler;
 import org.apache.solr.update.processor.*;
 import org.apache.solr.util.RefCounted;
 import org.apache.solr.util.plugin.NamedListInitializedPlugin;
-import org.apache.solr.util.plugin.SolrCoreAware;
 import org.apache.solr.util.plugin.PluginInfoInitialized;
-import org.apache.commons.io.IOUtils;
+import org.apache.solr.util.plugin.SolrCoreAware;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.xml.sax.SAXException;
 
 import javax.xml.parsers.ParserConfigurationException;
-
 import java.io.*;
+import java.lang.reflect.Constructor;
+import java.net.URL;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import java.net.URL;
-import java.lang.reflect.Constructor;
 import java.util.concurrent.locks.ReentrantLock;
 
 
@@ -322,7 +323,7 @@ public final class SolrCore implements SolrInfoMBean {
 
   // gets a non-caching searcher
   public SolrIndexSearcher newSearcher(String name) throws IOException {
-    return new SolrIndexSearcher(this, getNewIndexDir(), schema, getSolrConfig().mainIndexConfig, name, false, directoryFactory);
+    return new SolrIndexSearcher(this, getNewIndexDir(), schema, getSolrConfig().indexConfig, name, false, directoryFactory);
   }
 
 
@@ -330,7 +331,7 @@ public final class SolrCore implements SolrInfoMBean {
     DirectoryFactory dirFactory;
     PluginInfo info = solrConfig.getPluginInfo(DirectoryFactory.class.getName());
     if (info != null) {
-      dirFactory = (DirectoryFactory) getResourceLoader().newInstance(info.className);
+      dirFactory = getResourceLoader().newInstance(info.className, DirectoryFactory.class);
       dirFactory.init(info.initArgs);
     } else {
       dirFactory = new StandardDirectoryFactory();
@@ -343,7 +344,7 @@ public final class SolrCore implements SolrInfoMBean {
     IndexReaderFactory indexReaderFactory;
     PluginInfo info = solrConfig.getPluginInfo(IndexReaderFactory.class.getName());
     if (info != null) {
-      indexReaderFactory = (IndexReaderFactory) resourceLoader.newInstance(info.className);
+      indexReaderFactory = resourceLoader.newInstance(info.className, IndexReaderFactory.class);
       indexReaderFactory.init(info.initArgs);
     } else {
       indexReaderFactory = new StandardIndexReaderFactory();
@@ -366,14 +367,19 @@ public final class SolrCore implements SolrInfoMBean {
 
       initIndexReaderFactory();
 
-      if (indexExists && firstTime && removeLocks) {
+      if (indexExists && firstTime) {
         // to remove locks, the directory must already exist... so we create it
         // if it didn't exist already...
-        Directory dir = directoryFactory.get(indexDir, getSolrConfig().mainIndexConfig.lockType);
+        Directory dir = directoryFactory.get(indexDir, getSolrConfig().indexConfig.lockType);
         if (dir != null)  {
           if (IndexWriter.isLocked(dir)) {
-            log.warn(logid+"WARNING: Solr index directory '" + indexDir+ "' is locked.  Unlocking...");
-            IndexWriter.unlock(dir);
+            if (removeLocks) {
+              log.warn(logid + "WARNING: Solr index directory '{}' is locked.  Unlocking...", indexDir);
+              IndexWriter.unlock(dir);
+            } else {
+              log.error(logid + "Solr index directory '{}' is locked.  Throwing exception", indexDir);
+              throw new LockObtainFailedException("Index locked for write for core " + name);
+            }
           }
           directoryFactory.release(dir);
         }
@@ -384,7 +390,7 @@ public final class SolrCore implements SolrInfoMBean {
         log.warn(logid+"Solr index directory '" + new File(indexDir) + "' doesn't exist."
                 + " Creating new index...");
 
-        SolrIndexWriter writer = new SolrIndexWriter("SolrCore.initIndex", indexDir, getDirectoryFactory(), true, schema, solrConfig.mainIndexConfig, solrDelPolicy, codec, false);
+        SolrIndexWriter writer = new SolrIndexWriter("SolrCore.initIndex", indexDir, getDirectoryFactory(), true, schema, solrConfig.indexConfig, solrDelPolicy, codec, false);
         writer.close();
       }
 
@@ -401,14 +407,11 @@ public final class SolrCore implements SolrInfoMBean {
    *@return the desired instance
    *@throws SolrException if the object could not be instantiated
    */
-  private <T extends Object> T createInstance(String className, Class<T> cast, String msg) {
-    Class clazz = null;
+  private <T> T createInstance(String className, Class<T> cast, String msg) {
+    Class<? extends T> clazz = null;
     if (msg == null) msg = "SolrCore Object";
     try {
-        clazz = getResourceLoader().findClass(className);
-        if (cast != null && !cast.isAssignableFrom(clazz)) {
-          throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,"Error Instantiating "+msg+", "+className+ " is not a " +cast.getName());
-        }
+        clazz = getResourceLoader().findClass(className, cast);
       //most of the classes do not have constructors which takes SolrCore argument. It is recommended to obtain SolrCore by implementing SolrCoreAware.
       // So invariably always it will cause a  NoSuchMethodException. So iterate though the list of available constructors
         Constructor[] cons =  clazz.getConstructors();
@@ -418,7 +421,7 @@ public final class SolrCore implements SolrInfoMBean {
             return (T)con.newInstance(this);
           }
         }
-        return (T) getResourceLoader().newInstance(className);//use the empty constructor      
+        return getResourceLoader().newInstance(className, cast);//use the empty constructor
     } catch (SolrException e) {
       throw e;
     } catch (Exception e) {
@@ -426,14 +429,11 @@ public final class SolrCore implements SolrInfoMBean {
     }
   }
   
-  private <T extends Object> T createReloadedUpdateHandler(String className, Class<UpdateHandler> class1, String msg, UpdateHandler updateHandler) {
-    Class clazz = null;
+  private UpdateHandler createReloadedUpdateHandler(String className, String msg, UpdateHandler updateHandler) {
+    Class<? extends UpdateHandler> clazz = null;
     if (msg == null) msg = "SolrCore Object";
     try {
-        clazz = getResourceLoader().findClass(className);
-        if (class1 != null && !class1.isAssignableFrom(clazz)) {
-          throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,"Error Instantiating "+msg+", "+className+ " is not a " +class1.getName());
-        }
+        clazz = getResourceLoader().findClass(className, UpdateHandler.class);
       //most of the classes do not have constructors which takes SolrCore argument. It is recommended to obtain SolrCore by implementing SolrCoreAware.
       // So invariably always it will cause a  NoSuchMethodException. So iterate though the list of available constructors
         Constructor justSolrCoreCon = null;
@@ -441,14 +441,14 @@ public final class SolrCore implements SolrInfoMBean {
         for (Constructor con : cons) {
           Class[] types = con.getParameterTypes();
           if(types.length == 2 && types[0] == SolrCore.class && types[1] == UpdateHandler.class){
-            return (T)con.newInstance(this, updateHandler);
+            return (UpdateHandler) con.newInstance(this, updateHandler);
           } 
         }
-        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,"Error Instantiating "+msg+", "+className+ " could not find proper constructor for " +class1.getName());
+        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,"Error Instantiating "+msg+", "+className+ " could not find proper constructor for " + UpdateHandler.class.getName());
     } catch (SolrException e) {
       throw e;
     } catch (Exception e) {
-      throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,"Error Instantiating "+msg+", "+className+ " failed to instantiate " +class1.getName(), e);
+      throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,"Error Instantiating "+msg+", "+className+ " failed to instantiate " + UpdateHandler.class.getName(), e);
     }
   }
 
@@ -476,7 +476,7 @@ public final class SolrCore implements SolrInfoMBean {
   }
   
   private UpdateHandler createUpdateHandler(String className, UpdateHandler updateHandler) {
-    return createReloadedUpdateHandler(className, UpdateHandler.class, "Update Handler", updateHandler);
+    return createReloadedUpdateHandler(className, "Update Handler", updateHandler);
   }
 
   private QueryResponseWriter createQueryResponseWriter(String className) {
@@ -636,7 +636,7 @@ public final class SolrCore implements SolrInfoMBean {
     final PluginInfo info = solrConfig.getPluginInfo(CodecFactory.class.getName());
     final CodecFactory factory;
     if (info != null) {
-      factory = (CodecFactory) schema.getResourceLoader().newInstance(info.className);
+      factory = schema.getResourceLoader().newInstance(info.className, CodecFactory.class);
       factory.init(info.initArgs);
     } else {
       factory = new DefaultCodecFactory();
@@ -919,7 +919,7 @@ public final class SolrCore implements SolrInfoMBean {
   }
   private <T> void addIfNotPresent(Map<String ,T> registry, String name, Class<? extends  T> c){
     if(!registry.containsKey(name)){
-      T searchComp = (T) resourceLoader.newInstance(c.getName());
+      T searchComp = resourceLoader.newInstance(c.getName(), c);
       if (searchComp instanceof NamedListInitializedPlugin){
         ((NamedListInitializedPlugin)searchComp).init( new NamedList() );
       }
@@ -1128,7 +1128,7 @@ public final class SolrCore implements SolrInfoMBean {
 
       } else {
         // verbose("non-reopen START:");
-        tmp = new SolrIndexSearcher(this, newIndexDir, schema, getSolrConfig().mainIndexConfig, "main", true, directoryFactory);
+        tmp = new SolrIndexSearcher(this, newIndexDir, schema, getSolrConfig().indexConfig, "main", true, directoryFactory);
         // verbose("non-reopen DONE: searcher=",tmp);
       }
 
@@ -1537,6 +1537,10 @@ public final class SolrCore implements SolrInfoMBean {
     toLog.add("path", req.getContext().get("path"));
     toLog.add("params", "{" + req.getParamString() + "}");
 
+    // TODO: this doesn't seem to be working correctly and causes problems with the example server and distrib (for example /spell)
+    // if (req.getParams().getBool(ShardParams.IS_SHARD,false) && !(handler instanceof SearchHandler))
+    //   throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,"isShard is only acceptable with search handlers");
+
     handler.handleRequest(req,rsp);
     setResponseHeaderValues(handler,req,rsp);
 
@@ -1582,7 +1586,7 @@ public final class SolrCore implements SolrInfoMBean {
     if( params.getBool(CommonParams.HEADER_ECHO_HANDLER, false) ) {
       responseHeader.add("handler", handler.getName() );
     }
-    
+
     // Values for echoParams... false/true/all or false/explicit/all ???
     String ep = params.get( CommonParams.HEADER_ECHO_PARAMS, null );
     if( ep != null ) {
@@ -1904,10 +1908,6 @@ public final class SolrCore implements SolrInfoMBean {
 
   public Category getCategory() {
     return Category.CORE;
-  }
-
-  public String getSourceId() {
-    return "$Id$";
   }
 
   public String getSource() {

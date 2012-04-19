@@ -25,12 +25,7 @@ import java.util.Random;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
-import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.FieldInfosReader;
-import org.apache.lucene.codecs.lucene3x.Lucene3xPostingsFormat;
-import org.apache.lucene.codecs.lucene3x.PreFlexRWCodec;
-import org.apache.lucene.codecs.lucene3x.SegmentTermEnum;
-import org.apache.lucene.codecs.lucene3x.TermInfosReaderIndex;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.CorruptIndexException;
@@ -76,18 +71,18 @@ public class TestTermInfosReaderIndex extends LuceneTestCase {
   public static void beforeClass() throws Exception {
     LuceneTestCase.PREFLEX_IMPERSONATION_IS_ACTIVE = true;
     IndexWriterConfig config = newIndexWriterConfig(TEST_VERSION_CURRENT, 
-        new MockAnalyzer(random, MockTokenizer.KEYWORD, false));
+        new MockAnalyzer(random(), MockTokenizer.KEYWORD, false));
     
     termIndexInterval = config.getTermIndexInterval();
-    indexDivisor = _TestUtil.nextInt(random, 1, 10);
+    indexDivisor = _TestUtil.nextInt(random(), 1, 10);
     NUMBER_OF_DOCUMENTS = atLeast(100);
     NUMBER_OF_FIELDS = atLeast(Math.max(10, 3*termIndexInterval*indexDivisor/NUMBER_OF_DOCUMENTS));
     
     directory = newDirectory();
 
     config.setCodec(new PreFlexRWCodec());
-    // turn off compound file, this test will open some index files directly.
     LogMergePolicy mp = newLogMergePolicy();
+    // turn off compound file, this test will open some index files directly.
     mp.setUseCompoundFile(false);
     config.setMergePolicy(mp);
 
@@ -103,8 +98,8 @@ public class TestTermInfosReaderIndex extends LuceneTestCase {
     FieldInfos fieldInfos = infosReader.read(directory, segment, IOContext.READONCE);
     String segmentFileName = IndexFileNames.segmentFileName(segment, "", Lucene3xPostingsFormat.TERMS_INDEX_EXTENSION);
     long tiiFileLength = directory.fileLength(segmentFileName);
-    IndexInput input = directory.openInput(segmentFileName, newIOContext(random));
-    termEnum = new SegmentTermEnum(directory.openInput(IndexFileNames.segmentFileName(segment, "", Lucene3xPostingsFormat.TERMS_EXTENSION), newIOContext(random)), fieldInfos, false);
+    IndexInput input = directory.openInput(segmentFileName, newIOContext(random()));
+    termEnum = new SegmentTermEnum(directory.openInput(IndexFileNames.segmentFileName(segment, "", Lucene3xPostingsFormat.TERMS_EXTENSION), newIOContext(random())), fieldInfos, false);
     int totalIndexInterval = termEnum.indexInterval * indexDivisor;
     
     SegmentTermEnum indexEnum = new SegmentTermEnum(input, fieldInfos, true);
@@ -130,7 +125,7 @@ public class TestTermInfosReaderIndex extends LuceneTestCase {
   
   public void testSeekEnum() throws CorruptIndexException, IOException {
     int indexPosition = 3;
-    SegmentTermEnum clone = (SegmentTermEnum) termEnum.clone();
+    SegmentTermEnum clone = termEnum.clone();
     Term term = findTermThatWouldBeAtIndex(clone, indexPosition);
     SegmentTermEnum enumerator = clone;
     index.seekEnum(enumerator, indexPosition);
@@ -139,7 +134,7 @@ public class TestTermInfosReaderIndex extends LuceneTestCase {
   }
   
   public void testCompareTo() throws IOException {
-    Term term = new Term("field" + random.nextInt(NUMBER_OF_FIELDS) ,getText());
+    Term term = new Term("field" + random().nextInt(NUMBER_OF_FIELDS) ,getText());
     for (int i = 0; i < index.length(); i++) {
       Term t = index.getTerm(i);
       int compareTo = term.compareTo(t);
@@ -182,13 +177,20 @@ public class TestTermInfosReaderIndex extends LuceneTestCase {
     int termPosition = index * termIndexInterval * indexDivisor;
     for (int i = 0; i < termPosition; i++) {
       // TODO: this test just uses random terms, so this is always possible
-      assumeTrue("ran out of terms.", termEnum.next());
+      assumeTrue("ran out of terms", termEnum.next());
     }
-    return termEnum.term();
+    final Term term = termEnum.term();
+    // An indexed term is only written when the term after
+    // it exists, so, if the number of terms is 0 mod
+    // termIndexInterval, the last index term will not be
+    // written; so we require a term after this term
+    // as well:
+    assumeTrue("ran out of terms", termEnum.next());
+    return term;
   }
 
   private static void populate(Directory directory, IndexWriterConfig config) throws CorruptIndexException, LockObtainFailedException, IOException {
-    RandomIndexWriter writer = new RandomIndexWriter(random, directory, config);
+    RandomIndexWriter writer = new RandomIndexWriter(random(), directory, config);
     for (int i = 0; i < NUMBER_OF_DOCUMENTS; i++) {
       Document document = new Document();
       for (int f = 0; f < NUMBER_OF_FIELDS; f++) {
@@ -199,8 +201,8 @@ public class TestTermInfosReaderIndex extends LuceneTestCase {
     writer.forceMerge(1);
     writer.close();
   }
-  
+
   private static String getText() {
-    return Long.toString(random.nextLong(),Character.MAX_RADIX);
+    return Long.toString(random().nextLong(),Character.MAX_RADIX);
   }
 }

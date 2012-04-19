@@ -1,12 +1,38 @@
 package org.apache.lucene.validation;
 
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.IOException;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.Project;
@@ -19,10 +45,15 @@ import org.apache.tools.ant.types.resources.Resources;
 import org.apache.tools.ant.util.FileNameMapper;
 
 /**
- * An ANT task that verifies if JAR file have associated <tt>LICENSE</tt>
- * and <tt>NOTICE</tt> files. 
+ * An ANT task that verifies if JAR file have associated <tt>LICENSE</tt>,
+ * <tt>NOTICE</tt>, and <tt>sha1</tt> files. 
  */
 public class LicenseCheckTask extends Task {
+
+  public final static String CHECKSUM_TYPE = "sha1";
+  private static final int CHECKSUM_BUFFER_SIZE = 8 * 1024;
+  private static final int CHECKSUM_BYTE_MASK = 0xFF;
+
   /**
    * All JAR files to check.
    */
@@ -103,7 +134,7 @@ public class LicenseCheckTask extends Task {
       }
 
       File jarFile = ((FileResource) r).getFile();
-      if (!checkJarFile(jarFile)) {
+      if (! checkJarFile(jarFile) ) {
         errors++;
       }
       checked++;
@@ -121,6 +152,50 @@ public class LicenseCheckTask extends Task {
   private boolean checkJarFile(File jarFile) {
     log("Scanning: " + jarFile.getPath(), verboseLevel);
 
+    // validate the jar matches against our expected hash
+    final File checksumFile = new File(jarFile.getParent(), 
+                                       jarFile.getName() + "." + CHECKSUM_TYPE);
+    if (! (checksumFile.exists() && checksumFile.canRead()) ) {
+      log("MISSING " +CHECKSUM_TYPE+ " checksum file for: " + jarFile.getPath(), Project.MSG_ERR);
+      this.failures = true;
+      return false;
+    } else {
+      final String expectedChecksum = readChecksumFile(checksumFile);
+      try {
+        final MessageDigest md = MessageDigest.getInstance(CHECKSUM_TYPE);
+        byte[] buf = new byte[CHECKSUM_BUFFER_SIZE];
+        try {
+          FileInputStream fis = new FileInputStream(jarFile);
+          try {
+            DigestInputStream dis = new DigestInputStream(fis, md);
+            try {
+              while (dis.read(buf, 0, CHECKSUM_BUFFER_SIZE) != -1) {
+                // NOOP
+              }
+            } finally {
+              dis.close();
+            }
+          } finally {
+            fis.close();
+          }
+        } catch (IOException ioe) {
+          throw new BuildException("IO error computing checksum of file: " + jarFile, ioe);
+        }
+        final byte[] checksumBytes = md.digest();
+        final String checksum = createChecksumString(checksumBytes);
+        if ( ! checksum.equals(expectedChecksum) ) {
+          log("CHECKSUM FAILED for " + jarFile.getPath() + 
+              " (expected: \"" + expectedChecksum + "\" was: \"" + checksum + "\")", 
+              Project.MSG_ERR);
+          this.failures = true;
+          return false;
+        }
+
+      } catch (NoSuchAlgorithmException ae) {
+        throw new BuildException("Digest type " + CHECKSUM_TYPE + " not supported by your JVM", ae);
+      }
+    }
+    
     // Get the expected license path base from the mapper and search for license files.
     Map<File, LicenseType> foundLicenses = new LinkedHashMap<File, LicenseType>();
     List<File> expectedLocations = new ArrayList<File>();
@@ -176,4 +251,32 @@ outer:
 
     return true;
   }
+
+  private static final String createChecksumString(byte[] digest) {
+    StringBuilder checksum = new StringBuilder();
+    for (int i = 0; i < digest.length; i++) {
+      checksum.append(String.format(Locale.ENGLISH, "%02x", 
+                                    CHECKSUM_BYTE_MASK & digest[i]));
+    }
+    return checksum.toString();
+  }
+  private static final String readChecksumFile(File f) {
+    BufferedReader reader = null;
+    try {
+      reader = new BufferedReader(new InputStreamReader
+                                  (new FileInputStream(f), "UTF-8"));
+      try {
+        String checksum = reader.readLine();
+        if (null == checksum || 0 == checksum.length()) {
+          throw new BuildException("Failed to find checksum in file: " + f);
+        }
+        return checksum;
+      } finally {
+        reader.close();
+      }
+    } catch (IOException e) {
+      throw new BuildException("IO error reading checksum file: " + f, e);
+    }
+  }
+
 }

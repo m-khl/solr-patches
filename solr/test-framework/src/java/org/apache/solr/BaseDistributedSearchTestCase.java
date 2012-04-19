@@ -30,12 +30,14 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
+import junit.framework.Assert;
 import junit.framework.TestCase;
 
+import org.apache.lucene.search.FieldCache;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
-import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrServer;
 import org.apache.solr.client.solrj.request.UpdateRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.client.solrj.response.UpdateResponse;
@@ -47,6 +49,7 @@ import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.schema.TrieDateField;
 import org.apache.solr.util.AbstractSolrTestCase;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,9 +60,16 @@ import org.slf4j.LoggerFactory;
  * @since solr 1.5
  */
 public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
-  public static Random r = random;
+  // TODO: this shouldn't be static. get the random when you need it to avoid sharing.
+  public static Random r;
+
+  @BeforeClass
+  public static void initialize() {
+    r = new Random(random().nextLong());
+  }
 
   protected int shardCount = 4;
+
   /**
    * Sub classes can set this flag in their constructor to true if they
    * want to fix the number of shards to 'shardCount'
@@ -174,6 +184,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
     if (!AbstractSolrTestCase.recurseDelete(testDir)) {
       System.err.println("!!!! WARNING: best effort to remove " + testDir.getAbsolutePath() + " FAILED !!!!!");
     }
+    purgeFieldCache(FieldCache.DEFAULT);   // avoid FC insanity
     super.tearDown();
   }
 
@@ -229,9 +240,9 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
 
   protected void destroyServers() throws Exception {
     controlJetty.stop();
-    ((CommonsHttpSolrServer) controlClient).shutdown();
+    ((HttpSolrServer) controlClient).shutdown();
     for (JettySolrRunner jetty : jettys) jetty.stop();
-    for (SolrServer client : clients) ((CommonsHttpSolrServer) client).shutdown();
+    for (SolrServer client : clients) ((HttpSolrServer) client).shutdown();
     clients.clear();
     jettys.clear();
   }
@@ -258,8 +269,8 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
     try {
       // setup the server...
       String url = "http://localhost:" + port + context;
-      CommonsHttpSolrServer s = new CommonsHttpSolrServer(url);
-      s.setConnectionTimeout(100); // 1/10th sec
+      HttpSolrServer s = new HttpSolrServer(url);
+      s.setConnectionTimeout(DEFAULT_CONNECTION_TIMEOUT);
       s.setDefaultMaxConnectionsPerHost(100);
       s.setMaxTotalConnections(100);
       return s;
@@ -642,17 +653,22 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
     if (System.getProperty("remove.version.field") != null) {
       // we don't care if one has a version and the other doesnt -
       // control vs distrib
-      for (SolrDocument doc : a.getResults()) {
-        doc.removeFields("_version_");
+      // TODO: this should prob be done by adding an ignore on _version_ rather than mutating the responses?
+      if (a.getResults() != null) {
+        for (SolrDocument doc : a.getResults()) {
+          doc.removeFields("_version_");
+        }
       }
-      for (SolrDocument doc : b.getResults()) {
-        doc.removeFields("_version_");
+      if (b.getResults() != null) {
+        for (SolrDocument doc : b.getResults()) {
+          doc.removeFields("_version_");
+        }
       }
     }
     cmp = compare(a.getResponse(), b.getResponse(), flags, handle);
     if (cmp != null) {
       log.error("Mismatched responses:\n" + a + "\n" + b);
-      TestCase.fail(cmp);
+      Assert.fail(cmp);
     }
   }
 
@@ -696,7 +712,6 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   }
 
   public static abstract class RandVal {
-    public static Random r = random;
     public static Set uniqueValues = new HashSet();
 
     public abstract Object val();

@@ -300,7 +300,7 @@ public class Lucene40TermVectorsReader extends TermVectorsReader {
     }
 
     @Override
-    public int getUniqueFieldCount() {
+    public int size() {
       if (fieldNumbers == null) {
         return 0;
       } else {
@@ -335,7 +335,7 @@ public class Lucene40TermVectorsReader extends TermVectorsReader {
     }
 
     @Override
-    public long getUniqueTermCount() {
+    public long size() {
       return numTerms;
     }
 
@@ -406,9 +406,14 @@ public class Lucene40TermVectorsReader extends TermVectorsReader {
     @Override
     public SeekStatus seekCeil(BytesRef text, boolean useCache)
       throws IOException {
-      if (nextTerm != 0 && text.compareTo(term) < 0) {
-        nextTerm = 0;
-        tvf.seek(tvfFP);
+      if (nextTerm != 0) {
+        final int cmp = text.compareTo(term);
+        if (cmp < 0) {
+          nextTerm = 0;
+          tvf.seek(tvfFP);
+        } else if (cmp == 0) {
+          return SeekStatus.FOUND;
+        }
       }
 
       while (next() != null) {
@@ -669,7 +674,7 @@ public class Lucene40TermVectorsReader extends TermVectorsReader {
     }
     if (tvx != null) {
       Fields fields = new TVFields(docID);
-      if (fields.getUniqueFieldCount() == 0) {
+      if (fields.size() == 0) {
         // TODO: we can improve writer here, eg write 0 into
         // tvx file, so we know on first read from tvx that
         // this doc has no TVs

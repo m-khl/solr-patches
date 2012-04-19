@@ -23,7 +23,7 @@ import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.QueryElevationParams;
-import org.apache.solr.common.util.FileUtils;
+import org.apache.solr.util.FileUtils;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.component.QueryElevationComponent.ElevationObj;
@@ -157,7 +157,7 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
       req.close();
 
       // Make sure the boosts loaded properly
-      assertEquals(5, map.size());
+      assertEquals(6, map.size());
       assertEquals(1, map.get("XXXX").priority.size());
       assertEquals(2, map.get("YYYY").priority.size());
       assertEquals(3, map.get("ZZZZ").priority.size());
@@ -174,7 +174,7 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
       comp.init(args);
       comp.inform(core);
       map = comp.getElevationMap(reader, core);
-      assertEquals(5, map.size());
+      assertEquals(6, map.size());
       assertEquals(null, map.get("XXXX"));
       assertEquals(null, map.get("YYYY"));
       assertEquals(null, map.get("ZZZZ"));
@@ -363,8 +363,17 @@ public class QueryElevationComponentTest extends SolrTestCaseJ4 {
           , "//result/doc[3]/str[@name='id'][.='c']"
           , "//result/doc[4]/str[@name='id'][.='x']"
       );
+      args.put(CommonParams.SORT, "id asc");
+      assertQ(null, req
+          , "//*[@numFound='4']"
+          , "//result/doc[1]/str[@name='id'][.='a']"
+          , "//result/doc[2]/str[@name='id'][.='b']"
+          , "//result/doc[3]/str[@name='id'][.='c']"
+          , "//result/doc[4]/str[@name='id'][.='x']"
+      );
 
       booster.forceElevation = true;
+      args.put(CommonParams.SORT, "id asc");
       assertQ(null, req
           , "//*[@numFound='4']"
           , "//result/doc[1]/str[@name='id'][.='a']"

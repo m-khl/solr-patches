@@ -17,30 +17,30 @@ package org.apache.lucene.search.spans;
  * limitations under the License.
  */
 
-import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.CheckHits;
-import org.apache.lucene.search.Scorer;
-import org.apache.lucene.search.TermQuery;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.similarities.DefaultSimilarity;
-import org.apache.lucene.search.similarities.Similarity;
-import org.apache.lucene.store.Directory;
+import java.io.IOException;
+
 import org.apache.lucene.analysis.MockAnalyzer;
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.RandomIndexWriter;
-import org.apache.lucene.index.IndexReaderContext;
-import org.apache.lucene.index.Term;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReaderContext;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.RandomIndexWriter;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.search.CheckHits;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.similarities.DefaultSimilarity;
+import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.ReaderUtil;
-
-import java.io.IOException;
 
 public class TestSpans extends LuceneTestCase {
   private IndexSearcher searcher;
@@ -53,7 +53,7 @@ public class TestSpans extends LuceneTestCase {
   public void setUp() throws Exception {
     super.setUp();
     directory = newDirectory();
-    RandomIndexWriter writer= new RandomIndexWriter(random, directory, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMergePolicy(newLogMergePolicy()));
+    RandomIndexWriter writer= new RandomIndexWriter(random(), directory, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
     for (int i = 0; i < docFields.length; i++) {
       Document doc = new Document();
       doc.add(newField(field, docFields[i], TextField.TYPE_STORED));
@@ -91,7 +91,7 @@ public class TestSpans extends LuceneTestCase {
   }
   
   private void checkHits(Query query, int[] results) throws IOException {
-    CheckHits.checkHits(random, query, field, searcher, results);
+    CheckHits.checkHits(random(), query, field, searcher, results);
   }
   
   private void orderedSlopTest3SQ(
@@ -474,7 +474,7 @@ public class TestSpans extends LuceneTestCase {
   public void testNPESpanQuery() throws Throwable {
     final Directory dir = newDirectory();
     final IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random)));
+        TEST_VERSION_CURRENT, new MockAnalyzer(random())));
 
     // Add documents
     addDoc(writer, "1", "the big dogs went running to the market");

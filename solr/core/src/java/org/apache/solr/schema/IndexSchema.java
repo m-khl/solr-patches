@@ -26,9 +26,9 @@ import org.apache.lucene.util.Version;
 import org.apache.solr.common.ResourceLoader;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.SolrParams;
-import org.apache.solr.common.util.DOMUtil;
+import org.apache.solr.util.DOMUtil;
 import org.apache.solr.common.util.NamedList;
-import org.apache.solr.common.util.SystemIdResolver;
+import org.apache.solr.util.SystemIdResolver;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.Config;
 import org.apache.solr.core.SolrResourceLoader;
@@ -663,7 +663,7 @@ public final class IndexSchema {
       return null;
     } else {
       SimilarityFactory similarityFactory;
-      final Object obj = loader.newInstance(((Element) node).getAttribute("class"), "search.similarities.");
+      final Object obj = loader.newInstance(((Element) node).getAttribute("class"), Object.class, "search.similarities.");
       if (obj instanceof SimilarityFactory) {
         // configure a factory, get a similarity back
         SolrParams params = SolrParams.toSolrParams(DOMUtil.childNodesToNamedList(node));
@@ -920,7 +920,7 @@ public final class IndexSchema {
     /***  REMOVED -YCS
     if (defaultFieldType != null) return new SchemaField(fieldName,defaultFieldType);
     ***/
-    throw new SolrException( SolrException.ErrorCode.BAD_REQUEST,"undefined field "+fieldName);
+    throw new SolrException( SolrException.ErrorCode.BAD_REQUEST,"undefined field: \""+fieldName+"\"");
   }
 
   /**

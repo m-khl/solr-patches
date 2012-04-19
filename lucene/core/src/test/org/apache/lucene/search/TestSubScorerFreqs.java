@@ -40,7 +40,7 @@ public class TestSubScorerFreqs extends LuceneTestCase {
   public static void makeIndex() throws Exception {
     dir = new RAMDirectory();
     RandomIndexWriter w = new RandomIndexWriter(
-                                                random, dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMergePolicy(newLogMergePolicy()));
+        random(), dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
     // make sure we have more than one segment occationally
     int num = atLeast(31);
     for (int i = 0; i < num; i++) {
@@ -161,7 +161,7 @@ public class TestSubScorerFreqs extends LuceneTestCase {
     query.add(inner, Occur.MUST);
     query.add(aQuery, Occur.MUST);
     query.add(dQuery, Occur.MUST);
-    Set<String>[] occurList = new Set[] {
+    @SuppressWarnings({"rawtypes","unchecked"}) Set<String>[] occurList = new Set[] {
         Collections.singleton(Occur.MUST.toString()), 
         new HashSet<String>(Arrays.asList(Occur.MUST.toString(), Occur.SHOULD.toString()))
     };

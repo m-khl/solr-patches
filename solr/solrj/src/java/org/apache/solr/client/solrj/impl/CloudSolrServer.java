@@ -28,8 +28,8 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
 
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -47,6 +47,12 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.zookeeper.KeeperException;
 
+/**
+ * SolrJ client class to communicate with SolrCloud.
+ * Instances of this class communicate with Zookeeper to discover
+ * Solr endpoints for SolrCloud collections, and then use the 
+ * {@link LBHttpSolrServer} to issue requests.
+ */
 public class CloudSolrServer extends SolrServer {
   private volatile ZkStateReader zkStateReader;
   private String zkHost; // the zk server address
@@ -55,18 +61,21 @@ public class CloudSolrServer extends SolrServer {
   private volatile String defaultCollection;
   private LBHttpSolrServer lbServer;
   Random rand = new Random();
-  private MultiThreadedHttpConnectionManager connManager;
+  private ThreadSafeClientConnManager connManager;
   /**
-   * @param zkHost The address of the zookeeper quorum containing the cloud state
+   * @param zkHost The client endpoint of the zookeeper quorum containing the cloud state,
+   * in the form HOST:PORT.
    */
   public CloudSolrServer(String zkHost) throws MalformedURLException {
-      connManager = new MultiThreadedHttpConnectionManager();
+      connManager = new ThreadSafeClientConnManager();
       this.zkHost = zkHost;
-      this.lbServer = new LBHttpSolrServer(new HttpClient(connManager));
+      this.lbServer = new LBHttpSolrServer(new DefaultHttpClient(connManager));
   }
 
   /**
-   * @param zkHost The address of the zookeeper quorum containing the cloud state
+   * @param zkHost The client endpoint of the zookeeper quorum containing the cloud state,
+   * in the form HOST:PORT.
+   * @param lbServer LBHttpSolrServer instance for requests. 
    */
   public CloudSolrServer(String zkHost, LBHttpSolrServer lbServer) {
     this.zkHost = zkHost;

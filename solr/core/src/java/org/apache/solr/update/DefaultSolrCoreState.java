@@ -74,10 +74,20 @@ public final class DefaultSolrCoreState extends SolrCoreState {
           } else if (indexWriter != null) {
             indexWriter.close();
           }
-        } catch (Throwable t) {
-          SolrException.log(log, t);
+        } catch (Throwable t) {          
+          log.error("Error during shutdown of writer.", t);
         }
-        directoryFactory.close();
+        try {
+          directoryFactory.close();
+        } catch (Throwable t) {
+          log.error("Error during shutdown of directory factory.", t);
+        }
+        try {
+          cancelRecovery();
+        } catch (Throwable t) {
+          log.error("Error cancelling recovery", t);
+        }
+
         closed = true;
       }
     }
@@ -101,7 +111,7 @@ public final class DefaultSolrCoreState extends SolrCoreState {
       boolean removeAllExisting, boolean forceNewDirectory) throws IOException {
     return new SolrIndexWriter(name, core.getNewIndexDir(),
         core.getDirectoryFactory(), removeAllExisting, core.getSchema(),
-        core.getSolrConfig().mainIndexConfig, core.getDeletionPolicy(), core.getCodec(), forceNewDirectory);
+        core.getSolrConfig().indexConfig, core.getDeletionPolicy(), core.getCodec(), forceNewDirectory);
   }
 
   @Override

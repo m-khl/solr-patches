@@ -28,7 +28,6 @@ import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.DocValuesField;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.FieldType;
 import org.apache.lucene.index.IndexWriter; // javadoc
 import org.apache.lucene.search.Query;
 import org.apache.lucene.store.Directory;
@@ -63,10 +62,8 @@ public class RandomIndexWriter implements Closeable {
 
     public MockIndexWriter(Random r, Directory dir, IndexWriterConfig conf) throws IOException {
       super(dir, conf);
-      // must make a private random since our methods are
-      // called from different threads; else test failures may
-      // not be reproducible from the original seed
-      this.r = new Random(r.nextInt());
+      // TODO: this should be solved in a different way; Random should not be shared (!).
+      this.r = new Random(r.nextLong());
     }
 
     @Override
@@ -94,7 +91,8 @@ public class RandomIndexWriter implements Closeable {
   
   /** create a RandomIndexWriter with the provided config */
   public RandomIndexWriter(Random r, Directory dir, IndexWriterConfig c) throws IOException {
-    this.r = r;
+    // TODO: this should be solved in a different way; Random should not be shared (!).
+    this.r = new Random(r.nextLong());
     w = new MockIndexWriter(r, dir, c);
     flushAt = _TestUtil.nextInt(r, 10, 1000);
     codec = w.getConfig().getCodec();
@@ -102,20 +100,32 @@ public class RandomIndexWriter implements Closeable {
       System.out.println("RIW config=" + w.getConfig());
       System.out.println("codec default=" + codec.getName());
     }
-    /* TODO: find some what to make that random...
+    /* TODO: find some way to make this random...
      * This must be fixed across all fixed bytes 
      * fields in one index. so if you open another writer
      * this might change if I use r.nextInt(x)
      * maybe we can peek at the existing files here? 
      */
-    fixedBytesLength = 37; 
-    docValuesFieldPrefix = r.nextLong();
+    fixedBytesLength = 17; 
+
+    // NOTE: this means up to 13 * 5 unique fields (we have
+    // 13 different DV types):
+    docValuesFieldPrefix = r.nextInt(5);
     switchDoDocValues();
+
+    // Make sure we sometimes test indices that don't get
+    // any forced merges:
+    doRandomForceMerge = r.nextBoolean();
   } 
 
   private void switchDoDocValues() {
     // randomly enable / disable docValues 
     doDocValues = LuceneTestCase.rarely(r);
+    if (LuceneTestCase.VERBOSE) {
+      if (doDocValues) {
+        System.out.println("NOTE: RIW: turning on random DocValues fields");
+      }
+    }
   }
   
   /**
@@ -175,8 +185,9 @@ public class RandomIndexWriter implements Closeable {
     DocValues.Type[] values = DocValues.Type.values();
     DocValues.Type type = values[random.nextInt(values.length)];
     String name = "random_" + type.name() + "" + docValuesFieldPrefix;
-    if ("Lucene3x".equals(codec.getName()) || doc.getField(name) != null)
-        return;
+    if ("Lucene3x".equals(codec.getName()) || doc.getField(name) != null) {
+      return;
+    }
     final Field f;
     switch (type) {
     case BYTES_FIXED_DEREF:
@@ -196,7 +207,7 @@ public class RandomIndexWriter implements Closeable {
     case BYTES_VAR_DEREF:
     case BYTES_VAR_STRAIGHT:
     case BYTES_VAR_SORTED:
-      f = new DocValuesField(name, new BytesRef(_TestUtil.randomUnicodeString(random, 200)), type);
+      f = new DocValuesField(name, new BytesRef(_TestUtil.randomUnicodeString(random, 20)), type);
       break;
     case FLOAT_32:
       f = new DocValuesField(name, random.nextFloat(), type);
@@ -367,7 +378,7 @@ public class RandomIndexWriter implements Closeable {
 
   public DirectoryReader getReader(boolean applyDeletions) throws IOException {
     getReaderCalled = true;
-    if (r.nextInt(4) == 2) {
+    if (r.nextInt(20) == 2) {
       doRandomForceMerge();
     }
     // If we are writing with PreFlexRW, force a full
