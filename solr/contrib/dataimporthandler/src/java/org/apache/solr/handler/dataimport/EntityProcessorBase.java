@@ -57,9 +57,9 @@ public class EntityProcessorBase extends EntityProcessor {
     if (isFirstInit) {
       firstInit(context);
     }
+    rowIterator = null;
+    query = null;
     if(cacheSupport!=null) {
-      rowIterator = null;
-      query = null;
       cacheSupport.initNewParent(context);
     }   
     
@@ -119,12 +119,10 @@ public class EntityProcessorBase extends EntityProcessor {
         if (rowIterator.hasNext())
           return rowIterator.next();
         query = null;
-        rowIterator = null;
         return null;
       } catch (Exception e) {
         SolrException.log(log, "getNext() failed for query '" + query + "'", e);
         query = null;
-        rowIterator = null;
         wrapAndThrow(DataImportHandlerException.WARN, e);
         return null;
       }
