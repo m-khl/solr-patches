@@ -118,7 +118,7 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
     return shuffle;
   }
   
-  @Test
+  @Test 
   public void testCachedThreadless_FullImport() throws Exception {
     runFullImport(getCachedConfig().replaceAll(""));
   }
@@ -147,7 +147,7 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
     runFullImport(nPulsOne.replaceAll("threads=\"1\""));
   }
   
-  @Test
+  @Test 
   public void testNPlusOneTenThreads_FullImport() throws Exception {
     runFullImport(nPulsOne.replaceAll("threads=\"10\"" ));
     String response = h.query(req("*:*"));
@@ -162,7 +162,7 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
                          "processor=\""+(random.nextBoolean() ? "Cached":"")+"SqlEntityProcessor\">\n"
       + "                       <field column=\"id\" />\n"
       + "                       <entity name=\"y\" query=\"select * from y\" where=\"xid=x.id\" " +
-      "processor=\""+(random.nextBoolean() ? "Cached":"")+"SqlEntityProcessor\">\n"
+      "processor=\""+"CachedSqlEntityProcessor\">\n"
       + "                               <field column=\"desc\" />\n"
       + "                       </entity>\n" + "               </entity>\n"
       + "       </document>\n" + "</dataConfig>";
