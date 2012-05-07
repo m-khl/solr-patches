@@ -21,7 +21,9 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.util.AbstractCollection;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -43,7 +45,7 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
     parentRow.add(createMap("id", "3"));
     parentRow.add(createMap("id", "4"));
     parentRow.add(createMap("id", "1"));
-    MockDataSource.setCollection("select * from x", parentRow);
+    MockDataSource.setCollection("select * from x", new Once(parentRow));
     // for every x we have four linked y-s
     List childRow = Arrays.asList(
             createMap("desc", "hello"),
@@ -51,10 +53,10 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
             createMap("desc", "hi"),
             createMap("desc", "aurevoir"));
     // for N+1 scenario
-    MockDataSource.setCollection("select * from y where y.A=1", shuffled(childRow));
-    MockDataSource.setCollection("select * from y where y.A=2", shuffled(childRow));
-    MockDataSource.setCollection("select * from y where y.A=3", shuffled(childRow));
-    MockDataSource.setCollection("select * from y where y.A=4", shuffled(childRow));
+    MockDataSource.setCollection("select * from y where y.A=1", new Once(shuffled(childRow)));
+    MockDataSource.setCollection("select * from y where y.A=2", new Once(shuffled(childRow)));
+    MockDataSource.setCollection("select * from y where y.A=3", new Once(shuffled(childRow)));
+    MockDataSource.setCollection("select * from y where y.A=4", new Once(shuffled(childRow)));
     // for cached scenario
     
     List cartesianProduct = new ArrayList();
@@ -65,7 +67,7 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
          cartesianProduct.add(tuple);
       }
     }
-    MockDataSource.setCollection("select * from y", cartesianProduct);
+    MockDataSource.setCollection("select * from y", new Once(cartesianProduct));
   }
   
   @After
@@ -87,22 +89,43 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
   
   @Test
   public void testCachedThreadless_FullImport() throws Exception {
-    runFullImport(getCachedConfig(random.nextBoolean(), random.nextBoolean(), 0));
+    runFullImport(getCachedConfig(random.nextBoolean(), random.nextBoolean(), random.nextBoolean(), 0));
   }
   
   @Test
   public void testCachedSingleThread_FullImport() throws Exception {
-    runFullImport(getCachedConfig(random.nextBoolean(), random.nextBoolean(), 1));
+    runFullImport(getCachedConfig(random.nextBoolean(), random.nextBoolean(), random.nextBoolean(), 1));
   }
   
   @Test
   public void testCachedThread_FullImport() throws Exception {
     int numThreads = random.nextInt(8) + 2; // between 2 and 10
-    String config = getCachedConfig(random.nextBoolean(), random.nextBoolean(), numThreads);
+    String config = getCachedConfig(random.nextBoolean(), random.nextBoolean(),  random.nextBoolean(), numThreads);
     runFullImport(config);
   }
+  
+  @Test
+  public void testCachedThread_Total() throws Exception{
+    List<String> cfgs = new ArrayList<String>();
+    for(boolean a : new boolean[]{true,false}){
+      for(boolean b : new boolean[]{true,false}){
+        for(boolean c : new boolean[]{true,false}){
+          for(int t : new int[]{0,1,3}){
+            cfgs.add(
+                getCachedConfig(a, b, c, t));
+          }
+        }
+      }
+    }
+    Collections.shuffle(cfgs);
+    for (String cfg:cfgs){
+      setupData();
+        runFullImport(cfg);
+      verify();
+    }
+  }
     
-  private String getCachedConfig(boolean parentCached, boolean childCached, int numThreads) {
+  private String getCachedConfig(boolean parentCached, boolean childCached, boolean useWhereParam, int numThreads) {
     return "<dataConfig>\n"
       +"<dataSource  type=\"MockDataSource\"/>\n"
       + "       <document>\n"
@@ -110,11 +133,35 @@ public class TestThreaded extends AbstractDataImportHandlerTestCase {
       + "                 query=\"select * from x\" " 
       + "                 processor=\""+(parentCached ? "Cached":"")+"SqlEntityProcessor\">\n"
       + "                       <field column=\"id\" />\n"
-      + "                       <entity name=\"y\" query=\"select * from y\" where=\"xid=x.id\" " 
-      + "                         processor=\""+(childCached ? "Cached":"")+"SqlEntityProcessor\">\n"
+      + (useWhereParam
+      ? "                       <entity name=\"y\" query=\"select * from y\" where=\"xid=x.id\" " 
+      : "                       <entity name=\"y\" query=\"select * from y where y.A=${x.id}\" " 
+      )+"                         processor=\""+(childCached || useWhereParam ? "Cached":"")+"SqlEntityProcessor\">\n"
       + "                               <field column=\"desc\" />\n"
       + "                       </entity>\n" + "               </entity>\n"
       + "       </document>\n" + "</dataConfig>";
   }
   
+  private static class Once<E> extends AbstractCollection<E> {    
+    private final Collection<E> delegate;    
+    private volatile boolean hit = false; 
+    
+    public Once(Collection<E> delegate) {
+      this.delegate = delegate;
+    }    
+    @Override
+    public Iterator<E> iterator() {
+      if (!hit) {
+        hit = true;
+        return delegate.iterator();
+      } else {
+        throw new IllegalStateException(delegate
+            + " is expected to be enumerated only once");
+      }
+    }    
+    @Override
+    public int size() {
+      return delegate.size();
+    }
+  }  
 }
