@@ -134,6 +134,9 @@ public abstract class UpdateHandler implements SolrInfoMBean {
   public abstract SolrCoreState getSolrCoreState();
 
   public abstract int addDoc(AddUpdateCommand cmd) throws IOException;
+  
+  public abstract int addBlock(AddBlockCommand cmd) throws IOException;
+  
   public abstract void delete(DeleteUpdateCommand cmd) throws IOException;
   public abstract void deleteByQuery(DeleteUpdateCommand cmd) throws IOException;
   public abstract int mergeIndexes(MergeIndexesCommand cmd) throws IOException;

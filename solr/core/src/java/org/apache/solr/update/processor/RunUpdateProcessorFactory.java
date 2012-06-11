@@ -22,6 +22,8 @@ import java.io.IOException;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.update.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -40,6 +42,7 @@ public class RunUpdateProcessorFactory extends UpdateRequestProcessorFactory
 
 class RunUpdateProcessor extends UpdateRequestProcessor 
 {
+  private static final Logger logger = LoggerFactory.getLogger(RunUpdateProcessor.class);
   private final SolrQueryRequest req;
   private final UpdateHandler updateHandler;
 
@@ -56,6 +59,18 @@ class RunUpdateProcessor extends UpdateRequestProcessor
     updateHandler.addDoc(cmd);
     super.processAdd(cmd);
     changesSinceCommit = true;
+  }
+
+  @Override
+  public void processAddBlock(AddBlockCommand cmd) throws IOException {
+    final int updates = updateHandler.addBlock(cmd);
+    logger.debug("{}-docs block added by {}", updates, cmd);
+    // delegate
+    super.processAddBlock(cmd);
+    
+    if(updates>0){
+      changesSinceCommit = true;
+    }
   }
 
   @Override

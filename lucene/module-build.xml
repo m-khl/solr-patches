@@ -348,6 +348,17 @@
     <property name="grouping.uptodate" value="true"/>
   </target>
 
+	  <property name="join.jar" value="${common.dir}/build/join/lucene-join-${version}.jar"/>
+	  <target name="check-join-uptodate" unless="join.uptodate">
+	    <module-uptodate name="join" jarfile="${join.jar}" property="join.uptodate"/>
+	  </target>
+	  <target name="jar-join" unless="join.uptodate" depends="check-join-uptodate">
+	  	<ant dir="${common.dir}/join" target="jar-core" inheritAll="false">
+	      <propertyset refid="uptodate.and.compiled.properties"/>
+	    </ant>
+	    <property name="join.uptodate" value="true"/>
+	  </target>
+	
   <property name="grouping-javadoc.jar" value="${common.dir}/build/grouping/lucene-grouping-${version}-javadoc.jar"/>
   <target name="check-grouping-javadocs-uptodate" unless="grouping-javadocs.uptodate">
     <module-uptodate name="grouping" jarfile="${grouping-javadoc.jar}" property="grouping-javadocs.uptodate"/>

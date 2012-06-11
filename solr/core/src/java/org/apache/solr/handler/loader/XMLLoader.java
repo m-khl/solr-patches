@@ -18,6 +18,7 @@ package org.apache.solr.handler.loader;
 
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.update.processor.UpdateRequestProcessor;
+import org.apache.solr.update.AddBlockCommand;
 import org.apache.solr.update.AddUpdateCommand;
 import org.apache.solr.update.CommitUpdateCommand;
 import org.apache.solr.update.RollbackUpdateCommand;
@@ -57,7 +58,10 @@ import javax.xml.transform.sax.SAXSource;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 
@@ -194,6 +198,7 @@ public class XMLLoader extends ContentStreamLoader {
           InstantiationException, IllegalAccessException,
           TransformerConfigurationException {
     AddUpdateCommand addCmd = null;
+    AddBlockCommand addBlockCmd = null;
     SolrParams params = req.getParams();
     while (true) {
       int event = parser.next();
@@ -226,14 +231,17 @@ public class XMLLoader extends ContentStreamLoader {
             }
 
           } else if ("doc".equals(currTag)) {
+            log.trace("adding doc...{}", (addCmd==null && addBlockCmd!=null) ? "to block":"" );
             if(addCmd != null) {
-              log.trace("adding doc...");
               addCmd.clear();
               addCmd.solrDoc = readDoc(parser);
               processor.processAdd(addCmd);
-            } else {
-              throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Unexpected <doc> tag without an <add> tag surrounding it.");
-            }
+            } else if(addBlockCmd!=null){
+              ((Collection<SolrInputDocument>)addBlockCmd.getSolrDocs()).add(readDoc(parser));
+            }else{
+                throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, 
+                    "Unexpected <doc> tag without an <add> or <add-block> tag surrounding it.");
+              }
           } else if (UpdateRequestHandler.COMMIT.equals(currTag) || UpdateRequestHandler.OPTIMIZE.equals(currTag)) {
             log.trace("parsing " + currTag);
 
@@ -263,6 +271,21 @@ public class XMLLoader extends ContentStreamLoader {
             log.trace("parsing delete");
             processDelete(req, processor, parser);
           } // end delete
+          else if (UpdateRequestHandler.ADDBLOCK.equals(currTag)){
+            log.trace("parsing {} start", currTag);
+            assert addBlockCmd==null : "there should no command exist while the block starts"; 
+            addBlockCmd = new AddBlockCommand(req);
+            addBlockCmd.setDocs(new ArrayList<SolrInputDocument>());
+          }
+          break;
+          
+        case XMLStreamConstants.END_ELEMENT:
+          currTag = parser.getLocalName();
+          if (UpdateRequestHandler.ADDBLOCK.equals(currTag)){
+            log.trace("{} end",currTag);
+            processor.processAddBlock(addBlockCmd);
+            addBlockCmd=null;
+          }
           break;
       }
     }

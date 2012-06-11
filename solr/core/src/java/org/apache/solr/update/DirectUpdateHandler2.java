@@ -30,9 +30,12 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import javax.naming.OperationNotSupportedException;
+
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queryparser.classic.ParseException;
@@ -70,6 +73,7 @@ import org.apache.solr.util.RefCounted;
  * directly to the main Lucene index as opposed to adding to a separate smaller index.
  */
 public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState.IndexWriterCloser {
+  
   protected final SolrCoreState solrCoreState;
   protected final Lock commitLock = new ReentrantLock();
 
@@ -212,6 +216,48 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
     return rc;
   }
 
+  @Override
+  public int addBlock(final AddBlockCommand block) throws IOException{
+    IndexWriter writer = solrCoreState.getIndexWriter(core);
+    addCommands.incrementAndGet();
+    addCommandsCumulative.incrementAndGet();
+    final int rc[]={0};
+    try{
+      // allow duplicates
+      //block
+      final Iterable<? extends Iterable<? extends IndexableField>> wrapper =
+        new WrappingIterable<Iterable<? extends IndexableField>>(block){
+          @Override
+          protected void onElem(Iterable<? extends IndexableField> next) {
+            rc[0]++;
+          }
+        };
+      writer.addDocuments( wrapper );
+    //TODO add into ulog 
+
+      if ((block.getFlags() & UpdateCommand.IGNORE_AUTOCOMMIT) == 0) {
+        commitTracker.addedDocument( -1 );
+        softCommitTracker.addedDocument( block.commitWithin );
+      }
+    } catch(Exception e) {
+      numErrors.incrementAndGet();
+      numErrorsCumulative.incrementAndGet();
+      if(e instanceof IOException){
+        throw (IOException)e;
+      }else{
+        throw new RuntimeException(e);
+      }
+    } finally {
+      if(rc[0]>0){
+        long curr;
+        do{
+          curr = numDocsPending.get();
+        }while(!numDocsPending.compareAndSet(curr, curr+rc[0]));
+      }
+    }
+    return rc[0];
+  }
+  
   private void updateDeleteTrackers(DeleteUpdateCommand cmd) {
     if ((cmd.getFlags() & UpdateCommand.IGNORE_AUTOCOMMIT) == 0) {
       softCommitTracker.deletedDocument( cmd.commitWithin );

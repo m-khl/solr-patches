@@ -49,6 +49,7 @@ public class UpdateRequestHandler extends ContentStreamHandlerBase {
 
   // XML Constants
   public static final String ADD = "add";
+  public static final String ADDBLOCK = "add-block";
   public static final String DELETE = "delete";
   public static final String OPTIMIZE = "optimize";
   public static final String COMMIT = "commit";
@@ -106,7 +107,7 @@ public class UpdateRequestHandler extends ContentStreamHandlerBase {
       }
     }
   };
-  
+
   @Override
   public void init(NamedList args) {
     super.init(args);
