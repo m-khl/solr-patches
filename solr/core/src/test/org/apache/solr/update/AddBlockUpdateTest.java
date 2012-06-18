@@ -1,6 +1,7 @@
 package org.apache.solr.update;
 
 import java.io.IOException;
+import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -24,6 +25,7 @@ import org.apache.lucene.search.join.ToParentBlockJoinQuery;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.SolrInputField;
+import org.apache.solr.common.util.XML;
 import org.apache.solr.handler.loader.XMLLoader;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.util.RefCounted;
@@ -33,6 +35,7 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
+import org.xml.sax.SAXException;
 
 /**
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -66,10 +69,9 @@ public class AddBlockUpdateTest extends SolrTestCaseJ4 {
   public static void beforeClass() throws Exception {
     initCore("solrconfig.xml", "schema.xml");
     exe = //Executors.newSingleThreadExecutor();
-      rarely() ? Executors.newSingleThreadExecutor(): (
         rarely() ? Executors.newFixedThreadPool(atLeast(2)) :
             Executors.newCachedThreadPool()
-        ); 
+        ; 
   }
   
   @Before
@@ -177,20 +179,23 @@ public class AddBlockUpdateTest extends SolrTestCaseJ4 {
   
   @Test
   public void testExeptionThrown() throws Exception {
-     assertU(block("abcD"));
+    final String abcD = block("abcD");
+    log.trace(abcD);
+    assertBlockU(abcD);
      
-     assertFailedU("<add-block>"+
-         doc("id",id(), 
-             child,"x")+
-         doc("id",id(), 
+     assertFailedBlockU("<add>"+
+         rawDoc(
+             "id",id(), 
+             parent,"Y",
              "sample_i","notanumber",
-             parent, "Y")+
-         doc("id",id(), 
-                 parent,"W")+
-             "</add-block>");
-     
-     assertU(block("efgH"));
-     assertU(commit());
+             "subdocs",
+                  ""+doc("id",id(), child,"x"))+
+         rawDoc(
+             "id",id(),
+             parent,"W")
+     +"</add>");
+     assertBlockU(block("efgH"));
+     assertBlockU(commit());
      
      final SolrIndexSearcher searcher = getSearcher();
      assertQ(req("*:*"),"//*[@numFound='"+"abcDefgHx".length()+"']");
@@ -206,7 +211,7 @@ public class AddBlockUpdateTest extends SolrTestCaseJ4 {
   }
   
   private String merge(String block, String block2) {
-    return (block+block2).replace("</add-block><add-block>", "");
+    return (block+block2).replace("</add><add>", "");
   }
 
   private static String id() {
@@ -238,33 +243,106 @@ public class AddBlockUpdateTest extends SolrTestCaseJ4 {
         rez.add(new Callable<Void>() {
           @Override
           public Void call() {
-              assertU(msg);
+              assertBlockU(msg);
             return null;
           }
+
+          
         });
       }
     }
     return rez;
   }
 
-  private String block(String string) {
-    return block(string, "add-block");
+  private static void assertBlockU(final String msg) {
+    assertBlockU(msg, "0");
   }
   
-  private String block(String string, String tag) {
+  private static void assertFailedBlockU(final String msg) {
+    try {
+      assertBlockU(msg, "1");
+      fail("expecting fail");
+    }catch(Exception e){
+      // gotcha
+    }
+  }
+
+  private static void assertBlockU(final String msg, String expected) {
+    try {
+         String res = h.checkUpdateStatus(msg, expected, "/updateFlatten");
+         if (res != null) {
+           fail("update was not successful: " + res+" expected: "+expected);
+         }
+    } catch (SAXException e) {
+      throw new RuntimeException("Invalid XML", e);
+    }
+  }
+  
+  /**
+   *   on the given abcD it generates one parent doc, taking D from the tail 
+   *   and two subdocs relaitons ab and c 
+   *   uniq ids are supplied also 
+   *   
+   *       // how to keep tags in javadoc? 
+   *       
+   *   <add>
+   *     <doc>
+   *       <field name="parent_s">D</field>
+   *       <field name="1th-subdocs">
+   *         <doc> <field name="child_s">a</field> </doc>
+   *         <doc>  <field name="child_s">b</field>  </doc>
+   *       </field>
+   *       <field name="2th-subdocs">
+   *         <doc> <field name="child_s">c</field> </doc>
+   *       </field>
+   *     </doc>
+   *   </add>
+   * */
+  private String block(String string) {
+    final String tag = "add";
     final StringBuilder sb = new StringBuilder();
     sb.append("<"+tag+">");
     
     if(string.length()>0){
-      for(int i=0; i<string.length()-1; i++){
-        sb.append(doc(child,""+string.charAt(i),
-            "id", id()).xml);
+      List<String> args= new ArrayList<String>(Arrays.asList(
+              parent,""+string.charAt(string.length()-1),
+              "id", id())
+      );
+      // add fields with subdocs
+      int ord=0;
+      for(int i=0; i<string.length()-1; i+=2){
+        args.add(""+(++ord)+"th-subdocs");
+        final String relation = string.substring(i, Math.min(i+2,string.length()-1));
+        args.add(toSubDocs(relation));
       }
-      sb.append(doc(parent,""+string.charAt(string.length()-1),
-          "id", id()).xml);
+      sb.append(rawDoc(args.toArray(new String[]{})));
     }
-    
     sb.append("</"+tag+">");
     return sb.toString();
+  }
+
+  private String toSubDocs(final String relation) {
+    StringBuilder subb = new StringBuilder();
+    for(int j=0;j<relation.length();j++){
+      subb.append(doc(child,""+relation.charAt(j),
+        "id", id()));
+    }
+    return subb.toString();
+  }
+  /**
+   * kinda doc(String...) but does not escape xml, allows to insert <doc/> 
+   * as field vales   
+   * @return <doc>
+   * */
+  private String rawDoc(String ... fieldsAndValues) {
+    final StringBuffer ssb = new StringBuffer();
+    ssb.append("<doc>");
+    for (int i = 0; i < fieldsAndValues .length; i+=2) {
+      ssb.append("<field name=\""); ssb.append(fieldsAndValues[i]);ssb.append("\">");
+        ssb.append(fieldsAndValues[i+1]);
+      ssb.append("</field>");
+    }
+    ssb.append("</doc>");
+    return ssb.toString();
   }
 }

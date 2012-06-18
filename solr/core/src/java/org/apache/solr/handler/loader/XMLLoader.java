@@ -198,7 +198,6 @@ public class XMLLoader extends ContentStreamLoader {
           InstantiationException, IllegalAccessException,
           TransformerConfigurationException {
     AddUpdateCommand addCmd = null;
-    AddBlockCommand addBlockCmd = null;
     SolrParams params = req.getParams();
     while (true) {
       int event = parser.next();
@@ -231,16 +230,14 @@ public class XMLLoader extends ContentStreamLoader {
             }
 
           } else if ("doc".equals(currTag)) {
-            log.trace("adding doc...{}", (addCmd==null && addBlockCmd!=null) ? "to block":"" );
+            log.trace("adding doc..." );
             if(addCmd != null) {
               addCmd.clear();
               addCmd.solrDoc = readDoc(parser);
               processor.processAdd(addCmd);
-            } else if(addBlockCmd!=null){
-              ((Collection<SolrInputDocument>)addBlockCmd.getSolrDocs()).add(readDoc(parser));
             }else{
                 throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, 
-                    "Unexpected <doc> tag without an <add> or <add-block> tag surrounding it.");
+                    "Unexpected <doc> tag without an <add> tag surrounding it.");
               }
           } else if (UpdateRequestHandler.COMMIT.equals(currTag) || UpdateRequestHandler.OPTIMIZE.equals(currTag)) {
             log.trace("parsing " + currTag);
@@ -271,22 +268,7 @@ public class XMLLoader extends ContentStreamLoader {
             log.trace("parsing delete");
             processDelete(req, processor, parser);
           } // end delete
-          else if (UpdateRequestHandler.ADDBLOCK.equals(currTag)){
-            log.trace("parsing {} start", currTag);
-            assert addBlockCmd==null : "there should no command exist while the block starts"; 
-            addBlockCmd = new AddBlockCommand(req);
-            addBlockCmd.setDocs(new ArrayList<SolrInputDocument>());
-          }
-          break;
-          
-        case XMLStreamConstants.END_ELEMENT:
-          currTag = parser.getLocalName();
-          if (UpdateRequestHandler.ADDBLOCK.equals(currTag)){
-            log.trace("{} end",currTag);
-            processor.processAddBlock(addBlockCmd);
-            addBlockCmd=null;
-          }
-          break;
+        break;
       }
     }
   }
@@ -391,6 +373,7 @@ public class XMLLoader extends ContentStreamLoader {
     float boost = 1.0f;
     boolean isNull = false;
     String update = null;
+    Collection<SolrInputDocument> subDocs = null;
 
     while (true) {
       int event = parser.next();
@@ -406,41 +389,61 @@ public class XMLLoader extends ContentStreamLoader {
           if ("doc".equals(parser.getLocalName())) {
             return doc;
           } else if ("field".equals(parser.getLocalName())) {
-            Object v = isNull ? null : text.toString();
-            if (update != null) {
-              Map<String,Object> extendedValue = new HashMap<String,Object>(1);
-              extendedValue.put(update, v);
-              v = extendedValue;
+            if(subDocs!=null && !subDocs.isEmpty()){
+              doc.addField(name, subDocs);
+              subDocs = null;
+              // should I warn in some text has been found too
+            }else{
+              Object v = isNull ? null : text.toString();
+              if (update != null) {
+                Map<String,Object> extendedValue = new HashMap<String,Object>(1);
+                extendedValue.put(update, v);
+                v = extendedValue;
+              }
+              doc.addField(name, v, boost);
             }
-            doc.addField(name, v, boost);
             boost = 1.0f;
+            // field is over
+            name = null;
           }
           break;
 
         case XMLStreamConstants.START_ELEMENT:
           text.setLength(0);
           String localName = parser.getLocalName();
-          if (!"field".equals(localName)) {
-            log.warn("unexpected XML tag doc/" + localName);
-            throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
-                    "unexpected XML tag doc/" + localName);
-          }
-          boost = 1.0f;
-          update = null;
-          String attrVal = "";
-          for (int i = 0; i < parser.getAttributeCount(); i++) {
-            attrName = parser.getAttributeLocalName(i);
-            attrVal = parser.getAttributeValue(i);
-            if ("name".equals(attrName)) {
-              name = attrVal;
-            } else if ("boost".equals(attrName)) {
-              boost = Float.parseFloat(attrVal);
-            } else if ("null".equals(attrName)) {
-              isNull = StrUtils.parseBoolean(attrVal);
-            } else if ("update".equals(attrName)) {
-              update = attrVal;
-            } else {
-              log.warn("Unknown attribute doc/field/@" + attrName);
+          if("doc".equals(localName)){
+            if(name==null){
+              log.warn("unexpected XML tag " + localName+" no enclosing field declaration");
+              throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
+                  "unexpected XML tag " + localName+" no enclosing field declaration");
+            }
+            if(subDocs==null){
+              subDocs = new ArrayList<SolrInputDocument>();
+            }
+            subDocs.add(readDoc(parser));
+          }else{            
+            if (!"field".equals(localName)) {
+              log.warn("unexpected XML tag doc/" + localName);
+              throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
+                      "unexpected XML tag doc/" + localName);
+            }
+            boost = 1.0f;
+            update = null;
+            String attrVal = "";
+            for (int i = 0; i < parser.getAttributeCount(); i++) {
+              attrName = parser.getAttributeLocalName(i);
+              attrVal = parser.getAttributeValue(i);
+              if ("name".equals(attrName)) {
+                name = attrVal;
+              } else if ("boost".equals(attrName)) {
+                boost = Float.parseFloat(attrVal);
+              } else if ("null".equals(attrName)) {
+                isNull = StrUtils.parseBoolean(attrVal);
+              } else if ("update".equals(attrName)) {
+                update = attrVal;
+              } else {
+                log.warn("Unknown attribute doc/field/@" + attrName);
+              }
             }
           }
           break;

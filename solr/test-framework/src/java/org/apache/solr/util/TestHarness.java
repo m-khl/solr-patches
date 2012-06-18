@@ -245,8 +245,20 @@ public class TestHarness {
    * @return The XML response to the update
    */
   public String update(String xml) {
+    return update(xml, "/update");
+  }
+
+  /**
+   * Processes an "update" (add, commit or optimize) and
+   * returns the response as a String.
+   *
+   * @param xml The XML of the update
+   * @param updateHandler which handler to employ
+   * @return The XML response to the update
+   */
+  public String update(String xml, String updateHandler) {
     DirectSolrConnection connection = new DirectSolrConnection(core);
-    SolrRequestHandler handler = core.getRequestHandler("/update");
+    SolrRequestHandler handler = core.getRequestHandler(updateHandler);
     // prefer the handler mapped to /update, but use our generic backup handler
     // if that lookup fails
     if (handler == null) {
@@ -260,8 +272,7 @@ public class TestHarness {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, e);
     }
   }
-  
-        
+
   /**
    * Validates that an "update" (add, commit or optimize) results in success.
    *
@@ -300,8 +311,21 @@ public class TestHarness {
    * @return null if successful, otherwise the XML response to the update
    */
   public String checkUpdateStatus(String xml, String code) throws SAXException {
+    return checkUpdateStatus(xml, code, "/update");
+  }
+
+  /**
+   * Validates that an "update" (add, commit or optimize) results in success.
+   *
+   * :TODO: currently only deals with one add/doc at a time, this will need changed if/when SOLR-2 is resolved
+   * 
+   * @param xml The XML of the update
+   * @param updateHandler which update handler to employ
+   * @return null if successful, otherwise the XML response to the update
+   */
+  public String checkUpdateStatus(String xml, String code, String updateHandler) throws SAXException {
     try {
-      String res = update(xml);
+      String res = update(xml, updateHandler);
       String valid = validateXPath(res, "//int[@name='status']="+code );
       return (null == valid) ? null : res;
     } catch (XPathExpressionException e) {

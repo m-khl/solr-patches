@@ -62,7 +62,7 @@ class RunUpdateProcessor extends UpdateRequestProcessor
   }
 
   @Override
-  public void processAddBlock(AddBlockCommand cmd) throws IOException {
+  protected void processAddBlock(AddBlockCommand cmd) throws IOException {
     final int updates = updateHandler.addBlock(cmd);
     logger.debug("{}-docs block added by {}", updates, cmd);
     // delegate

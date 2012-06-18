@@ -53,7 +53,7 @@ public abstract class UpdateRequestProcessor {
     if (next != null) next.processAdd(cmd);
   }
 
-  public void processAddBlock(AddBlockCommand cmd) throws IOException {
+  protected void processAddBlock(AddBlockCommand cmd) throws IOException {
     if (next != null) next.processAddBlock(cmd);
   }
   
