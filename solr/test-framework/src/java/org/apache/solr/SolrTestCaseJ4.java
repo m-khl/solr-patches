@@ -388,10 +388,13 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
 
   /** Validates an update XML String is successful
    */
-  public static void assertU(String message, String update) {
-    checkUpdateU(message, update, true);
+  public static void assertU(String message, String update, SolrParams param) {
+    checkUpdateU(message, update,param, true);
   }
 
+  public static void assertU(String message, String update) {
+    assertU(message, update,null);
+  }
   /** Validates an update XML String failed
    */
   public static void assertFailedU(String update) {
@@ -401,24 +404,32 @@ public abstract class SolrTestCaseJ4 extends LuceneTestCase {
   /** Validates an update XML String failed
    */
   public static void assertFailedU(String message, String update) {
-    checkUpdateU(message, update, false);
+    assertFailedU(message, update, null);
+  }
+  
+  public static void assertFailedU(String message, String update, SolrParams param) {
+    checkUpdateU(message, update, param, false);
   }
 
   /** Checks the success or failure of an update message
    */
-  private static void checkUpdateU(String message, String update, boolean shouldSucceed) {
+  private static void checkUpdateU(String message, String update, SolrParams params, boolean shouldSucceed) {
     try {
       String m = (null == message) ? "" : message + " ";
       if (shouldSucceed) {
-           String res = h.validateUpdate(update);
+           String res = h.validateUpdate(update, params);
          if (res != null) fail(m + "update was not successful: " + res);
       } else {
-           String res = h.validateErrorUpdate(update);
+           String res = h.validateErrorUpdate(update, params);
          if (res != null) fail(m + "update succeeded, but should have failed: " + res);
       }
     } catch (SAXException e) {
       throw new RuntimeException("Invalid XML", e);
     }
+  }
+  
+  private static void checkUpdateU(String message, String update, boolean shouldSucceed) {
+    checkUpdateU(message, update, null, shouldSucceed);
   }
 
   /** Validates a query matches some XPath test expressions and closes the query */

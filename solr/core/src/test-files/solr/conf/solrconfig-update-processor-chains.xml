@@ -232,5 +232,39 @@
       <str name="replacement">X</str>
     </processor>
   </updateRequestProcessorChain>
+  
+    <updateRequestProcessorChain name="log-and-run">
+       <processor class="solr.LogUpdateProcessorFactory"/>
+       <processor class="solr.RunUpdateProcessorFactory"/>
+    </updateRequestProcessorChain>
 
+    <updateRequestProcessorChain name="smallBufferThreads">
+       <processor class="solr.ThreadedUpdateProcessorFactiory">
+        <int name="bufferSize">1</int>
+        <int name="pipesNumber">10</int>
+       </processor>       
+    </updateRequestProcessorChain>
+
+    <updateRequestProcessorChain name="smallThreads">
+       <processor class="solr.ThreadedUpdateProcessorFactiory">
+        <int name="bufferSize">10</int>
+        <int name="pipesNumber">1</int>
+       </processor>       
+    </updateRequestProcessorChain>  
+    
+    <updateRequestProcessorChain name="normalThreads">
+       <processor class="solr.ThreadedUpdateProcessorFactiory">
+        <int name="bufferSize">20</int>
+        <int name="pipesNumber">5</int>
+       </processor>       
+    </updateRequestProcessorChain>  
+    
+    <updateRequestProcessorChain name="wrongThreads">
+       <processor class="solr.ThreadedUpdateProcessorFactiory">
+        <int name="bufferSize">20</int>
+        <int name="pipesNumber">10</int>
+       </processor>       
+       <processor class="solr.LogUpdateProcessorFactory"/>
+       <processor class="solr.RunUpdateProcessorFactory"/>
+    </updateRequestProcessorChain>  
 </config>

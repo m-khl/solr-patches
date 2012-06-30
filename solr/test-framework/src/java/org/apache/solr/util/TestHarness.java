@@ -19,6 +19,7 @@ package org.apache.solr.util;
 
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.CommonParams;
+import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.XML;
 import org.apache.solr.core.SolrConfig;
@@ -244,7 +245,7 @@ public class TestHarness {
    * @param xml The XML of the update
    * @return The XML response to the update
    */
-  public String update(String xml) {
+  public String update(String xml,SolrParams params) {
     DirectSolrConnection connection = new DirectSolrConnection(core);
     SolrRequestHandler handler = core.getRequestHandler("/update");
     // prefer the handler mapped to /update, but use our generic backup handler
@@ -253,12 +254,16 @@ public class TestHarness {
       handler = updater;
     }
     try {
-      return connection.request(handler, null, xml);
+      return connection.request(handler, params, xml);
     } catch (SolrException e) {
       throw (SolrException)e;
     } catch (Exception e) {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, e);
     }
+  }
+  
+  public String update(String xml) {
+    return update(xml, null) ;
   }
   
         
@@ -273,22 +278,9 @@ public class TestHarness {
   public String validateUpdate(String xml) throws SAXException {
     return checkUpdateStatus(xml, "0");
   }
-
-  /**
-   * Validates that an "update" (add, commit or optimize) results in success.
-   *
-   * :TODO: currently only deals with one add/doc at a time, this will need changed if/when SOLR-2 is resolved
-   * 
-   * @param xml The XML of the update
-   * @return null if successful, otherwise the XML response to the update
-   */
-  public String validateErrorUpdate(String xml) throws SAXException {
-    try {
-      return checkUpdateStatus(xml, "1");
-    } catch (SolrException e) {
-      // return ((SolrException)e).getMessage();
-      return null;  // success
-    }
+  
+  public String validateUpdate(String xml, SolrParams params) throws SAXException {
+    return checkUpdateStatus(xml, params,"0");
   }
 
   /**
@@ -297,11 +289,32 @@ public class TestHarness {
    * :TODO: currently only deals with one add/doc at a time, this will need changed if/when SOLR-2 is resolved
    * 
    * @param xml The XML of the update
+   * @param params 
    * @return null if successful, otherwise the XML response to the update
    */
-  public String checkUpdateStatus(String xml, String code) throws SAXException {
+  public String validateErrorUpdate(String xml, SolrParams params) throws SAXException {
     try {
-      String res = update(xml);
+      return checkUpdateStatus(xml, params,  "1");
+    } catch (SolrException e) {
+      // return ((SolrException)e).getMessage();
+      return null;  // success
+    }
+  }
+
+  public String validateErrorUpdate(String xml) throws SAXException {
+    return  validateErrorUpdate(xml, null);
+  }
+  /**
+   * Validates that an "update" (add, commit or optimize) results in success.
+   *
+   * :TODO: currently only deals with one add/doc at a time, this will need changed if/when SOLR-2 is resolved
+   * 
+   * @param xml The XML of the update
+   * @return null if successful, otherwise the XML response to the update
+   */
+  public String checkUpdateStatus(String xml, SolrParams params, String code) throws SAXException {
+    try {
+      String res = update(xml, params);
       String valid = validateXPath(res, "//int[@name='status']="+code );
       return (null == valid) ? null : res;
     } catch (XPathExpressionException e) {
@@ -310,6 +323,9 @@ public class TestHarness {
     }
   }
 
+  public String checkUpdateStatus(String xml, String code) throws SAXException {
+    return checkUpdateStatus(xml, null, code);
+  }
     
   /**
    * Validates a "query" response against an array of XPath test strings

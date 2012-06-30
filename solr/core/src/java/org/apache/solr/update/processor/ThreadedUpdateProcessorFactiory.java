@@ -93,6 +93,8 @@ public class ThreadedUpdateProcessorFactiory extends
       public Integer call() throws Exception {
         AddUpdateCommand elem=null;
         int cnt=0;
+        int failures=0;
+        Exception kept = null;
         try{
           for(;(elem = buffer.take())!=eof; cnt++){
             try{
@@ -102,9 +104,19 @@ public class ThreadedUpdateProcessorFactiory extends
               break;
             }//break on InterruptedEx too but it won't be thrown ever
             catch(Exception e){ // make sense for IO & Runtime. Really? 
-              logger.warn("ignoring exception for "+elem+" ",e); 
+              logger.warn("{} exception for {} pipe failures {} ", new Object[]{
+                  (kept==null? "storing":"ignoring"),
+                  e, 
+                  ++failures}); 
+              if(kept==null){
+                kept = e;
+              }
               // ignoring is valid for analisys exception, but if hdd is broken how much sense in continuing 
             }
+          }
+          // and after the stream is over let's let them know that there was a failure
+          if(kept!=null){
+            throw kept;
           }
         }finally{
           logger.debug("finishing pipe on {}",elem);
@@ -127,7 +139,9 @@ public class ThreadedUpdateProcessorFactiory extends
     protected final UpdateRequestProcessor delegate;
     
     public ThreadedUpdateProcessor(SolrQueryRequest req, SolrQueryResponse rsp,
-        UpdateRequestProcessor next, ExecutorService executor, int bufferSize, int maxPipesNumber) {
+        UpdateRequestProcessor next, ExecutorService executor,
+        int bufferSize, int maxPipesNumber,
+        UpdateRequestProcessorChain backingChain) {
       super(next);
       if(next!=null){
         throw new SolrException(ErrorCode.SERVER_ERROR, "please use "+backingChainParam +
@@ -135,19 +149,13 @@ public class ThreadedUpdateProcessorFactiory extends
       }
       this.req = req;
       this.rsp = rsp;
-      backingChain = obtainChain();
+      this.backingChain = backingChain;
       delegate = backingChain.createProcessor(req, rsp);
       this.pipesNumber = maxPipesNumber;    
       buffer = new LinkedBlockingQueue<AddUpdateCommand>(bufferSize);
       this.executor = executor;
     }
 
-    protected UpdateRequestProcessorChain obtainChain() {
-      return this.req.getCore().getUpdateProcessingChain(
-          this.req.getParams().get(backingChainParam)
-      );
-    }
-    
     @Override
     public void processAdd(AddUpdateCommand cmd) throws IOException {
       // I'm ready for 0 size buffer
@@ -162,8 +170,11 @@ public class ThreadedUpdateProcessorFactiory extends
     
     @Override
     public void processCommit(CommitUpdateCommand cmd) throws IOException {
-      stopPipes();
-      delegate.processCommit(cmd);
+      try{
+        stopPipes();
+      }finally{
+        delegate.processCommit(cmd);
+      }
     }
     
     /* 
@@ -171,14 +182,20 @@ public class ThreadedUpdateProcessorFactiory extends
      */
     @Override
     public void processDelete(DeleteUpdateCommand cmd) throws IOException {
-      stopPipes();
-      delegate.processDelete(cmd);
+      try{
+        stopPipes();
+      }finally{
+        delegate.processDelete(cmd);
+      }
     }
     
     @Override
     public void processMergeIndexes(MergeIndexesCommand cmd) throws IOException {
-      stopPipes();
-      delegate.processMergeIndexes(cmd);
+      try{
+        stopPipes();
+      }finally{
+        delegate.processMergeIndexes(cmd);
+      }
     }
     
     /* 
@@ -186,8 +203,11 @@ public class ThreadedUpdateProcessorFactiory extends
      */
     @Override
     public void processRollback(RollbackUpdateCommand cmd) throws IOException {
-      stopPipes();
-      delegate.processRollback(cmd);
+      try{
+        stopPipes();
+      }finally{
+        delegate.processRollback(cmd);
+      }
     }
     
     /**
@@ -208,12 +228,15 @@ public class ThreadedUpdateProcessorFactiory extends
 
     @Override
     public void finish() throws IOException {
-      stopPipes();
-      delegate.finish();
+      try{
+        stopPipes();
+      }finally{
+        delegate.finish();
+      }
       assert buffer.isEmpty() : "but it has "+buffer; // we might need wipe buffer with null
     }
 
-    protected void stopPipes() {
+    protected void stopPipes() throws IOException{
       if(pipes!=null){
         // drain buffer on urgent halt, e.g. rollback
         try{
@@ -222,6 +245,7 @@ public class ThreadedUpdateProcessorFactiory extends
             buffer.put(eof);
           }
           
+          Throwable problem = null;
           List<Object> pipeCounters = new ArrayList<Object>();
           for(Future<Integer> pipe:pipes){
             final Integer progress;
@@ -229,7 +253,11 @@ public class ThreadedUpdateProcessorFactiory extends
               progress = pipe.get();
               pipeCounters.add(progress);
             }catch(ExecutionException ee){
-              pipeCounters.add(ee.getCause());
+              Throwable cause = ee.getCause();
+              pipeCounters.add(cause );
+              if(problem==null){
+                problem = cause;
+              }
             }
           }
           logger.debug("per pipes processing counters:{}",pipeCounters);
@@ -239,6 +267,9 @@ public class ThreadedUpdateProcessorFactiory extends
             logger.error("buffer contains {} after stopping pipes", dust);
           }
           assert dust.isEmpty():" fail test beacuse of that";
+          if(problem!=null){
+            throw new SolrException(ErrorCode.BAD_REQUEST, "rethrowing one of the pipes problem",problem);
+          }
         }
         catch(InterruptedException ie){// in this case aggressively cancel everything 
           List<Boolean> cancels = new ArrayList<Boolean>();
@@ -265,11 +296,28 @@ public class ThreadedUpdateProcessorFactiory extends
   @Override
   public UpdateRequestProcessor getInstance(SolrQueryRequest req,
       SolrQueryResponse rsp, UpdateRequestProcessor next) {
+    String backingName = req.getParams().get(backingChainParam);
+    UpdateRequestProcessorChain backing = req.getCore().getUpdateProcessingChain(
+        backingName
+    );
+    for(UpdateRequestProcessorFactory f : backing.getFactories()){
+      if(f instanceof ThreadedUpdateProcessorFactiory){
+        throw new SolrException(ErrorCode.SERVER_ERROR, "backing chain "+backingName+
+            " contains "+f);
+      }
+    }
     return new ThreadedUpdateProcessor(req, rsp, next,
         executor,
-        buffer, pipes);
+        buffer, pipes,
+        backing);
   }
 
+  protected UpdateRequestProcessorChain obtainChain(SolrQueryRequest req) {
+    return req.getCore().getUpdateProcessingChain(
+        req.getParams().get(backingChainParam)
+    );
+  }
+  
   @Override
   public void inform(SolrCore core) {
     executor = Executors.newCachedThreadPool();

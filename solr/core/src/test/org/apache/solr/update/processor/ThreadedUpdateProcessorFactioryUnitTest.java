@@ -1,10 +1,8 @@
 package org.apache.solr.update.processor;
 
 import java.io.IOException;
-import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -15,11 +13,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.commons.io.DirectoryWalker.CancelException;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.solr.update.AddUpdateCommand;
 import org.apache.solr.update.processor.ThreadedUpdateProcessorFactiory.ThreadedUpdateProcessor.Pipe;
-import org.junit.Assert;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,14 +56,14 @@ public class ThreadedUpdateProcessorFactioryUnitTest extends LuceneTestCase {
     @Override
     public void processAdd(AddUpdateCommand cmd) throws IOException {
       addUpdateCommands.add(cmd);
-      logger.info("added {}", cmd);
+      logger.trace("added {}", cmd);
       super.processAdd(cmd);
     }
     
     @Override
     public void finish() throws IOException {
       finishes.incrementAndGet();
-      logger.info("completed {}", finishes);
+      logger.trace("completed {}", finishes);
     }
   }
   
@@ -116,7 +112,7 @@ public class ThreadedUpdateProcessorFactioryUnitTest extends LuceneTestCase {
       }catch(CancellationException e){
       }
       while(proc.finishes.intValue()!=1){
-        
+        Thread.yield();
       }
     }
     
