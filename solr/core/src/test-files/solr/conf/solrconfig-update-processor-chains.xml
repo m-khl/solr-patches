@@ -238,6 +238,12 @@
        <processor class="solr.RunUpdateProcessorFactory"/>
     </updateRequestProcessorChain>
 
+    <updateRequestProcessorChain name="log-delay-run">
+       <processor class="solr.LogUpdateProcessorFactory"/>
+       <processor class="org.apache.solr.update.processor.ThreadedUpdateProcessorFactioryTest$DelayProcessorFactory"/>
+       <processor class="solr.RunUpdateProcessorFactory"/>
+    </updateRequestProcessorChain>
+
     <updateRequestProcessorChain name="smallBufferThreads">
        <processor class="solr.ThreadedUpdateProcessorFactiory">
         <int name="bufferSize">1</int>

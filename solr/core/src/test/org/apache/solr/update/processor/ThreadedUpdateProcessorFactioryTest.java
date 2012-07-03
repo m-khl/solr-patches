@@ -1,10 +1,17 @@
 package org.apache.solr.update.processor;
 
+import java.io.IOException;
 import java.util.HashMap;
 
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.params.MapSolrParams;
-import org.apache.solr.common.util.XML;
+import org.apache.solr.request.SolrQueryRequest;
+import org.apache.solr.response.SolrQueryResponse;
+import org.apache.solr.update.AddUpdateCommand;
+import org.apache.solr.update.CommitUpdateCommand;
+import org.apache.solr.update.DeleteUpdateCommand;
+import org.apache.solr.update.MergeIndexesCommand;
+import org.apache.solr.update.RollbackUpdateCommand;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -40,7 +47,7 @@ public class ThreadedUpdateProcessorFactioryTest extends SolrTestCaseJ4 {
     assertU(commit());
   }
   
-  @Test
+  @Test(timeout=10000)
   public void testBasic() throws Exception {
     
     boolean inboundCommit = random().nextBoolean();
@@ -49,7 +56,11 @@ public class ThreadedUpdateProcessorFactioryTest extends SolrTestCaseJ4 {
     final int badDoc = random().nextBoolean() ? -1 : random().nextInt(hundred);
     for(int id=0;id<hundred;id++){
       if(badDoc==id){
-        sb.append(doc("idead_s",""+(id), "name_s", "bad"));
+        if(random().nextBoolean()){ // field format is violated
+          sb.append(doc("id",""+(id+hundred*hundred), "name_i", "bad"));
+        }else{// PK is ommitted
+          sb.append(doc("idbad","bad", "name", "bad"));
+        }
       }
       sb.append(doc("id",""+(id), "name_s", ""+(id+1)));
       
@@ -57,27 +68,29 @@ public class ThreadedUpdateProcessorFactioryTest extends SolrTestCaseJ4 {
    sb.append("</add> " +
    		(inboundCommit ? "<commit/>" : "" )+
    		"</update>");
+   final String chainName = new String[]{"smallBufferThreads", "smallThreads", "normalThreads" }[random().nextInt(3)];
     MapSolrParams params = new MapSolrParams(new HashMap<String,String>(){{
-        put("update.chain", new String[]{"smallBufferThreads", "smallThreads", "normalThreads" }[random().nextInt(3)]);
-        put("backing.chain","log-and-run");
+        put("update.chain", chainName);
+        put("backing.chain",random().nextBoolean()?"log-and-run":"log-delay-run");
       }});
-    
+    ((ThreadedUpdateProcessorFactory)h.getCore().getUpdateProcessingChain(chainName).getFactories()[0])
+        .offerTimeout=new int[]{0,1,10}[random().nextInt(3)];
     String xml = sb.toString();
     if(badDoc==-1){
       assertU("sending many docs",xml,params);
-    }else{ // failed doc won't indexed, exception is propagated, but remain docs are written
-      // it partially mimics single thread behavior - docs before wrong one are written, 
-      // and later are ignored. such behavior can't be provided for multiple threads
+      if(!inboundCommit){
+        assertU(commit());
+      }
+      assertQ(req("*:*"), "//*[@numFound='"+hundred+"']");
+      assertQ(req("name_s:1"), "//*[@numFound='1']");
+      assertQ(req("name_s:"+hundred), "//*[@numFound='1']");
+      assertQ(req("name_s:"+(random().nextInt(hundred-2)+2)), "//*[@numFound='1']");
+      assertQ(req("name_s:bad"), "//*[@numFound='0']");
+    }else{ // failed doc isn't indexed, exception is propagated, some of remain docs are written
+      // it partially mimics single thread behavior when docs before wrong one are written, 
+      // and later are ignored. exactly such behavior can't be provided for multiple threads
       assertFailedU("sending many docs with bad guy",xml,params);
     }
-    if(!inboundCommit){
-      assertU(commit());
-    }
-    assertQ(req("*:*"), "//*[@numFound='"+hundred+"']");
-    assertQ(req("name_s:1"), "//*[@numFound='1']");
-    assertQ(req("name_s:"+hundred), "//*[@numFound='1']");
-    assertQ(req("name_s:"+(random().nextInt(hundred-2)+2)), "//*[@numFound='1']");
-    assertQ(req("name_s:bad"), "//*[@numFound='0']");
   }
   
   @Test
@@ -98,6 +111,65 @@ public class ThreadedUpdateProcessorFactioryTest extends SolrTestCaseJ4 {
         }})
     );
   }
+  
+  
+  
+  @Test(expected=IllegalStateException.class)
+  public void testMisThreading() throws IOException, InterruptedException{
+    MapSolrParams params = new MapSolrParams(new HashMap<String,String>(){{
+      put("update.chain", "normalThreads");
+      put("backing.chain","log-and-run");
+    }});
+    final SolrQueryRequest req = req(params);
+    final UpdateRequestProcessorChain chain = h.getCore().getUpdateProcessingChain("normalThreads");
+    final UpdateRequestProcessor proc[] = new UpdateRequestProcessor[1];
+    Thread thread = new Thread(){
+      public void run() {
+        proc[0] = chain.createProcessor(req, new SolrQueryResponse());
+      };
+    };
+    thread.start();
+    thread.join();
+    switch(random().nextInt(5)){
+      case 0:
+        proc[0].processAdd(new AddUpdateCommand(req));
+      break;
+      case 1:
+        proc[0].processCommit(new CommitUpdateCommand(req, false));
+      break;
+      case 2:
+        proc[0].processDelete(new DeleteUpdateCommand(req));
+      break;
+      case 3:
+        proc[0].processMergeIndexes(new MergeIndexesCommand(null, req));
+      break;
+      case 4:
+        proc[0].processRollback(new RollbackUpdateCommand(req));
+      break;
+    }
+  }
+  
+  
+  public static class DelayProcessorFactory extends UpdateRequestProcessorFactory {
+    
+    @Override
+    public UpdateRequestProcessor getInstance(SolrQueryRequest req,
+        SolrQueryResponse rsp, UpdateRequestProcessor next) {
+      return new UpdateRequestProcessor( next) {
+        @Override
+        public void processAdd(AddUpdateCommand cmd) throws IOException {
+          try {
+            Thread.sleep(random().nextInt(90)+10);
+          } catch (InterruptedException e) {
+            throw new IOException("wrapper",e);
+          }
+          super.processAdd(cmd);
+        }
+      };
+    }
+    
+  }
+
 }
 
 
