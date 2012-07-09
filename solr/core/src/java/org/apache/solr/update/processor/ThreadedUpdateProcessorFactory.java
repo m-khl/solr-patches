@@ -114,10 +114,15 @@ public class ThreadedUpdateProcessorFactory extends
       @Override
       public Integer call() throws Exception {
         AddUpdateCommand elem=null;
-        int cnt=0;
+        int count=0;
+        int emptyCount=0;    
         try{
-          for(;(elem = buffer.take())!=eof; cnt++){
+          for(;(elem = buffer.take())!=eof; count++){
               backingProcessor.processAdd(elem);
+          
+              if(buffer.isEmpty()){
+                emptyCount++;
+              }
           }
         }  catch(Exception e){
             logger.info("stopping pipe",e);
@@ -127,10 +132,11 @@ public class ThreadedUpdateProcessorFactory extends
             backingProcessor.finish();
           }finally{
             latch.countDown();
-            logger.debug("pipe stopped at {}",elem);
+            logger.debug("pipe stopped at {} buffer was empty {} times of {} total count",
+                new Object[]{elem, emptyCount, count});
           }
         }
-        return cnt;
+        return count;
       }
     }
 
@@ -230,7 +236,7 @@ public class ThreadedUpdateProcessorFactory extends
      * */
     protected void startPipes() {
       if(pipes==null){
-        
+        logger.info("starting {}", pipesNumber);
         pipes = new ArrayList<Future<Integer>>(pipesNumber);
         running = new CountDownLatch(pipesNumber);
         
@@ -245,7 +251,9 @@ public class ThreadedUpdateProcessorFactory extends
               executor.submit(new Pipe(backingProcessor, buffer, running))
           );
         }
+        logger.info("started {}", pipes);
       }
+      
     }
     /**
      * check that all pipes are running,

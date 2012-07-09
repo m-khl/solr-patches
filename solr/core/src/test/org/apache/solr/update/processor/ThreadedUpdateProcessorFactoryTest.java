@@ -33,7 +33,7 @@ import org.junit.Test;
  * limitations under the License.
  */
 
-public class ThreadedUpdateProcessorFactioryTest extends SolrTestCaseJ4 {
+public class ThreadedUpdateProcessorFactoryTest extends SolrTestCaseJ4 {
   
   
   @BeforeClass

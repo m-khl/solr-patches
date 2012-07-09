@@ -47,9 +47,9 @@ import org.slf4j.LoggerFactory;
  * limitations under the License.
  */
 
-public class ThreadedUpdateProcessorFactioryUnitTest extends LuceneTestCase {
+public class ThreadedUpdateProcessorFactoryUnitTest extends LuceneTestCase {
   
-  private static final Logger logger = LoggerFactory.getLogger(ThreadedUpdateProcessorFactioryUnitTest.class);
+  private static final Logger logger = LoggerFactory.getLogger(ThreadedUpdateProcessorFactoryUnitTest.class);
 
   private final class BufferUpdateRequestProcessor extends
       UpdateRequestProcessor {
@@ -160,7 +160,7 @@ public class ThreadedUpdateProcessorFactioryUnitTest extends LuceneTestCase {
    * @throws IOException 
    * @throws InterruptedException 
    * */
-  @Test(timeout=1000)
+  @Test(timeout=10000)
   public void testInterrupt() throws IOException, InterruptedException {
     
     final LocalSolrQueryRequest req = new LocalSolrQueryRequest(null, new HashMap<String,String[]>());
@@ -207,7 +207,7 @@ public class ThreadedUpdateProcessorFactioryUnitTest extends LuceneTestCase {
     boolean complete=false;
     while(!complete){
       complete = true;
-      for (org.apache.solr.update.processor.ThreadedUpdateProcessorFactioryUnitTest.HangOnProcesssorFactory.HangOnProcessor 
+      for (org.apache.solr.update.processor.ThreadedUpdateProcessorFactoryUnitTest.HangOnProcesssorFactory.HangOnProcessor 
           whatTheHell : hangOnProcesssorFactory.processors) {
         if(!whatTheHell.finished){
           complete = false;
