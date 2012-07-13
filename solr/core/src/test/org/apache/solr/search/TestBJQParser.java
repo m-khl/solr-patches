@@ -28,7 +28,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
         String oldCacheNamePropValue = 
                 System.getProperty("blockJoinParentFilterCache");
         System.setProperty("blockJoinParentFilterCache", 
-                (cachedMode = random.nextBoolean()) ? "blockJoinParentFilterCache" : "don't cache");
+                (cachedMode = random().nextBoolean()) ? "blockJoinParentFilterCache" : "don't cache");
         
       initCore("solrconfig-bjqparser.xml", "schema.xml");
 
@@ -49,10 +49,10 @@ public class TestBJQParser extends SolrTestCaseJ4 {
                 assertU(add(doc(doc), "overwrite", "false"));
                 i++;
             }
-            if(random.nextBoolean()){
+            if(random().nextBoolean()){
                 assertU(commit());
                 // force empty segment
-                if(random.nextBoolean()){
+                if(random().nextBoolean()){
                     assertU(commit());
                 }
             }
@@ -76,7 +76,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
             block.add(new String[]{"parent_s",parent});
             blocks.add(block);
         }
-        Collections.shuffle(blocks, random);
+        Collections.shuffle(blocks, random());
         return blocks;
     }
 
@@ -88,7 +88,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
                     new String[]{"child_s",child, "parentchild_s",parent+child})
             ;
         }
-        Collections.shuffle(block, random);
+        Collections.shuffle(block, random());
         addGrandChildren(block);
         return block;
     }
@@ -104,7 +104,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
             int grandChildPos=0;
             boolean lastLoopButStillHasGrCh = !iter.hasNext() && !grandChildren.isEmpty();
             while( !grandChildren.isEmpty() && ( 
-                    (grandChildPos = random.nextInt(grandChildren.size()*2)) < grandChildren.size() || 
+                    (grandChildPos = random().nextInt(grandChildren.size()*2)) < grandChildren.size() || 
                         lastLoopButStillHasGrCh)){
                 grandChildPos = grandChildPos >=grandChildren.size() ? 0 : grandChildPos; 
                iter.add(new String[]{
@@ -175,7 +175,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
                 beParents
               );
 
-        boolean qfq = random.nextBoolean();
+        boolean qfq = random().nextBoolean();
         assertQ(req(qfq ? "q":"fq","parent_s:(a e b)",
                   (!qfq)? "q":"fq", "{!parent which=$pq v=$chq}",
                 "chq","parentchild_s:(bm ek cl)",
@@ -203,7 +203,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
                 "parentfilter", "parent_s:[* TO *]",
                 "childrenfilter", "child_s:[* TO *]"),sixParents);
         //int loops = atLeast(1);
-        String grandChildren = xyz.get(random.nextInt(xyz.size()));
+        String grandChildren = xyz.get(random().nextInt(xyz.size()));
         assertQ(req("q","+parent_s:(a e b) +_query_:\"{!parent which=$pq v=$chq}\"",
                 "chq","{!parent which=$childfilter v=$grandchq}", 
                 "grandchq", "+grand_s:"+grandChildren+" +grand_parentchild_s:(b* e* c*)",
@@ -213,7 +213,7 @@ public class TestBJQParser extends SolrTestCaseJ4 {
         );
     }
     
-    @Test @Ignore("until ToChildBlockJoinScorer.nextDoc() line 212 seek through child docs instead of jump by continue")
+    @Test 
     public void testChildrenParser(){
       assertQ(req("q","{!child of=\"parent_s:[* TO *]\"}parent_s:a"
           ,"fq","NOT grand_s:[* TO *]"

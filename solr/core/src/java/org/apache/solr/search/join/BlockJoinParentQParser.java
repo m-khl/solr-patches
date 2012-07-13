@@ -9,6 +9,7 @@ import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.search.join.ToParentBlockJoinQuery;
+import org.apache.lucene.search.join.ScoreMode;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.search.QParser;
@@ -54,7 +55,7 @@ class BlockJoinParentQParser extends QParser {
         Query query) {
       return new ToParentBlockJoinQuery(query,
               parentFilter
-              ,ToParentBlockJoinQuery.ScoreMode.None);// TODO support more scores
+              ,ScoreMode.None);// TODO support more scores
     }
 
     protected Filter cachedParentFilter(SolrQueryRequest req, Query parentQ) {

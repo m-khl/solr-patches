@@ -27,7 +27,7 @@
 
   <luceneMatchVersion>${tests.luceneMatchVersion:LUCENE_CURRENT}</luceneMatchVersion>
 
-  <mainIndex>
+  <indexConfig>
     <!-- lucene options specific to the main on-disk lucene index -->
     <useCompoundFile>false</useCompoundFile>
     <mergeFactor>8</mergeFactor>
@@ -41,7 +41,7 @@
 
     <unlockOnStartup>true</unlockOnStartup>
     
-  </mainIndex>
+  </indexConfig>
 
   <updateHandler class="solr.DirectUpdateHandler2">
 
