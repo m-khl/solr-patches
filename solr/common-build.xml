@@ -92,6 +92,7 @@
 	<pathelement path="${join.jar}"/>
     <pathelement path="${queries.jar}"/>
     <pathelement path="${queryparser.jar}"/>
+  	<pathelement path="${join.jar}"/>
     <pathelement location="${common-solr.dir}/build/solr-solrj/classes/java"/>
     <pathelement location="${common-solr.dir}/build/solr-core/classes/java"/>
     <path refid="additional.dependencies"/>
