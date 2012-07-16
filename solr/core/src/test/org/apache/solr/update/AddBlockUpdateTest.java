@@ -1,39 +1,34 @@
 package org.apache.solr.update;
 
 import java.io.IOException;
-import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.commons.io.output.ByteArrayOutputStream;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TermRangeFilter;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.join.ScoreMode;
 import org.apache.lucene.search.join.ToParentBlockJoinQuery;
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.client.solrj.request.RequestWriter;
+import org.apache.solr.client.solrj.request.UpdateRequest;
 import org.apache.solr.common.SolrInputDocument;
-import org.apache.solr.common.SolrInputField;
-import org.apache.solr.common.util.XML;
-import org.apache.solr.handler.loader.XMLLoader;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.util.RefCounted;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.xml.sax.SAXException;
 
@@ -63,7 +58,7 @@ public class AddBlockUpdateTest extends SolrTestCaseJ4 {
   
   
   private RefCounted<SolrIndexSearcher> searcherRef;
-  private SolrIndexSearcher searcher;
+  private SolrIndexSearcher _searcher;
     
   @BeforeClass
   public static void beforeClass() throws Exception {
@@ -83,19 +78,19 @@ public class AddBlockUpdateTest extends SolrTestCaseJ4 {
   }
   
   private SolrIndexSearcher getSearcher(){
-    if(searcher==null){
+    if(_searcher==null){
       searcherRef = h.getCore().getSearcher();
-      searcher = searcherRef.get();
+      _searcher = searcherRef.get();
     }
-    return searcher;
+    return _searcher;
   }
   
   @After
   public void cleanup(){
-    if(searcherRef!=null || searcher!=null){
+    if(searcherRef!=null || _searcher!=null){
       searcherRef.decref();
       searcherRef = null;
-      searcher=null;
+      _searcher=null;
     }
   }
   
@@ -173,7 +168,6 @@ public class AddBlockUpdateTest extends SolrTestCaseJ4 {
     assertEquals(0, h.getCore().getUpdateHandler().addBlock(cmd));
     assertU(commit());
     
-    final SolrIndexSearcher searcher = getSearcher();
       assertQ(req("*:*"),"//*[@numFound='0']");
   }
   
@@ -208,6 +202,57 @@ public class AddBlockUpdateTest extends SolrTestCaseJ4 {
      assertQ(req(parent+":Y"),"//*[@numFound='0']");
      assertQ(req(parent+":W"),"//*[@numFound='0']");
      
+  }
+  
+  @Test
+  public void testSolrJXML() throws IOException{
+    UpdateRequest req = new UpdateRequest();
+    
+    ArrayList<SolrInputDocument> docs = new ArrayList<SolrInputDocument>(Arrays.asList(
+      new SolrInputDocument(){{
+      addField("id", id());
+      addField("parent_s", "X");
+      ArrayList<SolrInputDocument> ch1 = new ArrayList<SolrInputDocument>(Arrays.asList(
+        new SolrInputDocument(){{
+          addField("id",id());
+          addField("child_s","y");
+        }},
+        new SolrInputDocument(){{
+          addField("id",id());
+          addField("child_s","z");
+        }}
+      ));
+      Collections.shuffle(ch1, random());
+      addField("children",  ch1);
+     }},
+     new SolrInputDocument(){{
+       addField("id", id());
+       addField("parent_s", "A");
+       addField("children",  new ArrayList<SolrInputDocument>(Arrays.asList(
+           new SolrInputDocument(){{
+             addField("id",id());
+             addField("child_s","b");
+           }}
+         )));
+       addField("children2",  
+           new SolrInputDocument(){{
+             addField("id",id());
+             addField("child_s","c");
+           }}
+         );
+      }}));
+    Collections.shuffle(docs, random());
+    req.add(docs);
+    
+    RequestWriter requestWriter = new RequestWriter();
+    ByteArrayOutputStream os = new ByteArrayOutputStream();
+    requestWriter.write(req, os);
+    assertBlockU(os.toString());
+    assertU(commit());
+    
+    final SolrIndexSearcher searcher = getSearcher();
+    assertSingleParentOf(searcher, one("yz"), "X");
+    assertSingleParentOf(searcher, one("bc"), "A");
   }
   
   private String merge(String block, String block2) {

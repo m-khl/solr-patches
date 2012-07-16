@@ -97,7 +97,33 @@ public class ClientUtils
       float boost = field.getBoost();
       String name = field.getName();
 
+      boolean first = true;
       for( Object v : field ) {
+        if(first && v instanceof SolrInputDocument){// bypass all loop processing
+          String val = v.toString();
+          Object[] attrs = {"name", name, "boost", boost};
+          writer.write('<');
+          writer.write("field");
+          for (int i=0; i<attrs.length; i++) {
+            writer.write(' ');
+            writer.write(attrs[i++].toString());
+            writer.write('=');
+            writer.write('"');
+            XML.escapeAttributeValue(attrs[i].toString(), writer);
+            writer.write('"');
+          }
+          writer.write('>');
+          for( Object vv : field ) {
+            writeXML( (SolrInputDocument)vv, writer );
+          }
+            writer.write('<');
+            writer.write('/');
+            writer.write("field");
+            writer.write('>');
+          break;
+        }
+        first = false;
+        
         String update = null;
 
         if (v instanceof Map) {
