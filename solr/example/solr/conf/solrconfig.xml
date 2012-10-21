@@ -138,7 +138,7 @@
          before flushing.
          If both ramBufferSizeMB and maxBufferedDocs is set, then
          Lucene will flush based on whichever limit is hit first.  -->
-    <!-- <ramBufferSizeMB>32</ramBufferSizeMB> -->
+     <ramBufferSizeMB>200</ramBufferSizeMB> 
     <!-- <maxBufferedDocs>1000</maxBufferedDocs> -->
 
     <!-- Expert: Merge Policy 
@@ -147,12 +147,10 @@
          The default since Lucene 2.3 was the LogByteSizeMergePolicy,
          Even older versions of Lucene used LogDocMergePolicy.
       -->
-    <!--
         <mergePolicy class="org.apache.lucene.index.TieredMergePolicy">
           <int name="maxMergeAtOnce">10</int>
           <int name="segmentsPerTier">10</int>
         </mergePolicy>
-      -->
        
     <!-- Merge Factor
          The merge factor controls how many segments will get merged at a time.
@@ -163,8 +161,8 @@
          Default is 10 for both merge policies.
       -->
     <!-- 
-    <mergeFactor>10</mergeFactor>
       -->
+    <mergeFactor>10</mergeFactor>
 
     <!-- Expert: Merge Scheduler
          The Merge Scheduler in Lucene controls how merges are
@@ -305,11 +303,12 @@
          openSearcher - if false, the commit causes recent index changes
          to be flushed to stable storage, but does not cause a new
          searcher to be opened to make those changes visible.
-      -->
-     <autoCommit> 
+         <autoCommit> 
        <maxTime>15000</maxTime> 
        <openSearcher>false</openSearcher> 
      </autoCommit>
+       -->
+     
 
     <!-- softAutoCommit is like autoCommit except it causes a
          'soft' commit which only ensures that changes are visible
@@ -356,11 +355,11 @@
 
     <!-- Enables a transaction log, currently used for real-time get.
          "dir" - the target directory for transaction logs, defaults to the
-            solr data directory.  --> 
+            solr data directory.
     <updateLog>
       <str name="dir">${solr.data.dir:}</str>
     </updateLog>
-   
+     --> 
 
   </updateHandler>
   
@@ -453,8 +452,8 @@
                and old cache.  
       -->
     <filterCache class="solr.FastLRUCache"
-                 size="512"
-                 initialSize="512"
+                 size="${cacheSize:512}"
+                 initialSize="${cacheSize:512}"
                  autowarmCount="0"/>
 
     <!-- Query Result Cache
@@ -463,8 +462,8 @@
          (DocList) based on a query, a sort, and the range of documents requested.  
       -->
     <queryResultCache class="solr.LRUCache"
-                     size="512"
-                     initialSize="512"
+                     size="${cacheSize:512}"
+                     initialSize="${cacheSize:512}"
                      autowarmCount="0"/>
    
     <!-- Document Cache
@@ -510,6 +509,12 @@
               />
       -->
 
+	  <cache name="blockJoinParentFilterCache"
+	      class="solr.search.LRUCache"
+	      size="1"
+	      initialSize="0"
+	      autowarmCount="1"
+	      />
 
     <!-- Lazy Field Loading
 
@@ -918,10 +923,10 @@
          on each Update Request
       -->
     <!--
-       <lst name="defaults">
-         <str name="update.chain">dedupe</str>
-       </lst>
        -->
+       <lst name="defaults">
+         <str name="update.chain">flatten-chain</str>
+       </lst>
   </requestHandler>
   
 
@@ -1564,7 +1569,25 @@
        <processor class="solr.RunUpdateProcessorFactory" />
      </updateRequestProcessorChain>
     -->
- 
+ <!-- 
+     <updateRequestProcessorChain name="threads">
+       <processor class="solr.ThreadedUpdateProcessorFactory">
+        <int name="bufferSize">100</int>
+        <int name="pipesNumber">4</int>
+       </processor>       
+    </updateRequestProcessorChain>  
+     -->
+    <updateRequestProcessorChain name="logrun">
+       <processor class="solr.LogUpdateProcessorFactory" />
+       <processor class="solr.RunUpdateProcessorFactory" />
+     </updateRequestProcessorChain>
+     
+    <updateRequestProcessorChain name="flatten-chain">
+        <processor class="solr.LogUpdateProcessorFactory" />
+		<processor class="solr.DistributedUpdateProcessorFactory" />
+		<processor class="org.apache.solr.update.processor.FlattenerUpdateProcessorFactory" />
+		<processor class="solr.RunUpdateProcessorFactory" />
+	</updateRequestProcessorChain>
   <!-- Response Writers
 
        http://wiki.apache.org/solr/QueryResponseWriter
@@ -1626,6 +1649,10 @@
      <queryParser name="myparser" class="com.mycompany.MyQParserPlugin"/>
     -->
 
+  <queryParser name="parent" class="org.apache.solr.search.join.BlockJoinParentQParserPlugin">
+  		<str name="parent-filter-cache">blockJoinParentFilterCache</str>
+  </queryParser>
+  
   <!-- Function Parsers
 
        http://wiki.apache.org/solr/FunctionQuery
