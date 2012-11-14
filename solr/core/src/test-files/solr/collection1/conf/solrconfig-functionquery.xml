@@ -32,11 +32,23 @@
 
   <requestHandler name="/reloadCache"
                   class="org.apache.solr.search.function.FileFloatSource$ReloadCacheRequestHandler" />
+                  
+  <requestHandler name="/reloadField"
+                  class="org.apache.solr.search.function.FileFloatSource$ReloadFieldRequestHandler" />                
 
   <!-- test ValueSourceParser plugins -->
   <valueSourceParser name="nvl" class="org.apache.solr.search.function.NvlValueSourceParser">
     <float name="nvlFloatValue">0.0</float>
   </valueSourceParser>
 
+  <query>
+        <queryResultCache
+      class="solr.LRUCache"
+      size="10"
+      initialSize="0"
+      autowarmCount="0"/>
+  </query>
+  
+  <queryParser name="testtrap" class="org.apache.solr.search.function.TestExternalFileFieldReload$ReloadFieldQParserPlugin"/>
 
 </config>

@@ -30,6 +30,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.Ignore;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.util.ArrayList;
@@ -50,7 +51,7 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
   
   String base = "external_foo_extf";
   static long start = System.currentTimeMillis();
-  void makeExternalFile(String field, String contents, String charset) {
+  static void makeExternalFile(String field, String contents, String charset) {
     String dir = h.getCore().getDataDir();
     String filename = dir + "/external_" + field + "." + (start++);
     try {
@@ -63,7 +64,7 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
   }
 
 
-  void createIndex(String field, float... values) {
+  static void createIndex(String field, float... values) {
     // lrf.args.put("version","2.0");
     for (float val : values) {
       String s = Float.toString(val);
@@ -89,7 +90,7 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
   }
 
   // replace \0 with the field name and create a parseable string 
-  public String func(String field, String template) {
+  static public String func(String field, String template) {
     StringBuilder sb = new StringBuilder("{!func}");
     for (char ch : template.toCharArray()) {
       if (ch=='\0') {
@@ -101,7 +102,7 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
     return sb.toString();
   }
 
-  void singleTest(String field, String funcTemplate, List<String> args, float... results) {
+  static void singleTest(String field, String funcTemplate, List<String> args, float... results) {
     String parseableQuery = func(field, funcTemplate);
 
     List<String> nargs = new ArrayList<String>(Arrays.asList("q", parseableQuery
@@ -132,7 +133,7 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
     );
   }
 
-  void singleTest(String field, String funcTemplate, float... results) {
+  static void singleTest(String field, String funcTemplate, float... results) {
     singleTest(field, funcTemplate, null, results);
   }
 
@@ -210,7 +211,23 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
 
   @Test
   public void testExternalField() throws Exception {
-    String field = "foo_extf";
+    final String field = "foo_extf";
+    doExternalField(field, random().nextBoolean() ? new Runnable() {
+      @Override
+      public void run() { try {
+          assertU(h.query("/reloadField", lrf.makeRequest("field", field)));
+        } catch (Exception e) { throw new RuntimeException(e);   }
+      }
+    } : new Runnable() {
+      @Override
+      public void run() { try {
+          assertU(h.query("/reloadCache", lrf.makeRequest("", "")));
+        } catch (Exception e) { throw new RuntimeException(e);   }
+      }
+    });
+  }
+
+  public void doExternalField(String field, Runnable flush) throws Exception {
 
     float[] ids = {100,-4,0,10,25,5,77,23,55,-78,-45,-24,63,78,94,22,34,54321,261,-627};
 
@@ -228,7 +245,9 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
     assertTrue(orig == FileFloatSource.onlyForTesting);
 
     makeExternalFile(field, "0=1","UTF-8");
-    assertU(h.query("/reloadCache",lrf.makeRequest("","")));
+    //assertU(h.query("/reloadCache",lrf.makeRequest("","")));
+    flush.run();
+    
     singleTest(field, "sqrt(\0)");
     assertTrue(orig != FileFloatSource.onlyForTesting);
 
@@ -264,7 +283,8 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
       makeExternalFile(field, sb.toString(),"UTF-8");
 
       // make it visible
-      assertU(h.query("/reloadCache",lrf.makeRequest("","")));
+      //assertU(h.query("/reloadCache",lrf.makeRequest("","")));
+      flush.run();
 
       // test it
       float[] answers = new float[ids.length*2];
