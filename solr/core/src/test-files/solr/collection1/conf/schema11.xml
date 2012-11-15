@@ -321,6 +321,10 @@ valued. -->
    <field name="signatureField" type="string" indexed="true" stored="false"/>
 
    <field name="eff_trie" type="eff_tfloat" />
+  
+  <!-- are used in TestExternalFileFieldReload.testSingleFieldReload() to cover ExternalFileFieldReloader -->
+   <field name="foo_extf" type="file" />
+   <field name="bar_extf" type="file" />
 
    <!-- Dynamic field definitions.  If a field name is not found, dynamicFields
         will be used if the name matches any of the patterns.

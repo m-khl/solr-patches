@@ -46,9 +46,7 @@
       class="solr.LRUCache"
       size="10"
       initialSize="0"
-      autowarmCount="0"/>
+      autowarmCount="10"/>
   </query>
   
-  <queryParser name="testtrap" class="org.apache.solr.search.function.TestExternalFileFieldReload$ReloadFieldQParserPlugin"/>
-
 </config>

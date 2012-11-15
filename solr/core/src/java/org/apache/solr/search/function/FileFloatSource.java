@@ -18,6 +18,10 @@ package org.apache.solr.search.function;
 
 import java.io.*;
 import java.util.*;
+import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.lucene.index.*;
 import org.apache.lucene.queries.function.*;
@@ -33,7 +37,6 @@ import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.schema.*;
 import org.apache.solr.search.FunctionQParserPlugin;
 import org.apache.solr.search.QParser;
-import org.apache.solr.search.function.FileFloatSource.Cache.Closure;
 import org.apache.solr.update.processor.UpdateRequestProcessor;
 import org.apache.solr.util.VersionedFile;
 import org.slf4j.Logger;
@@ -50,13 +53,13 @@ public class FileFloatSource extends ValueSource {
   
   private static final Logger log = LoggerFactory.getLogger(FileFloatSource.class);
   
-  static class Data {
+  static class Key {
     private final SchemaField field;
     private final SchemaField keyField;
     private final float defVal;
     private final String dataDir;
     
-    Data(SchemaField field, SchemaField keyField,
+    Key(SchemaField field, SchemaField keyField,
         float defVal, String dataDir) {
       this.field = field;
       this.keyField = keyField;
@@ -80,7 +83,7 @@ public class FileFloatSource extends ValueSource {
       if (this == obj) return true;
       if (obj == null) return false;
       if (getClass() != obj.getClass()) return false;
-      Data other = (Data) obj;
+      Key other = (Key) obj;
       if (dataDir == null) {
         if (other.dataDir != null) return false;
       } else if (!dataDir.equals(other.dataDir)) return false;
@@ -95,27 +98,18 @@ public class FileFloatSource extends ValueSource {
     }
   }
 
-  final Data data ;
+  final Key data ;
+  final int version;
 
   public FileFloatSource(SchemaField field, SchemaField keyField, float defVal, String datadir) {
-    data = new Data(field, keyField, defVal, datadir);
-  }
-
-
-  private static Versioned<float[]> getFromContext(Map<Object,Object> context,
-      Data data2) {
-    return (Versioned<float[]>) context.get(data2);
-  }
-
-  private static void setToContext(Map<Object,Object> context, Data data2,
-      Versioned<float[]> values2) {
-    Object older = context.put(data2,values2);
-    assert older==null;
+    data = new Key(field, keyField, defVal, datadir);
+    // let's force load the floats, and forget about them; 
+    version = getCurrentVersion(this.data);
   }
 
   @Override
   public String description() {
-    return "float(" + data.field +')';
+    return "float(" + data.field +") ver."+version;
   }
 
   @Override
@@ -123,7 +117,7 @@ public class FileFloatSource extends ValueSource {
     final int off = readerContext.docBase;
     IndexReaderContext topLevelContext = ReaderUtil.getTopLevelContext(readerContext);
 
-    final float[] arr = getCachedVersionedFloats(topLevelContext.reader(), this.data).target;
+    final float[] arr = getCachedFloats(topLevelContext.reader(), this.data);
     
     return new FloatDocValues(this) {
       @Override
@@ -143,6 +137,7 @@ public class FileFloatSource extends ValueSource {
     final int prime = 31;
     int result = 1;
     result = prime * result + ((data == null) ? 0 : data.hashCode());
+    result = prime * result + version;
     return result;
   }
 
@@ -155,13 +150,14 @@ public class FileFloatSource extends ValueSource {
     if (data == null) {
       if (other.data != null) return false;
     } else if (!data.equals(other.data)) return false;
+    else if(version!=other.version) return false;
     return true;
   }
 
   @Override
   public String toString() {
     return "FileFloatSource(field="+data.field.getName()+",keyField="+data.keyField.getName()
-            + ",defVal="+data.defVal+",dataDir="+data.dataDir+")";
+            + ",defVal="+data.defVal+",dataDir="+data.dataDir+",ver="+version+")";
 
   }
 
@@ -188,20 +184,11 @@ public class FileFloatSource extends ValueSource {
   /** synchronously load floats from new (or it mightbe old) file and puts into cache,
    * for later queries */
   public void reload(SolrQueryRequest req){
-    
     IndexReaderContext topLevelContext = ReaderUtil.getTopLevelContext(
         req.getSearcher().getTopReaderContext());
     IndexReader reader = topLevelContext.reader();
     
-    final float[] floats = getFloats(data, reader);
-    
-    floatCache.increment(reader, (Object)this.data, new Closure() {
-      @Override
-      public Object process(Object ascender) {
-        Versioned<float[]> old = (Versioned<float[]>) ascender;
-        return new Versioned(floats, old==null ? 0L : old.version+1);
-      }
-    });
+    floatCache.flushAllReaders(data);
   }
   
   /** test introspection. returns key for internal cache lookups, may NOT trigger file loading */
@@ -209,28 +196,47 @@ public class FileFloatSource extends ValueSource {
     SchemaField schemaField = req.getSchema().getField(fieldName);
     ExternalFileField fileField = (ExternalFileField) schemaField.getType();
     
-    return new Data(schemaField,fileField.getKeyField(), fileField.getDefVal(), req.getCore().getDataDir()) ;
-    //((FileFloatSource) ((FunctionQuery) QParser.getParser("{!func}"+fieldName, null, req).getQuery()).getValueSource()).data;
+    return new Key(schemaField,fileField.getKeyField(), fileField.getDefVal(), req.getCore().getDataDir()) ;
   }
 
   /** test introspection. does not cause side effects like entries initialization
    * can throw NPE  */
   static float[] getCachedValue(SolrQueryRequest req, Object fooKey) {
     Map readersCache = (Map) floatCache.readerCache.get(req.getSearcher().getIndexReader());
-    return ((Versioned<float[]>) readersCache.get(fooKey)).target;
+    return ((float[]) readersCache.get(fooKey));
   }
 
-  private final static Versioned<float[]> getCachedVersionedFloats(IndexReader reader, Data data2) {
-    return (Versioned<float[]>)floatCache.get(reader, data2);
+  private final static float[] getCachedFloats(IndexReader reader, Key data2) {
+    return (float[])floatCache.get(reader, data2);
   }
+
+  static private int getCurrentVersion(Key key){
+    return getLazyVersion(key).get();
+  }
+  
+  private static AtomicInteger getLazyVersion(Key key){
+    AtomicInteger counter = versions.get(key);
+    if(counter!=null)
+      return counter;
+    AtomicInteger our = new AtomicInteger();
+    AtomicInteger previous = versions.putIfAbsent(key, our);
+    return (previous==null ? our : previous);
+  }
+  
+  static private int incrementVersion(Key key){
+    return getLazyVersion(key).incrementAndGet();
+  }
+  
+  // I don't expect many of them nor leakage, otherwise consider the weaker one
+  private static ConcurrentMap<Key,AtomicInteger> versions = new ConcurrentHashMap<FileFloatSource.Key,AtomicInteger>();
 
   static Cache floatCache = new Cache() {
     @Override
     protected Object createValue(IndexReader reader, Object key) {
-      return new Versioned(getFloats( (Data)key, reader), 0L);
+      return getFloats( (Key)key, reader);
     }
   };
-
+  
   /** Internal cache. (from lucene FieldCache) */
   abstract static class Cache {
     final Map readerCache = new WeakHashMap();
@@ -238,14 +244,23 @@ public class FileFloatSource extends ValueSource {
     protected abstract Object createValue(IndexReader reader, Object key);
 
     public void refresh(IndexReader reader, Object key) {
-      Object refreshedValues = createValue(reader, key);
+      flushAllReaders(key);
+    }
+    
+    public void flushAllReaders(Object key) {
+      Object oldValue;
       synchronized (readerCache) {
-        Map innerCache = (Map) readerCache.get(reader);
-        if (innerCache == null) {
-          innerCache = new HashMap();
-          readerCache.put(reader, innerCache);
+        // previous queries are old
+        incrementVersion((Key) key);
+        for(Object readerData:readerCache.values()){
+          Map innerCache = (Map) readerData;
+          oldValue = innerCache.get(key);
+          if(oldValue!=null )// here is the problem - thread which now loads the file, will throw this placeholder later
+            //if(!(oldValue instanceof CreationPlaceholder))  - but I found it really hard to deal with this issue.
+              innerCache.put(key, new CreationPlaceholder());
+            //else{
+            //}
         }
-        innerCache.put(key, refreshedValues);
       }
     }
 
@@ -285,34 +300,14 @@ public class FileFloatSource extends ValueSource {
     
     public void resetCache(){
       synchronized(readerCache){
+        for(Entry<Key, AtomicInteger> entry: versions.entrySet()){
+          entry.getValue().incrementAndGet();
+        }
         // Map.clear() is optional and can throw UnsipportedOperationException,
         // but readerCache is WeakHashMap and it supports clear().
         readerCache.clear();
       }
     }
-    
-    interface Closure{
-      Object process(Object ascender);
-    }
-    
-    /**
-     * applies the given action to an existing entry, or null if it is not exist
-     * */
-    public void increment(IndexReader reader, Object key, Closure action){
-      Map innerCache;
-      synchronized (readerCache) {
-        innerCache = (Map) readerCache.get(reader);
-        if (innerCache == null) {
-          innerCache = new HashMap();
-          readerCache.put(reader, innerCache);
-        } 
-        Object ascender = innerCache.get(key);
-          Object value = action.process(ascender);
-          Object pushedOut = innerCache.put(key, value );
-          onlyForTesting = value;
-          assert ascender==pushedOut: "it seems like a race for "+key ;
-        }
-      }
   }
 
   static Object onlyForTesting; // set to the last value
@@ -321,29 +316,7 @@ public class FileFloatSource extends ValueSource {
     Object value;
   }
 
-    /** Expert: Every composite-key in the internal cache is of this type. */
-  /**private static class Entry {
-    final FileFloatSource ffs;
-    public Entry(FileFloatSource ffs) {
-      this.ffs = ffs;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (!(o instanceof Entry)) return false;
-      Entry other = (Entry)o;
-      return ffs.equals(other.ffs);
-    }
-
-    @Override
-    public int hashCode() {
-      return ffs.hashCode();
-    }
-  }*/
-
-
-
-  private static float[] getFloats(Data ffs, IndexReader reader) {
+  private static float[] getFloats(Key ffs, IndexReader reader) {
     float[] vals = new float[reader.maxDoc()];
     if (ffs.defVal != 0) {
       Arrays.fill(vals, ffs.defVal);
@@ -434,38 +407,6 @@ public class FileFloatSource extends ValueSource {
     return vals;
   }
   
-  static class Versioned<T>{
-    private final long version;
-    T target;
-
-    public Versioned(T target, long timestamp) {
-      this.target = target;
-      this.version = timestamp;
-    }
-
-    @Override
-    public int hashCode() {
-      final int prime = 31;
-      int result = 1;
-      result = prime * result + ((target == null) ? 0 : target.hashCode());
-      result = prime * result + (int) (version ^ (version >>> 32));
-      return result;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-      if (this == obj) return true;
-      if (obj == null) return false;
-      if (getClass() != obj.getClass()) return false;
-      Versioned other = (Versioned) obj;
-      if (target == null) {
-        if (other.target != null) return false;
-      } else if (!target.equals(other.target)) return false;
-      if (version != other.version) return false;
-      return true;
-    }
-  }
-
   public static class ReloadCacheRequestHandler extends RequestHandlerBase {
     
     static final Logger log = LoggerFactory.getLogger(ReloadCacheRequestHandler.class);
