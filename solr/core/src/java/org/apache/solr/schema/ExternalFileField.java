@@ -115,6 +115,8 @@ public class ExternalFileField extends FieldType {
    * @return a FileFloatSource
    */
   public FileFloatSource getFileFloatSource(SchemaField field, String datadir) {
+    // Because the float source uses a static cache, all source objects will
+    // refer to the same data.
     return new FileFloatSource(field, getKeyField(), defVal, datadir);
   }
 

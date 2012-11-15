@@ -103,7 +103,6 @@ public class FileFloatSource extends ValueSource {
 
   public FileFloatSource(SchemaField field, SchemaField keyField, float defVal, String datadir) {
     data = new Key(field, keyField, defVal, datadir);
-    // let's force load the floats, and forget about them; 
     version = getCurrentVersion(this.data);
   }
 
