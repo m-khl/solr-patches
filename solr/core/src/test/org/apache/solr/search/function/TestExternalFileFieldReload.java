@@ -169,9 +169,8 @@ public class TestExternalFileFieldReload extends SolrTestCaseJ4 {
       // funny thing is that new parsed query should give no hit - because it has new version 
       // but it should not re read the file!
       makeExternalFile("foo_extf", "11=1\n12=2\n13=666\n14=4\n15=5","UTF-8");
-      singleTest("foo_extf", "\0", 13, fillQueryResultCache ? 100 : 3000);
-      tracker.assertNoHit();
-      singleTest("foo_extf", "\0", 13, fillQueryResultCache ? 100 : 3000);
+      assertEquals(fillQueryResultCache ? 100 : 3000, 
+            searchBySolr(req, parse(req, "foo_extf"), thirteenthDoc), 0.01);
       tracker.assertHit();
     }finally{
       req.close();
