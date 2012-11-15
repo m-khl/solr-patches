@@ -139,7 +139,7 @@ public class TestExternalFileFieldReload extends SolrTestCaseJ4 {
 
     SolrQueryRequest req = req("*:*");
     try{
-    makeExternalFile("foo_extf", "11=1\n12=2\n13=3\n14=4\n15=5","UTF-8");
+      makeExternalFile("foo_extf", "11=1\n12=2\n13=3\n14=4\n15=5","UTF-8");
       Query fooQ = parse(req, "foo_extf");
       Query thirteenthDoc = QParser.getParser("id:13", null, req).getQuery();
       boolean fillQueryResultCache = random().nextBoolean();
@@ -171,6 +171,8 @@ public class TestExternalFileFieldReload extends SolrTestCaseJ4 {
       makeExternalFile("foo_extf", "11=1\n12=2\n13=666\n14=4\n15=5","UTF-8");
       singleTest("foo_extf", "\0", 13, fillQueryResultCache ? 100 : 3000);
       tracker.assertNoHit();
+      singleTest("foo_extf", "\0", 13, fillQueryResultCache ? 100 : 3000);
+      tracker.assertHit();
     }finally{
       req.close();
     }
