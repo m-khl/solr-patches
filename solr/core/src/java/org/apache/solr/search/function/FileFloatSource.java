@@ -29,10 +29,12 @@ import org.apache.lucene.queries.function.docvalues.FloatDocValues;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
+import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.handler.RequestHandlerUtils;
 import org.apache.solr.request.SolrQueryRequest;
+import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.schema.*;
 import org.apache.solr.search.FunctionQParserPlugin;
@@ -116,7 +118,17 @@ public class FileFloatSource extends ValueSource {
     final int off = readerContext.docBase;
     IndexReaderContext topLevelContext = ReaderUtil.getTopLevelContext(readerContext);
 
-    final float[] arr = getCachedFloats(topLevelContext.reader(), this.data);
+    SolrRequestInfo requestInfo = SolrRequestInfo.getRequestInfo();
+    
+    Map<Object,Object> requestContext = requestInfo.getReq().getContext();
+    float[] previous = (float[]) requestContext.get(this.data)
+    ;
+    if(previous==null){
+      previous = getCachedFloats(topLevelContext.reader(), this.data);
+      requestContext.put(this.data, previous);
+    }
+    
+    final float[] arr = previous;
     
     return new FloatDocValues(this) {
       @Override

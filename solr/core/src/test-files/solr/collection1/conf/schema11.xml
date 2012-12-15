@@ -238,6 +238,10 @@
     <fieldType name="ignored" stored="false" indexed="false" class="solr.StrField" /> 
 
     <fieldType name="file" keyField="id" defVal="1" stored="false" indexed="false" class="solr.ExternalFileField" valType="float"/>
+    
+    <fieldType name="reloadtesttrap" keyField="id" defVal="0.0" stored="false" indexed="false" 
+    	class="org.apache.solr.search.function.TestExternalFileFieldReload$ReloadFieldType" valType="float"
+    	reloadField="baz_extf"/>
 
     <fieldType name="sfile" keyField="sfile_s" defVal="1" stored="false" indexed="false" class="solr.ExternalFileField" valType="float"/>
 
@@ -322,9 +326,8 @@ valued. -->
 
    <field name="eff_trie" type="eff_tfloat" />
   
-  <!-- are used in TestExternalFileFieldReload.testSingleFieldReload() to cover ExternalFileFieldReloader -->
-   <field name="foo_extf" type="file" />
-   <field name="bar_extf" type="file" />
+  <!-- are used in TestExternalFileFieldReload.testSearchAtomicityVsReload() to cover ExternalFileFieldReloader  -->
+   <field name="baz_extf_reloadtesttrap" type="reloadtesttrap" />
 
    <!-- Dynamic field definitions.  If a field name is not found, dynamicFields
         will be used if the name matches any of the patterns.

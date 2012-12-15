@@ -1,15 +1,25 @@
 package org.apache.solr.search.function;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Map;
 
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.queries.function.*;
+import org.apache.lucene.queries.function.valuesource.DoubleConstValueSource;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.*;
+import org.apache.lucene.util.Bits;
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.SolrInfoMBean;
 import org.apache.solr.request.SolrQueryRequest;
-import org.apache.solr.schema.ExternalFileFieldReloader;
+import org.apache.solr.request.SolrRequestInfo;
+import org.apache.solr.response.SolrQueryResponse;
+import org.apache.solr.schema.*;
 import org.apache.solr.search.*;
+
 import static org.apache.solr.search.function.TestFunctionQuery.*;
 import org.apache.solr.search.SolrIndexSearcher.QueryCommand;
 import org.apache.solr.search.SolrIndexSearcher.QueryResult;
@@ -177,14 +187,36 @@ public class TestExternalFileFieldReload extends SolrTestCaseJ4 {
     }
   }
 
+  /** try TODO the same with sorting */
+  public void testSearchAtomicityVsReload() throws ParseException, IOException{
+    TestFunctionQuery.createIndex(null,0,1,2,3,4,5,6,7,8,9);
+    TestFunctionQuery.makeExternalFile("baz_extf", "0=0\n1=1\n2=2\n3=3\n4=4\n5=5\n6=6\n7=7\n8=8\n9=9","UTF-8");
+    
+      singleTest("baz_extf", "sum(\0, 0.0 ,\0)", 0,0, 1,2, 3,6, 8,16);
+      
+      TestFunctionQuery.makeExternalFile("baz_extf", "0=0\n1=10\n2=20\n3=30\n4=40\n5=50\n6=60\n7=70\n8=80\n9=90","UTF-8");
+      // fourth zero arg disables cache hit
+      singleTest("baz_extf", "sum(\0,baz_extf_reloadtesttrap,\0,0.0)", 
+           0,0, 1,2, 3,6, 8,16);
+
+      singleTest("baz_extf", "sum(\0,0.0,\0)", 0,0, 1,20, 3,60, 8,160);
+  }
+  
   private float searchByLucene(SolrQueryRequest req, Query fooQ,
       Query filter) throws IOException {
+    SolrRequestInfo.setRequestInfo(new SolrRequestInfo(req, new SolrQueryResponse()));
+    try{
     return req.getSearcher().search(fooQ,
         new QueryWrapperFilter(filter), 100).scoreDocs[0].score;
+    }finally{
+      SolrRequestInfo.clearRequestInfo();
+    }
   }
   
   private float searchBySolr(SolrQueryRequest req, Query fooQ,
       Query thirteenthDocFilter) throws IOException {
+    SolrRequestInfo.setRequestInfo(new SolrRequestInfo(req, new SolrQueryResponse()));
+    try{
     QueryCommand qc = new QueryCommand();
         qc.setQuery(fooQ)
           .setFilterList(thirteenthDocFilter)
@@ -198,6 +230,9 @@ public class TestExternalFileFieldReload extends SolrTestCaseJ4 {
     DocIterator iterator = docList.iterator();
     iterator.next();
     return iterator.score();
+    }finally{
+      SolrRequestInfo.clearRequestInfo();
+    }
   }
   
   private Query parse(SolrQueryRequest req, String field) throws ParseException{
@@ -259,6 +294,47 @@ public class TestExternalFileFieldReload extends SolrTestCaseJ4 {
       assertEquals("expects hits are "+(hitsInc==0 ? "the same" : "increased on "+hitsInc),  hits+hitsInc , newHits);
       lookups = newLookups;
       hits = newHits;
+    }
+  }
+  
+  /**
+   * value source which has defVal for all documents, during access reloads
+   *  the field specified in "reloadField" field type attribute
+   * */
+  public static class ReloadFieldType extends ExternalFileField{
+    private String filedNameToReload;
+    @Override
+    protected void init(IndexSchema schema, Map<String,String> args) {
+      super.init(schema, args);
+      filedNameToReload = args.remove("reloadField");
+    }
+    @Override
+    public ValueSource getValueSource(SchemaField field, QParser parser) {
+      return new DoubleConstValueSource(new Double(getDefVal())){
+        @Override
+        public FunctionValues getValues(Map context,
+            AtomicReaderContext readerContext) throws IOException {
+          
+          try {
+            // if(random().nextBoolean()){
+            //   reload(filedNameToReload );
+            // }else{
+               reloadInThread(filedNameToReload );
+            // }
+           } catch (Exception e) {
+             throw new RuntimeException();
+           }
+          
+          return super.getValues(context, readerContext);
+        }
+        /* prevented cache hit here, but exploit other workaround with adding zero arg to sum()
+        @Override
+        public boolean equals(Object o) {
+          if (!(o.getClass().isInstance(getClass()))) return false;
+          DoubleConstValueSource other = (DoubleConstValueSource) o;
+          return this.getDouble() == other.getDouble();
+        }*/
+      };
     }
   }
 }
