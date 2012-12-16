@@ -121,8 +121,7 @@ public class FileFloatSource extends ValueSource {
     SolrRequestInfo requestInfo = SolrRequestInfo.getRequestInfo();
     
     Map<Object,Object> requestContext = requestInfo.getReq().getContext();
-    float[] previous = (float[]) requestContext.get(this.data)
-    ;
+    float[] previous = (float[]) requestContext.get(this.data);
     if(previous==null){
       previous = getCachedFloats(topLevelContext.reader(), this.data);
       requestContext.put(this.data, previous);

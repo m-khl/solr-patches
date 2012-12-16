@@ -95,7 +95,7 @@ public class ExternalFileField extends FieldType {
   public ValueSource getValueSource(SchemaField field, QParser parser) {
     return getFileFloatSource(field, parser.getReq().getCore().getDataDir());
   }
-  
+
   /**
    * Get a FileFloatSource for the given field, using the datadir from the
    * IndexSchema

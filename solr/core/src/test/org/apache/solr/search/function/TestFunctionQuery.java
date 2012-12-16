@@ -104,11 +104,28 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
 
   static void singleTest(String field, String funcTemplate, List<String> args, float... results) {
     String parseableQuery = func(field, funcTemplate);
+    ArrayList<String> nargs = new ArrayList<String>();
+    if(args!=null){
+      nargs.addAll(args);
+    }
+    nargs.addAll(Arrays.asList("rows","100"));
+    singleTestRawQuery(parseableQuery, field, nargs, results);
+  }
 
+
+  /**
+   * note: no rows param added!
+   * @param parseableQuery q= param value
+   * @param field field name to subsitute into args
+   * @param args list of param=value for quesries  
+   * @param results array of id, score 
+   */
+  static void singleTestRawQuery(String parseableQuery, String field,
+      List<String> args, float... results) {
     List<String> nargs = new ArrayList<String>(Arrays.asList("q", parseableQuery
             ,"fl", "*,score"
             ,"indent","on"
-            ,"rows","100"));
+            ));
 
     if (args != null) {
       for (String arg : args) {

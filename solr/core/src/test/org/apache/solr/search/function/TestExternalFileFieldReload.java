@@ -194,12 +194,34 @@ public class TestExternalFileFieldReload extends SolrTestCaseJ4 {
     
       singleTest("baz_extf", "sum(\0, 0.0 ,\0)", 0,0, 1,2, 3,6, 8,16);
       
+      // multiply all vals by ten, try to load in the middle of scorers  
       TestFunctionQuery.makeExternalFile("baz_extf", "0=0\n1=10\n2=20\n3=30\n4=40\n5=50\n6=60\n7=70\n8=80\n9=90","UTF-8");
       // fourth zero arg disables cache hit
       singleTest("baz_extf", "sum(\0,baz_extf_reloadtesttrap,\0,0.0)", 
            0,0, 1,2, 3,6, 8,16);
-
+      // news scorers are there
       singleTest("baz_extf", "sum(\0,0.0,\0)", 0,0, 1,20, 3,60, 8,160);
+  }
+  
+  /** try TODO the same with sorting */
+  public void testSearchSortAtomicityVsReload() throws IOException{
+    TestFunctionQuery.createIndex(null,0,1,7,8,9);
+    TestFunctionQuery.makeExternalFile("baz_extf", "0=0\n1=1\n7=7\n8=8\n9=9","UTF-8");
+    
+      singleTestRawQuery("{!frange l=8 u=10}sum(0.0, baz_extf)", "baz_extf", 
+            Arrays.asList("rows","1", 
+                "sort", "baz_extf asc"), 8,1 /* frange gives 1 score*/);
+
+      TestFunctionQuery.makeExternalFile("baz_extf", "0=0\n1=10\n7=70\n8=80\n9=90","UTF-8");
+      // try to load multiplied scores after 
+      singleTestRawQuery("{!frange l=8 u=9}sum(baz_extf_reloadtesttrap, baz_extf)", "baz_extf", 
+          Arrays.asList("rows","1", 
+              "sort", "baz_extf desc"), 9,1 /* frange gives 1 score*/);
+      // new values passes range
+      singleTestRawQuery("{!frange l=80 u=90}sum(baz_extf)", "baz_extf", 
+          Arrays.asList("rows","1", 
+              "sort", "baz_extf desc"), 9,1 /* frange gives 1 score*/);
+      
   }
   
   private float searchByLucene(SolrQueryRequest req, Query fooQ,
@@ -316,18 +338,14 @@ public class TestExternalFileFieldReload extends SolrTestCaseJ4 {
             AtomicReaderContext readerContext) throws IOException {
           
           try {
-            // if(random().nextBoolean()){
-            //   reload(filedNameToReload );
-            // }else{
                reloadInThread(filedNameToReload );
-            // }
            } catch (Exception e) {
              throw new RuntimeException();
            }
           
           return super.getValues(context, readerContext);
         }
-        /* prevented cache hit here, but exploit other workaround with adding zero arg to sum()
+        /* prevented cache hit here, but now exploits other workaround with adding zero arg to sum()
         @Override
         public boolean equals(Object o) {
           if (!(o.getClass().isInstance(getClass()))) return false;
