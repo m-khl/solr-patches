@@ -1,17 +1,15 @@
 package org.apache.solr.search.function;
 
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.Map;
+import java.util.*;
 
 import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.queries.function.*;
 import org.apache.lucene.queries.function.valuesource.DoubleConstValueSource;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.*;
-import org.apache.lucene.util.Bits;
 import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.SolrInfoMBean;
 import org.apache.solr.request.SolrQueryRequest;
@@ -23,6 +21,8 @@ import org.apache.solr.search.*;
 import static org.apache.solr.search.function.TestFunctionQuery.*;
 import org.apache.solr.search.SolrIndexSearcher.QueryCommand;
 import org.apache.solr.search.SolrIndexSearcher.QueryResult;
+import org.apache.solr.search.function.FileFloatSource.Key;
+import org.apache.solr.search.function.FileFloatSource.VersionedFloatsCache;
 import org.junit.Before;
 import org.junit.BeforeClass;
 
@@ -44,7 +44,7 @@ import org.junit.BeforeClass;
  */
 
 public class TestExternalFileFieldReload extends SolrTestCaseJ4 {
- 
+
   @BeforeClass
   public static void beforeClass() throws Exception {
     initCore("solrconfig-functionquery.xml","schema-eff.xml");
@@ -221,6 +221,52 @@ public class TestExternalFileFieldReload extends SolrTestCaseJ4 {
               "sort", "baz_extf desc"), 9,1 /* frange gives 1 score*/);
       
   }
+  
+  private static final String raceFieldName = "test_make_a_pause_SOLR_4085_extf";
+
+  public void testSearchReloadRace() throws InterruptedException{
+    TestFunctionQuery.createIndex(null,0,1,7,8,9);
+    TestFunctionQuery.makeExternalFile(raceFieldName, "0=0\n1=1\n7=7\n8=8\n9=9","UTF-8");
+    
+    VersionedFloatsCache raceCache = new FileFloatSource.VersionedFloatsCache() {
+      volatile boolean once;
+      @Override
+      protected synchronized Object createValue(IndexReader reader, Object key) {
+        Key floatsKey = (Key)key;
+        float[] floats = (float[]) super.createValue(reader, floatsKey);
+        if(floatsKey.getName().equals(raceFieldName) && !once){
+        //  assert !once: "should not be called so many" ;
+          once = true;
+          try {// ops concurrent reload
+            TestFunctionQuery.makeExternalFile(raceFieldName, "0=-1\n1=10\n7=70\n8=80\n9=90","UTF-8");
+            reloadInThread(raceFieldName);
+          } catch (Exception e) {
+            throw new RuntimeException(e);
+          }
+        }
+        return floats;
+      }
+    };
+
+    // TODO should I introduce static setter?
+    VersionedFloatsCache oldCache = FileFloatSource.floatsCache;
+    FileFloatSource.floatsCache = raceCache;
+    try{  
+      Object oldFloats;
+      oldFloats = FileFloatSource.onlyForTesting;
+      // concurrent reload correctly breaks lazy loading, and we see second version of file  
+      singleTest(raceFieldName, "sum(\0, 0.0)", 0,-1, 1,10, 7,70, 8,80, 9,90);
+      assertNotSame("file loading happens", oldFloats, FileFloatSource.onlyForTesting);
+      
+      oldFloats = FileFloatSource.onlyForTesting;
+      singleTest(raceFieldName, "sum(\0, 0.0, 0.0)", 0,-1, 1,10, 7,70, 8,80, 9,90);
+      assertSame("as well concurrent reload triggers only once, it's an regular hit, no loading should happen", 
+          oldFloats, FileFloatSource.onlyForTesting);
+    }finally{
+      FileFloatSource.floatsCache = oldCache;
+    }
+  }
+  
   
   private float searchByLucene(SolrQueryRequest req, Query fooQ,
       Query filter) throws IOException {

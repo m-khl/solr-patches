@@ -31,6 +31,11 @@
 
    <dynamicField name="*_extf" type="file"/>
  
+ 	<!-- are necessary for TestExternalFileFieldReload.testSingleFieldReload() 
+ 	otherwise ExternalFileFieldReloader, can not find fields made by dynamicField template -->
+   <field name="foo_extf" type="file"/>
+   <field name="bar_extf" type="file"/>
+   
  </fields>
 
 

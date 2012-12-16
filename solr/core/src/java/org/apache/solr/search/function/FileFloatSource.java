@@ -29,7 +29,6 @@ import org.apache.lucene.queries.function.docvalues.FloatDocValues;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
-import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.handler.RequestHandlerUtils;
@@ -98,14 +97,25 @@ public class FileFloatSource extends ValueSource {
       } else if (!keyField.equals(other.keyField)) return false;
       return true;
     }
+    
+    String getName(){
+      return field.getName();
+    }
+
+    @Override
+    public String toString() {
+      return "FileFloatSource.Key [field=" + field + "]";
+    }
   }
+  
+  
 
   final Key data ;
   final int version;
 
   public FileFloatSource(SchemaField field, SchemaField keyField, float defVal, String datadir) {
     data = new Key(field, keyField, defVal, datadir);
-    version = getCurrentVersion(this.data);
+    version = floatsCache.getCurrentVersion(this.data);
   }
 
   @Override
@@ -121,13 +131,25 @@ public class FileFloatSource extends ValueSource {
     SolrRequestInfo requestInfo = SolrRequestInfo.getRequestInfo();
     
     Map<Object,Object> requestContext = requestInfo.getReq().getContext();
-    float[] previous = (float[]) requestContext.get(this.data);
-    if(previous==null){
-      previous = getCachedFloats(topLevelContext.reader(), this.data);
-      requestContext.put(this.data, previous);
+    float[] floats = (float[]) requestContext.get(this.data);
+    if(floats==null){
+      int currentVersion = version;
+      int previousVer;
+      do{
+        previousVer = currentVersion;
+        floats = getCachedFloats(topLevelContext.reader(), this.data);
+        // if concurrent reload happens somewhere here it will be false positive (superfluous) spin 
+        // it can be solved by returned current version alongside with floats from FileFloatSource.Cache.get(IndexReader, Object)
+        currentVersion = floatsCache.getCurrentVersion(this.data);
+        if(previousVer!=currentVersion){ // will loop
+          log.warn("concurrent reload detected. load file again {}",this.data);
+          floatsCache.resetCacheEntry(topLevelContext.reader(), this.data);
+        }
+      }while(previousVer!=currentVersion);
+      requestContext.put(this.data, floats);
     }
     
-    final float[] arr = previous;
+    final float[] arr = floats;
     
     return new FloatDocValues(this) {
       @Override
@@ -176,7 +198,7 @@ public class FileFloatSource extends ValueSource {
    * called.
    */
   public static void resetCache(){
-    floatCache.resetCache();
+    floatsCache.resetCache();
   }
 
   /**
@@ -186,9 +208,9 @@ public class FileFloatSource extends ValueSource {
    * @param reader the IndexReader whose cache needs refreshing
    */
   public void refreshCache(IndexReader reader) {
-    log.info("Refreshing FlaxFileFloatSource cache for field {}", this.data.field.getName());
-    floatCache.refresh(reader, this.data);
-    log.info("FlaxFileFloatSource cache for field {} reloaded", this.data.field.getName());
+    log.info("Refreshing FileFloatSource cache for field {}", this.data.field.getName());
+    floatsCache.refresh(reader, this.data);
+    log.info("FileFloatSource cache for field {} reloaded", this.data.field.getName());
   }
 
   /** synchronously load floats from new (or it mightbe old) file and puts into cache,
@@ -198,7 +220,7 @@ public class FileFloatSource extends ValueSource {
         req.getSearcher().getTopReaderContext());
     IndexReader reader = topLevelContext.reader();
     
-    floatCache.resetAllReaders(data);
+    floatsCache.resetAllReaders(data);
   }
   
   /** test introspection. returns key for internal cache lookups, may NOT trigger file loading */
@@ -212,40 +234,15 @@ public class FileFloatSource extends ValueSource {
   /** test introspection. does not cause side effects like entries initialization
    * can throw NPE  */
   static float[] getCachedValue(SolrQueryRequest req, Object fooKey) {
-    Map readersCache = (Map) floatCache.readerCache.get(req.getSearcher().getIndexReader());
+    Map readersCache = (Map) floatsCache.readerCache.get(req.getSearcher().getIndexReader());
     return ((float[]) readersCache.get(fooKey));
   }
 
   private final static float[] getCachedFloats(IndexReader reader, Key data2) {
-    return (float[])floatCache.get(reader, data2);
+    return (float[])floatsCache.get(reader, data2);
   }
 
-  static private int getCurrentVersion(Key key){
-    return getLazyVersion(key).get();
-  }
-  
-  private static AtomicInteger getLazyVersion(Key key){
-    AtomicInteger counter = versions.get(key);
-    if(counter!=null)
-      return counter;
-    AtomicInteger our = new AtomicInteger();
-    AtomicInteger previous = versions.putIfAbsent(key, our);
-    return (previous==null ? our : previous);
-  }
-  
-  static private int incrementVersion(Key key){
-    return getLazyVersion(key).incrementAndGet();
-  }
-  
-  // I don't expect many of them nor leakage, otherwise consider the weaker one
-  private static ConcurrentMap<Key,AtomicInteger> versions = new ConcurrentHashMap<FileFloatSource.Key,AtomicInteger>();
-
-  static Cache floatCache = new Cache() {
-    @Override
-    protected Object createValue(IndexReader reader, Object key) {
-      return getFloats( (Key)key, reader);
-    }
-  };
+  static VersionedFloatsCache floatsCache = new VersionedFloatsCache();
   
   /** Internal cache. (from lucene FieldCache) */
   abstract static class Cache {
@@ -260,19 +257,27 @@ public class FileFloatSource extends ValueSource {
     public void resetAllReaders(Object key) {
       Object oldValue;
       synchronized (readerCache) {
-        // previous queries are old
-        incrementVersion((Key) key);
         for(Object readerData:readerCache.values()){
           Map innerCache = (Map) readerData;
           oldValue = innerCache.put(key, new CreationPlaceholder());
-          if(oldValue!=null && oldValue instanceof CreationPlaceholder){// here is the problem - thread which now loads the file, will throw this placeholder later
-            // - but I found it really hard to deal with this issue.
+          if(oldValue!=null && oldValue instanceof CreationPlaceholder){
+            // here is the problem - thread which now loads the file, will throw this placeholder later
             log.warn("concurrent lazy loading while reloading field: {}" +
-            		" obsolete values might be visible",key);
+            		" file will be loaded again",key);
+            // ideally we need to interrupt that processes and restart it from scratch
           }
         }
       }
     }
+    
+    void resetCacheEntry(IndexReader reader, Key data2) {
+      synchronized (readerCache) {
+        Map innerCache = (Map) readerCache.get(reader);
+        // if you call this method you know that innnerCache is not null
+        innerCache.put(data2, new CreationPlaceholder());
+      }
+    }
+
 
     public Object get(IndexReader reader, Object key) {
       Map innerCache;
@@ -310,9 +315,6 @@ public class FileFloatSource extends ValueSource {
     
     public void resetCache(){
       synchronized(readerCache){
-        for(Entry<Key, AtomicInteger> entry: versions.entrySet()){
-          entry.getValue().incrementAndGet();
-        }
         // Map.clear() is optional and can throw UnsipportedOperationException,
         // but readerCache is WeakHashMap and it supports clear().
         readerCache.clear();
@@ -326,7 +328,53 @@ public class FileFloatSource extends ValueSource {
     Object value;
   }
 
-  private static float[] getFloats(Key ffs, IndexReader reader) {
+  static class VersionedFloatsCache extends Cache {
+    // I don't expect many of them nor leakage, otherwise consider the weaker one
+    private ConcurrentMap<Key,AtomicInteger> versions = new ConcurrentHashMap<FileFloatSource.Key,AtomicInteger>();
+
+    @Override
+    protected Object createValue(IndexReader reader, Object key) {
+      return getFloats( (Key)key, reader);
+    }
+    
+    @Override
+    public void resetAllReaders(Object key) {
+      synchronized (readerCache) { //bad style. I know
+        // previous queries are old
+        incrementVersion((Key) key);
+        super.resetAllReaders(key);
+      }
+    }
+    
+    @Override
+    public void resetCache() {
+      synchronized (readerCache) {
+        for(Entry<Key, AtomicInteger> entry: versions.entrySet()){
+          entry.getValue().incrementAndGet();
+        }
+        super.resetCache();
+      }
+    }
+    
+    private AtomicInteger getLazyVersion(Key key){
+      AtomicInteger counter = versions.get(key);
+      if(counter!=null)
+        return counter;
+      AtomicInteger our = new AtomicInteger();
+      AtomicInteger previous = versions.putIfAbsent(key, our);
+      return (previous==null ? our : previous);
+    }
+    
+     private int incrementVersion(Key key){
+      return getLazyVersion(key).incrementAndGet();
+    }
+     
+    private int getCurrentVersion(Key key){
+       return getLazyVersion(key).get();
+    }
+  }
+  
+  static float[] getFloats(Key ffs, IndexReader reader) {
     float[] vals = new float[reader.maxDoc()];
     if (ffs.defVal != 0) {
       Arrays.fill(vals, ffs.defVal);
@@ -455,8 +503,8 @@ public class FileFloatSource extends ValueSource {
     @Override
     public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp)
         throws Exception {
-      log.debug("readerCache has been reset.");
       String fieldName = req.getParams().get("field");
+      log.info("reloading field {}",fieldName);
       
       ((FileFloatSource) ((FunctionQuery) QParser.getParser(fieldName,
           FunctionQParserPlugin.NAME, req).getQuery()).getValueSource())
