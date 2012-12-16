@@ -21,9 +21,16 @@
 
  <fields>
         
-   <field name="id" type="string" indexed="true" stored="true" required="true" multiValued="false" />
-   <field name="eff" type="eff"/>
+  <!-- for testing, a type that does a transform to see if it's correctly done everywhere -->
+   <field name="id" type="sfloat" indexed="true" stored="true" required="true" /> 
+    <field name="eff" type="eff"/>
+   
+     
+  <!-- is used in TestExternalFileFieldReload.testSearchAtomicityVsReload() to cover ExternalFileFieldReloader  -->
+   <field name="baz_extf_reloadtesttrap" type="reloadtesttrap" />
 
+   <dynamicField name="*_extf" type="file"/>
+ 
  </fields>
 
 
@@ -36,10 +43,18 @@
 
     <!-- The StrField type is not analyzed, but indexed/stored verbatim. -->
     <fieldType name="string" class="solr.StrField" sortMissingLast="true" />
+    
+    <fieldType name="sfloat" class="solr.SortableFloatField" sortMissingLast="true" omitNorms="true"/>
 
     <!-- Our external file field type -->
     <fieldType name="eff" class="solr.ExternalFileField"/>
-
+    
+    <fieldType name="file" keyField="id" defVal="1" stored="false" indexed="false" class="solr.ExternalFileField" valType="float"/>
+    
+    <fieldType name="reloadtesttrap" keyField="id" defVal="0.0" stored="false" indexed="false" 
+    	class="org.apache.solr.search.function.TestExternalFileFieldReload$ReloadFieldType" valType="float"
+    	reloadField="baz_extf"/>
+    	
  </types>
 
 </schema>

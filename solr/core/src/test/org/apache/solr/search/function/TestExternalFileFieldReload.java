@@ -47,7 +47,7 @@ public class TestExternalFileFieldReload extends SolrTestCaseJ4 {
  
   @BeforeClass
   public static void beforeClass() throws Exception {
-    initCore("solrconfig-functionquery.xml","schema11.xml");
+    initCore("solrconfig-functionquery.xml","schema-eff.xml");
   }
   
   @Before
@@ -187,7 +187,6 @@ public class TestExternalFileFieldReload extends SolrTestCaseJ4 {
     }
   }
 
-  /** try TODO the same with sorting */
   public void testSearchAtomicityVsReload() throws ParseException, IOException{
     TestFunctionQuery.createIndex(null,0,1,2,3,4,5,6,7,8,9);
     TestFunctionQuery.makeExternalFile("baz_extf", "0=0\n1=1\n2=2\n3=3\n4=4\n5=5\n6=6\n7=7\n8=8\n9=9","UTF-8");
@@ -203,7 +202,6 @@ public class TestExternalFileFieldReload extends SolrTestCaseJ4 {
       singleTest("baz_extf", "sum(\0,0.0,\0)", 0,0, 1,20, 3,60, 8,160);
   }
   
-  /** try TODO the same with sorting */
   public void testSearchSortAtomicityVsReload() throws IOException{
     TestFunctionQuery.createIndex(null,0,1,7,8,9);
     TestFunctionQuery.makeExternalFile("baz_extf", "0=0\n1=1\n7=7\n8=8\n9=9","UTF-8");

@@ -53,8 +53,8 @@ public class ExternalFileFieldSortTest extends SolrTestCaseJ4 {
     addDocuments();
     assertQ("query",
         req("q", "*:*", "sort", "eff asc"),
-        "//result/doc[position()=1]/str[.='3']",
-        "//result/doc[position()=2]/str[.='1']",
-        "//result/doc[position()=10]/str[.='8']");
+        "//result/doc[position()=1]/float[.='3.0']",
+        "//result/doc[position()=2]/float[.='1.0']",
+        "//result/doc[position()=10]/float[.='8.0']");
   }
 }

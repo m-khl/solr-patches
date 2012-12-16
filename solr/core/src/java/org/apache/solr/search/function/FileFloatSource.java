@@ -198,7 +198,7 @@ public class FileFloatSource extends ValueSource {
         req.getSearcher().getTopReaderContext());
     IndexReader reader = topLevelContext.reader();
     
-    floatCache.flushAllReaders(data);
+    floatCache.resetAllReaders(data);
   }
   
   /** test introspection. returns key for internal cache lookups, may NOT trigger file loading */
@@ -254,22 +254,22 @@ public class FileFloatSource extends ValueSource {
     protected abstract Object createValue(IndexReader reader, Object key);
 
     public void refresh(IndexReader reader, Object key) {
-      flushAllReaders(key);
+      resetAllReaders(key);
     }
     
-    public void flushAllReaders(Object key) {
+    public void resetAllReaders(Object key) {
       Object oldValue;
       synchronized (readerCache) {
         // previous queries are old
         incrementVersion((Key) key);
         for(Object readerData:readerCache.values()){
           Map innerCache = (Map) readerData;
-          oldValue = innerCache.get(key);
-          if(oldValue!=null )// here is the problem - thread which now loads the file, will throw this placeholder later
-            //if(!(oldValue instanceof CreationPlaceholder))  - but I found it really hard to deal with this issue.
-              innerCache.put(key, new CreationPlaceholder());
-            //else{
-            //}
+          oldValue = innerCache.put(key, new CreationPlaceholder());
+          if(oldValue!=null && oldValue instanceof CreationPlaceholder){// here is the problem - thread which now loads the file, will throw this placeholder later
+            // - but I found it really hard to deal with this issue.
+            log.warn("concurrent lazy loading while reloading field: {}" +
+            		" obsolete values might be visible",key);
+          }
         }
       }
     }
