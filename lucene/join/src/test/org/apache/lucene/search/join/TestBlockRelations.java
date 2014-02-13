@@ -335,16 +335,16 @@ public class TestBlockRelations extends LuceneTestCase {
     List<List<Document>> blocks = Arrays.<List<Document>>asList( new ArrayList<Document>(){{
       add(makeJob("java", 2007));
       add(makeJob("python", 2010));
-      Collections.shuffle(this);
+      Collections.shuffle(this,random());
       add(makeResume("Lisa", "United Kingdom"));
     }},
      new ArrayList<Document>(){{
       add(makeJob("ruby", 2005));
       add(makeJob("java", 2006));
-      Collections.shuffle(this);
+      Collections.shuffle(this,random());
       add(makeResume("Frank", "United States"));
      }});
-    Collections.shuffle(blocks);
+    Collections.shuffle(blocks, random());
     indexRelations(w, blocks.iterator());
     
     IndexReader r = w.getReader();
