@@ -25,6 +25,7 @@ import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.BinaryDocValues;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiFields;
@@ -46,6 +47,7 @@ import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopScoreDocCollector;
+import org.apache.lucene.store.ByteArrayDataOutput;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
@@ -131,6 +133,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
         w.commit();
       }
     }
+    indexJoin(w, idField, toField);
     
     IndexSearcher indexSearcher = new IndexSearcher(w.getReader());
     w.close();
@@ -156,6 +159,79 @@ public class TestJoinIndexQuery extends LuceneTestCase {
 
     indexSearcher.getIndexReader().close();
     dir.close();
+  }
+
+  private void indexJoin(RandomIndexWriter w, String pkField, String fkField) throws IOException {
+    final DirectoryReader reader = w.getReader();
+    try{
+      final IndexSearcher s = new IndexSearcher(reader);
+      final Terms pkTerms = MultiFields.getTerms(reader, pkField);
+      final Terms fkTerms = MultiFields.getTerms(reader, fkField);
+      
+      TermsEnum fks = fkTerms.iterator(null);
+      BytesRef pk=null;
+      BytesRef fk=null;
+      boolean keepFk = false;
+      for(TermsEnum pks = pkTerms.iterator(null);(pk=pks.next())!=null;){
+        for(;keepFk || (fk=fks.next())!=null;){
+          keepFk = false;
+          final int cmp = pk.compareTo(fk);
+          if(cmp==0){
+            marryThem(w,s, pkField,pk, fkField,fk );
+            break; // move both
+          }else{
+            if(cmp<0){
+              marryThem(w,s, pkField,pk, fkField,null );
+              keepFk=true;
+              break; // move pk
+            }else{
+              marryThem(w,s, pkField,null, fkField,fk );
+              // move fk
+            }
+          }
+        }
+        // fk is over
+        if(fk==null){
+          marryThem(w,s, pkField,pk, fkField,null );
+        }
+      }
+      if(pk==null && fk!=null){
+        while((fk=fks.next())!=null){
+          marryThem(w,s, pkField,null, fkField,fk );
+        }
+      }
+      // reach remain fks
+    }finally{
+      reader.close();
+    }
+  }
+
+  private void marryThem(RandomIndexWriter w, IndexSearcher s, String pkField, BytesRef pk,
+      String fkField, BytesRef fk) throws IOException {
+    if(fk!=null){
+      putPkToFk(w,s, pkField, pk, fkField, fk);
+    }
+    if(pk!=null){
+      putPkToFk(w,s, fkField, fk, pkField, pk);
+    }
+  }
+
+  private void putPkToFk(RandomIndexWriter w, IndexSearcher s, String pkField,
+      BytesRef pk, String fkField, BytesRef fk) throws IOException {
+    Long refs;
+    if(pk==null){ // write missing
+      refs = null;
+    }else{
+      int pkDoc;
+      int prev;
+      ByteArrayDataOutput out = new ByteArrayDataOutput();
+      for( DocsEnum termDocsEnum = MultiFields.getTermDocsEnum(s.getIndexReader(), 
+          MultiFields.getLiveDocs(s.getIndexReader()), pkField, pk);
+          (pkDoc =termDocsEnum.nextDoc())!=DocIdSetIterator.NO_MORE_DOCS;){
+        
+      }
+      
+    }
   }
 
   static void assertIds(IndexSearcher indexSearcher, TopDocs rez, String ... ids) throws IOException{
