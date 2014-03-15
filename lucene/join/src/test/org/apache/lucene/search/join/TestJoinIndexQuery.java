@@ -120,6 +120,13 @@ public class TestJoinIndexQuery extends LuceneTestCase {
             final long childRefs = numericDocValues.get(i);
             System.out.println("["+i+"]="+childRefs);
           }
+          System.out.println("children:"+children);
+          int doc;
+          for(DocIdSetIterator iter = children.getDocIdSet(context, acceptDocs).iterator();(doc=iter.nextDoc())!=DocIdSetIterator.NO_MORE_DOCS;){
+            System.out.print(doc);
+            System.out.print(", ");
+          }
+          System.out.println();
           
           final DocIdSet parentDocs = parents.getDocIdSet(context, acceptDocs);
           final DocIdSetIterator parentsIter = parentDocs.iterator();
@@ -159,13 +166,14 @@ public class TestJoinIndexQuery extends LuceneTestCase {
               o.writeLong(childRefs);
               final ByteArrayDataInput inp = new ByteArrayDataInput(bytes);
               final byte cnt = inp.readByte();
+              int prev=0;
               for(int i=0;i<cnt;i++){
-                final int referrer = inp.readVInt();
+                final int referrer = inp.readVInt()+prev;
+                prev = referrer;
                 assert context.parent.isTopLevel;
                 for(AtomicReaderContext arc:context.parent.leaves()){
-                  if(referrer<=arc.docBase){
-                    final AtomicReaderContext childCtx = context.parent.leaves().get(arc.ord-1);
-                    final int advanced = children.getDocIdSet(childCtx, childCtx.reader().getLiveDocs()).iterator().advance(referrer-childCtx.docBase);
+                  if(referrer-arc.docBase<arc.reader().maxDoc()){
+                    final int advanced = children.getDocIdSet(arc, arc.reader().getLiveDocs()).iterator().advance(referrer-arc.docBase);
                     if(advanced==referrer){
                       return true;
                     }
@@ -306,7 +314,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     
     final Filter parents = new CachingWrapperFilter(
         new QueryWrapperFilter(parentsQ));
-    final Filter children = new CachingWrapperFilter(new TermFilter(new Term("name", "name2")));
+    final Filter children = new CachingWrapperFilter(new TermFilter(new Term("price", "20.0")));
     Query dvJoinQuery = new DVJoinQuery(parents, children, joinField);
     // Search for product
     Query joinQuery =
@@ -318,7 +326,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     
     result = indexSearcher.search(dvJoinQuery, 10);
     assertEquals(2, result.totalHits);
-    //assertIds(indexSearcher, result, "5", "6");
+    assertIds(indexSearcher, result, "1", "4");
 
     joinQuery = JoinUtil.createJoinQuery(idField, false, toField, new TermQuery(new Term("name", "name1")), indexSearcher, ScoreMode.None);
     result = indexSearcher.search(joinQuery, 10);
