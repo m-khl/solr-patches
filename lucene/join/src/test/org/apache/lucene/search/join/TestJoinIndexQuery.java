@@ -17,39 +17,39 @@ package org.apache.lucene.search.join;
  * limitations under the License.
  */
 
-import org.apache.derby.tools.sysinfo;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import org.apache.lucene.analysis.MockAnalyzer;
-import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.NumericDocValues;
-import org.apache.lucene.index.RandomIndexWriter;
-import org.apache.lucene.index.SlowCompositeReaderWrapper;
-import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.queries.TermFilter;
+import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.CachingWrapperFilter;
-import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Explanation;
-import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.Filter;
-import org.apache.lucene.search.FilteredQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
@@ -60,33 +60,13 @@ import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TermRangeFilter;
 import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.search.TopDocs;
-import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.search.Weight;
-import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.store.ByteArrayDataInput;
 import org.apache.lucene.store.ByteArrayDataOutput;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.TestUtil;
-import org.junit.Test;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.SortedSet;
-import java.util.TreeSet;
 
 public class TestJoinIndexQuery extends LuceneTestCase {
 
@@ -225,7 +205,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
   }
 
   final static String idField = "id";
-  private Map<Term, Long> updTracker = new LinkedHashMap<>();
+  private Map<Term, String> updTracker = new LinkedHashMap<>();
   
   public void testSimple() throws Exception {
     final String toField = "productId";
@@ -283,7 +263,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     Directory dir = newDirectory();
     System.out.println(dir);
     IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
-    conf.setInfoStream(System.out);
+    //conf.setInfoStream(System.out);
     // make sure random config doesn't flush on us
     conf.setMaxBufferedDocs(10);
     conf.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
@@ -307,15 +287,6 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     IndexSearcher indexSearcher = new IndexSearcher(reader);
     //w.close();
 
-    BooleanQuery parentsQ = new BooleanQuery(){{
-      add(new MatchAllDocsQuery(), Occur.MUST);
-      add(new TermRangeQuery(toField,null,null,true,true), Occur.MUST_NOT);
-    }};
-    
-    final Filter parents = new CachingWrapperFilter(
-        new QueryWrapperFilter(parentsQ));
-    final Filter children = new CachingWrapperFilter(new TermFilter(new Term("price", "20.0")));
-    Query dvJoinQuery = new DVJoinQuery(parents, children, joinField);
     // Search for product
     Query joinQuery =
         JoinUtil.createJoinQuery(idField, false, toField, new TermQuery(new Term("name", "name2")), indexSearcher, ScoreMode.None);
@@ -324,10 +295,24 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     assertEquals(2, result.totalHits);
     assertIds(indexSearcher, result, "5", "6");
     
+    BooleanQuery parentsQ = new BooleanQuery(){{
+      add(new MatchAllDocsQuery(), Occur.MUST);
+      add(new TermRangeQuery(toField,null,null,true,true), Occur.MUST_NOT);
+    }};
+    final Filter parents = new CachingWrapperFilter(
+        new QueryWrapperFilter(parentsQ));
+    final Filter children = new CachingWrapperFilter(new TermFilter(new Term("price", "20.0")));
+    Query dvJoinQuery = new DVJoinQuery(parents, children, joinField);
     result = indexSearcher.search(dvJoinQuery, 10);
     assertEquals(2, result.totalHits);
     assertIds(indexSearcher, result, "1", "4");
-
+    
+    Query dvPtoChJoinQuery = new DVJoinQuery(new CachingWrapperFilter(new TermRangeFilter(toField,null,null,true,true)),
+                                            new TermFilter(new Term("name", "name2")), joinField);
+    result = indexSearcher.search(dvPtoChJoinQuery, 10);
+    assertEquals(2, result.totalHits);
+    assertIds(indexSearcher, result, "5", "6");
+    
     joinQuery = JoinUtil.createJoinQuery(idField, false, toField, new TermQuery(new Term("name", "name1")), indexSearcher, ScoreMode.None);
     result = indexSearcher.search(joinQuery, 10);
     assertEquals(2, result.totalHits);
@@ -413,6 +398,10 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     Long refs;
     if(pk==null){ // write missing
       refs = null;
+      System.out.println("skipping to write"+pkField+":"+
+          (pk==null? null:pk.utf8ToString())+" into "+fkField+":"+
+          (fk==null? null:fk.utf8ToString()));
+      return;
     }else{
       int pkDoc;
       int prev = 0;
@@ -433,7 +422,9 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     fkTerm.copyBytes(fk);
     final Term referrers = new Term(fkField,fkTerm);
     w.updateNumericDocValue(referrers, fk_to_pk_field, refs);
-    assert updTracker .put(referrers, refs)==null:" replace "+updTracker.get(referrers)+" to "+refs+" by "+referrers;
+    
+    final String hexString = refs==null? null: Long.toHexString(refs);
+    assert updTracker .put(referrers, hexString)==null:" replace "+updTracker.get(referrers)+" to "+hexString+" by "+referrers;
   }
 
   static void assertIds(IndexSearcher indexSearcher, TopDocs rez, String ... ids) throws IOException{
