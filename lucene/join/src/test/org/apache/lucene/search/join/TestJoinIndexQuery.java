@@ -67,7 +67,10 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 
+import com.carrotsearch.randomizedtesting.annotations.Repeat;
+@SuppressCodecs({"Lucene40","Lucene41","Lucene42","Lucene45"})
 public class TestJoinIndexQuery extends LuceneTestCase {
 
   static final class DVJoinQuery extends Query {
@@ -101,14 +104,20 @@ public class TestJoinIndexQuery extends LuceneTestCase {
             System.out.println("["+i+"]="+childRefs);
           }
           System.out.println("children:"+children);
-          int doc;
-          for(DocIdSetIterator iter = children.getDocIdSet(context, acceptDocs).iterator();(doc=iter.nextDoc())!=DocIdSetIterator.NO_MORE_DOCS;){
-            System.out.print(doc);
-            System.out.print(", ");
+          final DocIdSet docIdSet = children.getDocIdSet(context, acceptDocs);
+          if(docIdSet!=null){
+            int doc;
+            for(DocIdSetIterator iter = docIdSet.iterator();(doc=iter.nextDoc())!=DocIdSetIterator.NO_MORE_DOCS;){
+              System.out.print(doc);
+              System.out.print(", ");
+            }
+            System.out.println();
           }
-          System.out.println();
           
           final DocIdSet parentDocs = parents.getDocIdSet(context, acceptDocs);
+          if(parentDocs==null){
+            return null;
+          }
           final DocIdSetIterator parentsIter = parentDocs.iterator();
           return new Scorer(this){
 
@@ -153,9 +162,15 @@ public class TestJoinIndexQuery extends LuceneTestCase {
                 assert context.parent.isTopLevel;
                 for(AtomicReaderContext arc:context.parent.leaves()){
                   if(referrer-arc.docBase<arc.reader().maxDoc()){
-                    final int advanced = children.getDocIdSet(arc, arc.reader().getLiveDocs()).iterator().advance(referrer-arc.docBase);
-                    if(advanced==referrer){
-                      return true;
+                    final DocIdSet childrenDocIdSet = children.getDocIdSet(arc, arc.reader().getLiveDocs());
+                    if(childrenDocIdSet!=null){
+                      final DocIdSetIterator disi = childrenDocIdSet.iterator();
+                      final int advanced = disi.advance(referrer-arc.docBase);
+                      if(advanced==referrer
+                          -arc.docBase
+                          ){
+                        return true;
+                      }
                     }
                     break;
                   }
@@ -207,6 +222,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
   final static String idField = "id";
   private Map<Term, String> updTracker = new LinkedHashMap<>();
   
+  @Repeat(iterations=1000)
   public void testSimple() throws Exception {
     final String toField = "productId";
     final String joinField = joinFieldName(idField, toField);
@@ -263,7 +279,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     Directory dir = newDirectory();
     System.out.println(dir);
     IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
-    //conf.setInfoStream(System.out);
+    conf.setInfoStream(System.out);
     // make sure random config doesn't flush on us
     conf.setMaxBufferedDocs(10);
     conf.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
@@ -271,7 +287,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
 
     for(Document d:docs){
       w.addDocument(d);
-      if(rarely()){
+      if(usually()){
         w.commit();
       }
     }
