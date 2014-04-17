@@ -222,7 +222,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
   final static String idField = "id";
   private Map<Term, String> updTracker = new LinkedHashMap<>();
   
-  @Repeat(iterations=1000)
+  //@Repeat(iterations=1000)
   public void testSimple() throws Exception {
     final String toField = "productId";
     final String joinField = joinFieldName(idField, toField);
