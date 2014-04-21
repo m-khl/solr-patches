@@ -41,6 +41,7 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.LogDocMergePolicy;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.Term;
@@ -77,7 +78,7 @@ import org.apache.solr.schema.StrField;
 import com.carrotsearch.randomizedtesting.annotations.Repeat;
 import com.carrotsearch.randomizedtesting.annotations.Seed;
 @SuppressCodecs({"Lucene40","Lucene41","Lucene42","Lucene45"})
-@Seed("FBD273BDFA7AD539:2D1D57106437EDDB")
+@Repeat(iterations=1000)
 public class TestJoinIndexQuery extends LuceneTestCase {
 
   static final class DVJoinQuery extends Query {
@@ -104,38 +105,10 @@ public class TestJoinIndexQuery extends LuceneTestCase {
         @Override
         public Scorer scorer(final AtomicReaderContext context, boolean scoreDocsInOrder,
             boolean topScorer, Bits acceptDocs) throws IOException {
-
-          System.out.println("children:"+children);
-          final DocIdSet docIdSet = children.getDocIdSet(context, acceptDocs);
-          if(docIdSet!=null){
-            int doc;
-            for(DocIdSetIterator iter = docIdSet.iterator();(doc=iter.nextDoc())!=DocIdSetIterator.NO_MORE_DOCS;){
-              System.out.print(doc);
-              System.out.print(", ");
-            }
-            System.out.println();
-          }
           
-          final NumericDocValues numericDocValues = context.reader().getNumericDocValues(joinField);
-          System.out.println("dumping: "+joinField);
-          for(int i=0;i<context.reader().maxDoc();i++){
-            final long childRefs = numericDocValues.get(i);
-            System.out.print("["+(i+context.docBase)+"]=");
-            {
-              final byte[] bytes = new byte[8];
-              final ByteArrayDataOutput o = new ByteArrayDataOutput(bytes);
-              o.writeLong(childRefs);
-              final ByteArrayDataInput inp = new ByteArrayDataInput(bytes);
-              final byte cnt = inp.readByte();
-              int prev=0;
-              for(int r=0;r<cnt;r++){
-                final int referrer = inp.readVInt()+prev;
-                System.out.print(referrer+",");
-                prev = referrer;
-              }
-            }
-            System.out.println();
-          }
+          //dump("children:", context, children, acceptDocs);
+          //dump("parents:", context, parents, acceptDocs);
+          //dump(context, joinField);
 
           final DocIdSet parentDocs = parents.getDocIdSet(context, acceptDocs);
           if(parentDocs==null){
@@ -251,51 +224,56 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     final String joinField = joinFieldName(idField, toField);
 
     List<Document> docs = new ArrayList<>();
-    Random useless = new Random();
     // 0
     Document doc = new Document();
-    doc.add(newStringField(useless,"description", "random text", Field.Store.NO));
-    doc.add(newStringField(useless,"name", "name1", Field.Store.NO));
-    doc.add(newStringField(useless,idField, "1", Field.Store.YES));
+    doc.add(newStringField("description", "random text", Field.Store.YES));
+    doc.add(newStringField("name", "name1", Field.Store.YES));
+    doc.add(newStringField(idField, "1", Field.Store.YES));
+    doc.add(newStringField("type", "parent", Field.Store.YES));
     doc.add(new NumericDocValuesField(joinField, -1));
     docs.add(doc);
 
     // 1
     doc = new Document();
-    doc.add(newStringField(useless,"price", "10.0", Field.Store.NO));
-    doc.add(newStringField(useless,idField, "2", Field.Store.YES));
-    doc.add(newStringField(useless,toField, "1", Field.Store.NO));
+    doc.add(newStringField("price", "10.0", Field.Store.YES));
+    doc.add(newStringField(idField, "2", Field.Store.YES));
+    doc.add(newStringField(toField, "1", Field.Store.YES));
+    doc.add(newStringField("type", "child", Field.Store.YES));
     doc.add(new NumericDocValuesField(joinField, -1));
     docs.add(doc);
 
     // 2
     doc = new Document();
-    doc.add(newStringField(useless,"price", "20.0", Field.Store.NO));
-    doc.add(newStringField(useless,idField, "3", Field.Store.YES));
-    doc.add(newStringField(useless,toField, "1", Field.Store.NO));
+    doc.add(newStringField("price", "20.0", Field.Store.YES));
+    doc.add(newStringField(idField, "3", Field.Store.YES));
+    doc.add(newStringField(toField, "1", Field.Store.YES));
+    doc.add(newStringField("type", "child", Field.Store.YES));
     doc.add(new NumericDocValuesField(joinField, -1));
     docs.add(doc);
 
     // 3
     doc = new Document();
-    doc.add(newStringField(useless,"description", "more random text", Field.Store.NO));
-    doc.add(newStringField(useless,"name", "name2", Field.Store.NO));
-    doc.add(newStringField(useless,idField, "4", Field.Store.YES));
+    doc.add(newStringField("description", "more random text", Field.Store.YES));
+    doc.add(newStringField("name", "name2", Field.Store.YES));
+    doc.add(newStringField(idField, "4", Field.Store.YES));
+    doc.add(newStringField("type", "parent", Field.Store.YES));
     doc.add(new NumericDocValuesField(joinField, -1));
     docs.add(doc);
 
     // 4
     doc = new Document();
-    doc.add(newStringField(useless,"price", "10.0", Field.Store.NO));
-    doc.add(newStringField(useless,idField, "5", Field.Store.YES));
-    doc.add(newStringField(useless,toField, "4", Field.Store.NO));
+    doc.add(newStringField("price", "10.0", Field.Store.YES));
+    doc.add(newStringField(idField, "5", Field.Store.YES));
+    doc.add(newStringField(toField, "4", Field.Store.YES));
+    doc.add(newStringField("type", "child", Field.Store.YES));
     doc.add(new NumericDocValuesField(joinField, -1));
     docs.add(doc);
     // 5
     doc = new Document();
-    doc.add(newStringField(useless,"price", "20.0", Field.Store.NO));
-    doc.add(newStringField(useless,idField, "6", Field.Store.YES));
-    doc.add(newStringField(useless,toField, "4", Field.Store.NO));
+    doc.add(newStringField("price", "20.0", Field.Store.YES));
+    doc.add(newStringField(idField, "6", Field.Store.YES));
+    doc.add(newStringField(toField, "4", Field.Store.YES));
+    doc.add(newStringField("type", "child", Field.Store.YES));
     doc.add(new NumericDocValuesField(joinField, -1));
     docs.add(doc);
     Collections.shuffle(docs, random());
@@ -307,6 +285,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     // make sure random config doesn't flush on us
     conf.setMaxBufferedDocs(10);
     conf.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
+    conf.setMergePolicy(new LogDocMergePolicy());
     IndexWriter w = new IndexWriter(dir, conf);
 
     for(Document d:docs){
@@ -331,7 +310,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     
     IndexSearcher indexSearcher = new IndexSearcher(reader);
     
-    verifyUpdates(indexSearcher);
+    //verifyUpdates(indexSearcher);
     
     // Search for product
     Query joinQuery =
@@ -341,33 +320,37 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     assertEquals(2, result.totalHits);
     assertIds(indexSearcher, result, "5", "6");
     
-    BooleanQuery parentsQ = new BooleanQuery(){{
-      add(new MatchAllDocsQuery(), Occur.MUST);
-      add(new TermRangeQuery(toField,null,null,true,true), Occur.MUST_NOT);
-    }};
+    Query parentsQ = new TermQuery(new Term("type", "parent"));
     final Filter parents = new CachingWrapperFilter(
         new QueryWrapperFilter(parentsQ));
-    final Filter children = //new CachingWrapperFilter(
+    Filter children = //new CachingWrapperFilter(
         new TermFilter(new Term("price", "20.0")//)
     );
+    if(random().nextBoolean()){
+      children = new CachingWrapperFilter(children);
+    }
     Query dvJoinQuery = new DVJoinQuery(parents, children, joinField);
     result = indexSearcher.search(dvJoinQuery, 10);
     assertIds(indexSearcher, result, "1", "4");
     assertEquals(2, result.totalHits);
     
-    Query dvPtoChJoinQuery = new DVJoinQuery(new CachingWrapperFilter(new TermRangeFilter(toField,null,null,true,true)),
+    Query dvPtoChJoinQuery = new DVJoinQuery(new TermFilter(new Term("type", "child")), //parents,
                                             new TermFilter(new Term("name", "name2")), joinField);
     result = indexSearcher.search(dvPtoChJoinQuery, 10);
-    assertEquals(2, result.totalHits);
     assertIds(indexSearcher, result, "5", "6");
+    assertEquals(2, result.totalHits);
     
-    joinQuery = JoinUtil.createJoinQuery(idField, false, toField, new TermQuery(new Term("name", "name1")), indexSearcher, ScoreMode.None);
+    joinQuery =  //JoinUtil.createJoinQuery(idField, false, toField, new TermQuery(new Term("name", "name1")), indexSearcher, ScoreMode.None);
+        new DVJoinQuery(new TermFilter(new Term("type", "child")), //parents,
+            new TermFilter(new Term("name", "name1")), joinField);
     result = indexSearcher.search(joinQuery, 10);
     assertEquals(2, result.totalHits);
     assertIds(indexSearcher, result, "2", "3");
 
     // Search for offer
-    joinQuery = JoinUtil.createJoinQuery(toField, false, idField, new TermQuery(new Term("id", "5")), indexSearcher, ScoreMode.None);
+    joinQuery = //JoinUtil.createJoinQuery(toField, false, idField, new TermQuery(new Term("id", "5")), indexSearcher, ScoreMode.None);
+        new DVJoinQuery(new TermFilter(new Term("type", "parent")), //parents,
+            new TermFilter(new Term("id", "5")), joinField);
     result = indexSearcher.search(joinQuery, 10);
     assertEquals(1, result.totalHits);
     assertIds(indexSearcher, result, "4");
@@ -441,10 +424,10 @@ public class TestJoinIndexQuery extends LuceneTestCase {
       }
       // reach remain fks
     }finally{
-      for(Entry<Term, Long> e : updTracker.entrySet()){
-        System.out.print(e.getKey()+" ");
-        System.out.println(e.getValue()==null?"null":Long.toHexString(e.getValue()));
-      }
+      //for(Entry<Term, Long> e : updTracker.entrySet()){
+      //  System.out.print(e.getKey()+" ");
+      //  System.out.println(e.getValue()==null?"null":Long.toHexString(e.getValue()));
+      //}
     }
   }
 
@@ -468,9 +451,9 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     Long refs;
     if(pk==null){ // write missing
       refs = null;
-      System.out.println("skipping to write"+pkField+":"+
-          (pk==null? null:pk.utf8ToString())+" into "+fkField+":"+
-          (fk==null? null:fk.utf8ToString()));
+      //System.out.println("skipping to write"+pkField+":"+
+      //    (pk==null? null:pk.utf8ToString())+" into "+fkField+":"+
+      //    (fk==null? null:fk.utf8ToString()));
       return;
     }else{
       int pkDoc;
@@ -506,5 +489,43 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     Set<String> exp = new HashSet<>(Arrays.asList(ids));
     assertEquals("got "+act,exp, act.keySet());
     assertEquals(ids.length, rez.totalHits);
+  }
+
+  private static void dump(String label,
+      final AtomicReaderContext context, final Filter aFilter, Bits acceptDocs) throws IOException {
+    System.out.println(label+aFilter);
+    final DocIdSet docIdSet = aFilter.getDocIdSet(context, acceptDocs);
+    if(docIdSet!=null){
+      int doc;
+      for(DocIdSetIterator iter = docIdSet.iterator();(doc=iter.nextDoc())!=DocIdSetIterator.NO_MORE_DOCS;){
+        System.out.print(doc);
+        System.out.print(", ");
+      }
+      System.out.println();
+    }
+  }
+
+  private static void dump(final AtomicReaderContext context,
+      final String joinFieldName) throws IOException {
+    final NumericDocValues numericDocValues = context.reader().getNumericDocValues(joinFieldName);
+    System.out.println("dumping: "+joinFieldName);
+    for(int i=0;i<context.reader().maxDoc();i++){
+      final long childRefs = numericDocValues.get(i);
+      System.out.print("["+(i+context.docBase)+"]=");
+      {
+        final byte[] bytes = new byte[8];
+        final ByteArrayDataOutput o = new ByteArrayDataOutput(bytes);
+        o.writeLong(childRefs);
+        final ByteArrayDataInput inp = new ByteArrayDataInput(bytes);
+        final byte cnt = inp.readByte();
+        int prev=0;
+        for(int r=0;r<cnt;r++){
+          final int referrer = inp.readVInt()+prev;
+          System.out.print(referrer+",");
+          prev = referrer;
+        }
+      }
+      System.out.println();
+    }
   }
 }
