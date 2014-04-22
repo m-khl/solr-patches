@@ -83,9 +83,9 @@ public class TrieField extends PrimitiveFieldType {
 
   
   /**
-   * Used for handling date types following the same semantics as DateField
+   * Used for handling date types
    */
-  static final DateField dateField = new DateField();
+  static final TrieDateField dateField = new TrieDateField();
 
   @Override
   protected void init(IndexSchema schema, Map<String, String> args) {
@@ -421,7 +421,7 @@ public class TrieField extends PrimitiveFieldType {
   @Override
   public String toExternal(StorableField f) {
     return (type == TrieTypes.DATE)
-      ? dateField.toExternal((Date) toObject(f)) 
+      ? dateField.toExternal((Date) toObject(f))
       : toObject(f).toString();
   }
 
@@ -634,7 +634,7 @@ public class TrieField extends PrimitiveFieldType {
   @Override
   public List<StorableField> createFields(SchemaField sf, Object value, float boost) {
     if (sf.hasDocValues()) {
-      List<StorableField> fields = new ArrayList<StorableField>();
+      List<StorableField> fields = new ArrayList<>();
       final StorableField field = createField(sf, value, boost);
       fields.add(field);
       

@@ -50,7 +50,6 @@ import javax.management.ObjectName;
 
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.lucene.util.TestUtil;
-import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServer;
@@ -173,8 +172,8 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     
     sliceCount = 2;
     shardCount = 4;
-    completionService = new ExecutorCompletionService<Object>(executor);
-    pending = new HashSet<Future<Object>>();
+    completionService = new ExecutorCompletionService<>(executor);
+    pending = new HashSet<>();
     checkCreatedVsState = false;
     
   }
@@ -223,7 +222,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     
     String collectionName = "out_of_sync_collection";
     
-    List<Integer> numShardsNumReplicaList = new ArrayList<Integer>();
+    List<Integer> numShardsNumReplicaList = new ArrayList<>();
     numShardsNumReplicaList.add(2);
     numShardsNumReplicaList.add(1);
     
@@ -335,8 +334,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     Create createCmd = new Create();
     createCmd.setCoreName("halfdeletedcollection_shard1_replica1");
     createCmd.setCollection(collectionName);
-    String dataDir = SolrTestCaseJ4.dataDir.getAbsolutePath() + File.separator
-        + System.currentTimeMillis() + "halfcollection" + "_hdn";
+    String dataDir = createTempDir().getAbsolutePath();
     createCmd.setDataDir(dataDir);
     createCmd.setNumShards(2);
     if (secondConfigSet) {
@@ -527,8 +525,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     Create createCmd = new Create();
     createCmd.setCoreName("halfcollection_shard1_replica1");
     createCmd.setCollection("halfcollectionblocker");
-    String dataDir = SolrTestCaseJ4.dataDir.getAbsolutePath() + File.separator
-        + System.currentTimeMillis() + "halfcollection" + "_3n";
+    String dataDir = createTempDir().getAbsolutePath();
     createCmd.setDataDir(dataDir);
     createCmd.setNumShards(1);
     if (secondConfigSet) {
@@ -539,8 +536,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     createCmd = new Create();
     createCmd.setCoreName("halfcollection_shard1_replica1");
     createCmd.setCollection("halfcollectionblocker2");
-    dataDir = SolrTestCaseJ4.dataDir.getAbsolutePath() + File.separator
-        + System.currentTimeMillis() + "halfcollection" + "_3n";
+    dataDir = createTempDir().getAbsolutePath();
     createCmd.setDataDir(dataDir);
     createCmd.setNumShards(1);
     if (secondConfigSet) {
@@ -589,8 +585,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     Create createCmd = new Create();
     createCmd.setCoreName("corewithnocollection");
     createCmd.setCollection("");
-    String dataDir = SolrTestCaseJ4.dataDir.getAbsolutePath() + File.separator
-        + System.currentTimeMillis() + "corewithnocollection" + "_1v";
+    String dataDir = createTempDir().getAbsolutePath();
     createCmd.setDataDir(dataDir);
     createCmd.setNumShards(1);
     if (secondConfigSet) {
@@ -634,12 +629,12 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     request.setPath("/admin/collections");
     createNewSolrServer("", baseUrl).request(request);
     
-    List<Integer> numShardsNumReplicaList = new ArrayList<Integer>();
+    List<Integer> numShardsNumReplicaList = new ArrayList<>();
     numShardsNumReplicaList.add(2);
     numShardsNumReplicaList.add(2);
     checkForCollection("nodes_used_collection", numShardsNumReplicaList , null);
 
-    List<String> createNodeList = new ArrayList<String>();
+    List<String> createNodeList = new ArrayList<>();
 
     Set<String> liveNodes = cloudClient.getZkStateReader().getClusterState()
         .getLiveNodes();
@@ -677,8 +672,8 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     // env make this pretty fragile
     
     // create new collections rapid fire
-    Map<String,List<Integer>> collectionInfos = new HashMap<String,List<Integer>>();
-    int cnt = random().nextInt(TEST_NIGHTLY ? 6 : 3) + 1;
+    Map<String,List<Integer>> collectionInfos = new HashMap<>();
+    int cnt = random().nextInt(TEST_NIGHTLY ? 6 : 1) + 1;
     
     for (int i = 0; i < cnt; i++) {
       int numShards = TestUtil.nextInt(random(), 0, shardCount) + 1;
@@ -732,6 +727,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
       
       // poll for a second - it can take a moment before we are ready to serve
       waitForNon403or404or503(collectionClient);
+      collectionClient.shutdown();
     }
     
     // sometimes we restart one of the jetty nodes
@@ -751,6 +747,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
         
         // poll for a second - it can take a moment before we are ready to serve
         waitForNon403or404or503(collectionClient);
+        collectionClient.shutdown();
       }
     }
 
@@ -787,7 +784,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     
     checkInstanceDirs(jettys.get(0)); 
     
-    List<String> collectionNameList = new ArrayList<String>();
+    List<String> collectionNameList = new ArrayList<>();
     collectionNameList.addAll(collectionInfos.keySet());
     String collectionName = collectionNameList.get(random().nextInt(collectionNameList.size()));
     
@@ -813,11 +810,13 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     collectionClient.commit();
     
     assertEquals(3, collectionClient.query(new SolrQuery("*:*")).getResults().getNumFound());
+    collectionClient.shutdown();
+    collectionClient = null;
     
     // lets try a collection reload
     
     // get core open times
-    Map<String,Long> urlToTimeBefore = new HashMap<String,Long>();
+    Map<String,Long> urlToTimeBefore = new HashMap<>();
     collectStartTimes(collectionName, urlToTimeBefore);
     assertTrue(urlToTimeBefore.size() > 0);
     ModifiableSolrParams params = new ModifiableSolrParams();
@@ -883,7 +882,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     request.setPath("/admin/collections");
     createNewSolrServer("", baseUrl).request(request);
     
-    List<Integer> list = new ArrayList<Integer> (2);
+    List<Integer> list = new ArrayList<>(2);
     list.add(1);
     list.add(2);
     checkForCollection(collectionName, list, null);
@@ -894,6 +893,8 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     
     // poll for a second - it can take a moment before we are ready to serve
     waitForNon403or404or503(collectionClient);
+    collectionClient.shutdown();
+    collectionClient = null;
     
     for (int j = 0; j < cnt; j++) {
       waitForRecoveriesToFinish(collectionName, zkStateReader, false);
@@ -904,7 +905,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     int numShards = (numLiveNodes/2) + 1;
     int replicationFactor = 2;
     int maxShardsPerNode = 1;
-    collectionInfos = new HashMap<String,List<Integer>>();
+    collectionInfos = new HashMap<>();
     CloudSolrServer client = createCloudClient("awholynewcollection_" + cnt);
     try {
       exp = false;
@@ -922,7 +923,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     
     // Test createNodeSet
     numLiveNodes = getCommonCloudSolrServer().getZkStateReader().getClusterState().getLiveNodes().size();
-    List<String> createNodeList = new ArrayList<String>();
+    List<String> createNodeList = new ArrayList<>();
     int numOfCreateNodes = numLiveNodes/2;
     assertFalse("createNodeSet test is pointless with only " + numLiveNodes + " nodes running", numOfCreateNodes == 0);
     int i = 0;
@@ -937,10 +938,11 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     maxShardsPerNode = 2;
     numShards = createNodeList.size() * maxShardsPerNode;
     replicationFactor = 1;
-    collectionInfos = new HashMap<String,List<Integer>>();
+    collectionInfos = new HashMap<>();
     client = createCloudClient("awholynewcollection_" + (cnt+1));
     try {
-      createCollection(collectionInfos, "awholynewcollection_" + (cnt+1), numShards, replicationFactor, maxShardsPerNode, client, StrUtils.join(createNodeList, ','), "conf1");
+      CollectionAdminResponse res = createCollection(collectionInfos, "awholynewcollection_" + (cnt+1), numShards, replicationFactor, maxShardsPerNode, client, StrUtils.join(createNodeList, ','), "conf1");
+      assertTrue(res.isSuccess());
     } finally {
       client.shutdown();
     }
@@ -965,8 +967,8 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
       
       public void run() {
         // create new collections rapid fire
-        Map<String,List<Integer>> collectionInfos = new HashMap<String,List<Integer>>();
-        int cnt = random().nextInt(TEST_NIGHTLY ? 13 : 3) + 1;
+        Map<String,List<Integer>> collectionInfos = new HashMap<>();
+        int cnt = random().nextInt(TEST_NIGHTLY ? 13 : 1) + 1;
         
         for (int i = 0; i < cnt; i++) {
           String collectionName = "awholynewstresscollection_" + name + "_" + i;
@@ -1012,7 +1014,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
         }
       }
     }
-    List<Thread> threads = new ArrayList<Thread>();
+    List<Thread> threads = new ArrayList<>();
     int numThreads = TEST_NIGHTLY ? 6 : 2;
     for (int i = 0; i < numThreads; i++) {
       CollectionThread thread = new CollectionThread("collection" + i);
@@ -1054,7 +1056,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
 
     boolean allTimesAreCorrect = false;
     while (System.currentTimeMillis() < timeoutAt) {
-      Map<String,Long> urlToTimeAfter = new HashMap<String,Long>();
+      Map<String,Long> urlToTimeAfter = new HashMap<>();
       collectStartTimes(collectionName, urlToTimeAfter);
       
       boolean retry = false;
@@ -1182,13 +1184,13 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
   }
 
   private void checkNoTwoShardsUseTheSameIndexDir() throws Exception {
-    Map<String, Set<String>> indexDirToShardNamesMap = new HashMap<String, Set<String>>();
+    Map<String, Set<String>> indexDirToShardNamesMap = new HashMap<>();
     
-    List<MBeanServer> servers = new LinkedList<MBeanServer>();
+    List<MBeanServer> servers = new LinkedList<>();
     servers.add(ManagementFactory.getPlatformMBeanServer());
     servers.addAll(MBeanServerFactory.findMBeanServer(null));
     for (final MBeanServer server : servers) {
-      Set<ObjectName> mbeans = new HashSet<ObjectName>();
+      Set<ObjectName> mbeans = new HashSet<>();
       mbeans.addAll(server.queryNames(null, null));
       for (final ObjectName mbean : mbeans) {
         Object value;
@@ -1234,7 +1236,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     try {
       createCollection(collectionName, client,2,2);
       String newReplicaName = Assign.assignNode(collectionName , client.getZkStateReader().getClusterState() );
-      ArrayList<String> nodeList = new ArrayList<String>(client.getZkStateReader().getClusterState().getLiveNodes());
+      ArrayList<String> nodeList = new ArrayList<>(client.getZkStateReader().getClusterState().getLiveNodes());
       Collections.shuffle(nodeList);
       Map m = makeMap(
           "action", CollectionAction.ADDREPLICA.toString(),
@@ -1311,7 +1313,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
         REPLICATION_FACTOR, replicationFactor,
         MAX_SHARDS_PER_NODE, maxShardsPerNode,
         NUM_SLICES, numShards);
-    Map<String,List<Integer>> collectionInfos = new HashMap<String,List<Integer>>();
+    Map<String,List<Integer>> collectionInfos = new HashMap<>();
     createCollection(collectionInfos, COLL_NAME, props, client,"conf1");
     waitForRecoveriesToFinish(COLL_NAME, false);
   }

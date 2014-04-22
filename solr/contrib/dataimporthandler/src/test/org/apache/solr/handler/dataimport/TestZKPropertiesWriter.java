@@ -17,7 +17,6 @@ package org.apache.solr.handler.dataimport;
  * limitations under the License.
  */
 
-import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -50,9 +49,7 @@ public class TestZKPropertiesWriter extends AbstractDataImportHandlerTestCase {
 
   @BeforeClass
   public static void dihZk_beforeClass() throws Exception {
-    createTempDir();
-    zkDir = dataDir.getAbsolutePath() + File.separator
-        + "zookeeper/server1/data";
+    zkDir = createTempDir("zkData").getAbsolutePath();
     zkServer = new ZkTestServer(zkDir);
     zkServer.run();
 
@@ -106,11 +103,11 @@ public class TestZKPropertiesWriter extends AbstractDataImportHandlerTestCase {
     SimpleDateFormat df = new SimpleDateFormat(dateFormat, Locale.ROOT);
     Date oneSecondAgo = new Date(System.currentTimeMillis() - 1000);
 
-    Map<String, String> init = new HashMap<String, String>();
+    Map<String, String> init = new HashMap<>();
     init.put("dateFormat", dateFormat);
     ZKPropertiesWriter spw = new ZKPropertiesWriter();
     spw.init(new DataImporter(h.getCore(), "dataimport"), init);
-    Map<String, Object> props = new HashMap<String, Object>();
+    Map<String, Object> props = new HashMap<>();
     props.put("SomeDates.last_index_time", oneSecondAgo);
     props.put("last_index_time", oneSecondAgo);
     spw.persist(props);

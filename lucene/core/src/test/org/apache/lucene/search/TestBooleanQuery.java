@@ -17,6 +17,7 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -29,6 +30,7 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
@@ -42,7 +44,6 @@ import org.apache.lucene.search.spans.SpanTermQuery;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.NamedThreadFactory;
-import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.TestUtil;
 
 public class TestBooleanQuery extends LuceneTestCase {
@@ -137,7 +138,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     assertEquals(1, s.search(dmq, 10).totalHits);
     
     r.close();
-    w.close();
+    w.shutdown();
     dir.close();
   }
 
@@ -148,7 +149,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     doc1.add(newTextField("field", "foo bar", Field.Store.NO));
     iw1.addDocument(doc1);
     IndexReader reader1 = iw1.getReader();
-    iw1.close();
+    iw1.shutdown();
     
     Directory dir2 = newDirectory();
     RandomIndexWriter iw2 = new RandomIndexWriter(random(), dir2);
@@ -156,7 +157,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     doc2.add(newTextField("field", "foo baz", Field.Store.NO));
     iw2.addDocument(doc2);
     IndexReader reader2 = iw2.getReader();
-    iw2.close();
+    iw2.shutdown();
 
     BooleanQuery query = new BooleanQuery(); // Query: +foo -ba*
     query.add(new TermQuery(new Term("field", "foo")), BooleanClause.Occur.MUST);
@@ -211,13 +212,13 @@ public class TestBooleanQuery extends LuceneTestCase {
     w.forceMerge(1);
     final IndexReader r = w.getReader();
     final IndexSearcher s = newSearcher(r);
-    w.close();
+    w.shutdown();
 
     for(int iter=0;iter<10*RANDOM_MULTIPLIER;iter++) {
       if (VERBOSE) {
         System.out.println("iter=" + iter);
       }
-      final List<String> terms = new ArrayList<String>(Arrays.asList("a", "b", "c", "d", "e", "f"));
+      final List<String> terms = new ArrayList<>(Arrays.asList("a", "b", "c", "d", "e", "f"));
       final int numTerms = TestUtil.nextInt(random(), 1, terms.size());
       while(terms.size() > numTerms) {
         terms.remove(random().nextInt(terms.size()));
@@ -234,11 +235,10 @@ public class TestBooleanQuery extends LuceneTestCase {
 
       Weight weight = s.createNormalizedWeight(q);
 
-      Scorer scorer = weight.scorer(s.leafContexts.get(0),
-                                          true, false, null);
+      Scorer scorer = weight.scorer(s.leafContexts.get(0), null);
 
       // First pass: just use .nextDoc() to gather all hits
-      final List<ScoreDoc> hits = new ArrayList<ScoreDoc>();
+      final List<ScoreDoc> hits = new ArrayList<>();
       while(scorer.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
         hits.add(new ScoreDoc(scorer.docID(), scorer.score()));
       }
@@ -252,8 +252,7 @@ public class TestBooleanQuery extends LuceneTestCase {
       for(int iter2=0;iter2<10;iter2++) {
 
         weight = s.createNormalizedWeight(q);
-        scorer = weight.scorer(s.leafContexts.get(0),
-                               true, false, null);
+        scorer = weight.scorer(s.leafContexts.get(0), null);
 
         if (VERBOSE) {
           System.out.println("  iter2=" + iter2);
@@ -305,7 +304,7 @@ public class TestBooleanQuery extends LuceneTestCase {
     Document d = new Document();
     d.add(new TextField(FIELD, "clockwork orange", Field.Store.YES));
     writer.addDocument(d);
-    writer.close();
+    writer.shutdown();
 
     IndexReader indexReader = DirectoryReader.open(directory);
     IndexSearcher searcher = newSearcher(indexReader);
@@ -325,6 +324,32 @@ public class TestBooleanQuery extends LuceneTestCase {
     assertEquals("Bug in boolean query composed of span queries", failed, false);
     assertEquals("Bug in boolean query composed of span queries", hits, 1);
     directory.close();
+  }
+
+  // LUCENE-5487
+  public void testInOrderWithMinShouldMatch() throws Exception {
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    Document doc = new Document();
+    doc.add(newTextField("field", "some text here", Field.Store.NO));
+    w.addDocument(doc);
+    IndexReader r = w.getReader();
+    w.shutdown();
+    IndexSearcher s = new IndexSearcher(r) {
+        @Override
+        protected void search(List<AtomicReaderContext> leaves, Weight weight, Collector collector) throws IOException {
+          assertEquals(-1, collector.getClass().getSimpleName().indexOf("OutOfOrder"));
+          super.search(leaves, weight, collector);
+        }
+      };
+    BooleanQuery bq = new BooleanQuery();
+    bq.add(new TermQuery(new Term("field", "some")), BooleanClause.Occur.SHOULD);
+    bq.add(new TermQuery(new Term("field", "text")), BooleanClause.Occur.SHOULD);
+    bq.add(new TermQuery(new Term("field", "here")), BooleanClause.Occur.SHOULD);
+    bq.setMinimumNumberShouldMatch(2);
+    s.search(bq, 10);
+    r.close();
+    dir.close();
   }
 
 }

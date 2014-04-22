@@ -31,6 +31,7 @@ import org.apache.http.client.HttpClient;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.lucene.util.QuickPatchThreadsFilter;
+import org.apache.lucene.util.TestUtil;
 import org.apache.solr.SolrIgnoredThreadsFilter;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
@@ -99,7 +100,7 @@ public class TestLBHttpSolrServer extends SolrTestCaseJ4 {
   }
 
   private void addDocs(SolrInstance solrInstance) throws IOException, SolrServerException {
-    List<SolrInputDocument> docs = new ArrayList<SolrInputDocument>();
+    List<SolrInputDocument> docs = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
       SolrInputDocument doc = new SolrInputDocument();
       doc.addField("id", i);
@@ -135,7 +136,7 @@ public class TestLBHttpSolrServer extends SolrTestCaseJ4 {
     LBHttpSolrServer lbHttpSolrServer = new LBHttpSolrServer(httpClient, s);
     lbHttpSolrServer.setAliveCheckInterval(500);
     SolrQuery solrQuery = new SolrQuery("*:*");
-    Set<String> names = new HashSet<String>();
+    Set<String> names = new HashSet<>();
     QueryResponse resp = null;
     for (String value : s) {
       resp = lbHttpSolrServer.query(solrQuery);
@@ -284,10 +285,8 @@ public class TestLBHttpSolrServer extends SolrTestCaseJ4 {
 
 
     public void setUp() throws Exception {
-      File home = new File(LuceneTestCase.TEMP_DIR,
+      File home = new File(dataDir,
               getClass().getName() + "-" + System.currentTimeMillis());
-
-
       homeDir = new File(home, name);
       dataDir = new File(homeDir + "/collection1", "data");
       confDir = new File(homeDir + "/collection1", "conf");

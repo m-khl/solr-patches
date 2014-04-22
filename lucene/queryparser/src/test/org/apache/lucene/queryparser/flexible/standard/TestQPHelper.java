@@ -741,7 +741,7 @@ public class TestQPHelper extends LuceneTestCase {
     final String hourField = "hour";
     StandardQueryParser qp = new StandardQueryParser();
 
-    Map<CharSequence, DateTools.Resolution> dateRes =  new HashMap<CharSequence, DateTools.Resolution>();
+    Map<CharSequence, DateTools.Resolution> dateRes =  new HashMap<>();
     
     // set a field specific date resolution    
     dateRes.put(monthField, DateTools.Resolution.MONTH);
@@ -1321,7 +1321,7 @@ public class TestQPHelper extends LuceneTestCase {
     assertTrue(q instanceof MultiPhraseQuery);
     assertEquals(1, s.search(q, 10).totalHits);
     r.close();
-    w.close();
+    w.shutdown();
     dir.close();
   }
 

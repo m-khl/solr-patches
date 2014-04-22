@@ -56,7 +56,7 @@ public class TestFieldsReader extends LuceneTestCase {
     conf.getMergePolicy().setNoCFSRatio(0.0);
     IndexWriter writer = new IndexWriter(dir, conf);
     writer.addDocument(testDoc);
-    writer.close();
+    writer.shutdown();
     FaultyIndexInput.doFail = false;
   }
   
@@ -119,10 +119,6 @@ public class TestFieldsReader extends LuceneTestCase {
     @Override
     public String[] listAll() throws IOException {
       return fsDir.listAll();
-    }
-    @Override
-    public boolean fileExists(String name) throws IOException {
-      return fsDir.fileExists(name);
     }
     @Override
     public void deleteFile(String name) throws IOException {
@@ -191,7 +187,7 @@ public class TestFieldsReader extends LuceneTestCase {
 
   // LUCENE-1262
   public void testExceptions() throws Throwable {
-    File indexDir = TestUtil.getTempDir("testfieldswriterexceptions");
+    File indexDir = createTempDir("testfieldswriterexceptions");
 
     try {
       Directory dir = new FaultyFSDirectory(indexDir);
@@ -201,7 +197,7 @@ public class TestFieldsReader extends LuceneTestCase {
       for(int i=0;i<2;i++)
         writer.addDocument(testDoc);
       writer.forceMerge(1);
-      writer.close();
+      writer.shutdown();
 
       IndexReader reader = DirectoryReader.open(dir);
 
@@ -227,7 +223,7 @@ public class TestFieldsReader extends LuceneTestCase {
       reader.close();
       dir.close();
     } finally {
-      TestUtil.rmDir(indexDir);
+      TestUtil.rm(indexDir);
     }
 
   }

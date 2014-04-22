@@ -32,7 +32,7 @@ import java.util.Map;
 
 public class TestElevationComparator extends LuceneTestCase {
 
-  private final Map<BytesRef,Integer> priority = new HashMap<BytesRef,Integer>();
+  private final Map<BytesRef,Integer> priority = new HashMap<>();
 
   //@Test
   public void testSorting() throws Throwable {
@@ -52,7 +52,7 @@ public class TestElevationComparator extends LuceneTestCase {
     writer.addDocument(adoc(new String[] {"id", "z", "title", "boosted boosted boosted","str_s", "z"}));
 
     IndexReader r = DirectoryReader.open(writer, true);
-    writer.close();
+    writer.shutdown();
 
     IndexSearcher searcher = newSearcher(r);
     searcher.setSimilarity(new DefaultSimilarity());

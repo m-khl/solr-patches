@@ -46,10 +46,7 @@ import org.apache.lucene.codecs.memory.FSTPostingsFormat;
 import org.apache.lucene.codecs.memory.FSTPulsing41PostingsFormat;
 import org.apache.lucene.codecs.memory.MemoryDocValuesFormat;
 import org.apache.lucene.codecs.memory.MemoryPostingsFormat;
-import org.apache.lucene.codecs.mockintblock.MockFixedIntBlockPostingsFormat;
-import org.apache.lucene.codecs.mockintblock.MockVariableIntBlockPostingsFormat;
 import org.apache.lucene.codecs.mockrandom.MockRandomPostingsFormat;
-import org.apache.lucene.codecs.mocksep.MockSepPostingsFormat;
 import org.apache.lucene.codecs.nestedpulsing.NestedPulsingPostingsFormat;
 import org.apache.lucene.codecs.pulsing.Pulsing41PostingsFormat;
 import org.apache.lucene.codecs.simpletext.SimpleTextDocValuesFormat;
@@ -68,16 +65,16 @@ import org.apache.lucene.util.TestUtil;
  */
 public class RandomCodec extends Lucene46Codec {
   /** Shuffled list of postings formats to use for new mappings */
-  private List<PostingsFormat> formats = new ArrayList<PostingsFormat>();
+  private List<PostingsFormat> formats = new ArrayList<>();
   
   /** Shuffled list of docvalues formats to use for new mappings */
-  private List<DocValuesFormat> dvFormats = new ArrayList<DocValuesFormat>();
+  private List<DocValuesFormat> dvFormats = new ArrayList<>();
   
   /** unique set of format names this codec knows about */
-  public Set<String> formatNames = new HashSet<String>();
+  public Set<String> formatNames = new HashSet<>();
   
   /** unique set of docvalues format names this codec knows about */
-  public Set<String> dvFormatNames = new HashSet<String>();
+  public Set<String> dvFormatNames = new HashSet<>();
 
   /** memorized field->postingsformat mappings */
   // note: we have to sync this map even though its just for debugging/toString, 
@@ -142,9 +139,6 @@ public class RandomCodec extends Lucene46Codec {
         //with a choice of concrete PostingsFormats. Maybe useful to have a generic means of marking and dealing 
         //with such "wrapper" classes?
         new TestBloomFilteredLucene41Postings(),                
-        new MockSepPostingsFormat(),
-        new MockFixedIntBlockPostingsFormat(TestUtil.nextInt(random, 1, 2000)),
-        new MockVariableIntBlockPostingsFormat( TestUtil.nextInt(random, 1, 127)),
         new MockRandomPostingsFormat(random),
         new NestedPulsingPostingsFormat(),
         new Lucene41WithOrds(TestUtil.nextInt(random, 1, 1000)),

@@ -61,7 +61,7 @@ public class TestSpans extends LuceneTestCase {
       writer.addDocument(doc);
     }
     reader = writer.getReader();
-    writer.close();
+    writer.shutdown();
     searcher = newSearcher(reader);
   }
   
@@ -429,7 +429,7 @@ public class TestSpans extends LuceneTestCase {
                                 slop,
                                 ordered);
   
-        spanScorer = searcher.createNormalizedWeight(snq).scorer(ctx, true, false, ctx.reader().getLiveDocs());
+        spanScorer = searcher.createNormalizedWeight(snq).scorer(ctx, ctx.reader().getLiveDocs());
       } finally {
         searcher.setSimilarity(oldSim);
       }
@@ -483,7 +483,7 @@ public class TestSpans extends LuceneTestCase {
     addDoc(writer, "2", "the cat chased the mouse, then the cat ate the mouse quickly");
     
     // Commit
-    writer.close();
+    writer.shutdown();
 
     // Get searcher
     final IndexReader reader = DirectoryReader.open(dir);

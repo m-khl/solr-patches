@@ -344,7 +344,7 @@ public class TrecContentSourceTest extends LuceneTestCase {
    * supported formats - bzip, gzip, txt. 
    */
   public void testTrecFeedDirAllTypes() throws Exception {
-    File dataDir =  TestUtil.getTempDir("trecFeedAllTypes");
+    File dataDir =  createTempDir("trecFeedAllTypes");
     TestUtil.unzip(getDataFile("trecdocs.zip"), dataDir);
     TrecContentSource tcs = new TrecContentSource();
     Properties props = new Properties();
@@ -360,7 +360,7 @@ public class TrecContentSourceTest extends LuceneTestCase {
     DocData dd = new DocData();
     int n = 0;
     boolean gotExpectedException = false;
-    HashSet<ParsePathType> unseenTypes = new HashSet<ParsePathType>(Arrays.asList(ParsePathType.values()));
+    HashSet<ParsePathType> unseenTypes = new HashSet<>(Arrays.asList(ParsePathType.values()));
     try {
       while (n<100) { // arbiterary limit to prevent looping forever in case of test failure
         dd = tcs.getNextDocData(dd);

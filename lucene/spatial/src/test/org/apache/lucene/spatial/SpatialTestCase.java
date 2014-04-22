@@ -83,7 +83,8 @@ public abstract class SpatialTestCase extends LuceneTestCase {
   @Override
   @After
   public void tearDown() throws Exception {
-    IOUtils.close(indexWriter,indexReader,directory);
+    indexWriter.shutdown();
+    IOUtils.close(indexReader,directory);
     super.tearDown();
   }
 
@@ -119,7 +120,7 @@ public abstract class SpatialTestCase extends LuceneTestCase {
     try {
       TopDocs topDocs = indexSearcher.search(query, numDocs);
 
-      List<SearchResult> results = new ArrayList<SearchResult>();
+      List<SearchResult> results = new ArrayList<>();
       for (ScoreDoc scoreDoc : topDocs.scoreDocs) {
         results.add(new SearchResult(scoreDoc.score, indexSearcher.doc(scoreDoc.doc)));
       }

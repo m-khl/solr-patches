@@ -70,7 +70,7 @@ public class TestWordBreakSpellChecker extends LuceneTestCase {
     }
     
     writer.commit();
-    writer.close();
+    writer.shutdown();
   }
   
   @Override
@@ -272,8 +272,8 @@ public class TestWordBreakSpellChecker extends LuceneTestCase {
       writer = new RandomIndexWriter(random(), dir, new MockAnalyzer(random(),
           MockTokenizer.WHITESPACE, false));
       int maxLength = TestUtil.nextInt(random(), 5, 50);
-      List<String> originals = new ArrayList<String>(numDocs);
-      List<String[]> breaks = new ArrayList<String[]>(numDocs);
+      List<String> originals = new ArrayList<>(numDocs);
+      List<String[]> breaks = new ArrayList<>(numDocs);
       for (int i = 0; i < numDocs; i++) {
         String orig = "";
         if (random().nextBoolean()) {
@@ -300,7 +300,7 @@ public class TestWordBreakSpellChecker extends LuceneTestCase {
         writer.addDocument(doc);
       }
       writer.commit();
-      writer.close();
+      writer.shutdown();
       
       ir = DirectoryReader.open(dir);
       WordBreakSpellChecker wbsp = new WordBreakSpellChecker();
@@ -352,7 +352,7 @@ public class TestWordBreakSpellChecker extends LuceneTestCase {
         ir.close();
       } catch (Exception e1) {}
       try {
-        writer.close();
+        writer.shutdown();
       } catch (Exception e1) {}
       try {
         dir.close();

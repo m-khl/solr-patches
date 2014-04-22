@@ -30,12 +30,12 @@ import org.apache.solr.common.SolrInputDocument;
 
 public class StopableIndexingThread extends AbstractFullDistribZkTestBase.StopableThread {
   private static String t1 = "a_t";
-  private static String i1 = "a_si";
+  private static String i1 = "a_i";
   private volatile boolean stop = false;
   protected final String id;
-  protected final List<String> deletes = new ArrayList<String>();
-  protected Set<String> addFails = new HashSet<String>();
-  protected Set<String> deleteFails = new HashSet<String>();
+  protected final List<String> deletes = new ArrayList<>();
+  protected Set<String> addFails = new HashSet<>();
+  protected Set<String> deleteFails = new HashSet<>();
   protected boolean doDeletes;
   private int numCycles;
   private SolrServer controlClient;

@@ -25,6 +25,7 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
@@ -62,16 +63,16 @@ public class TestDoc extends LuceneTestCase {
         if (VERBOSE) {
           System.out.println("TEST: setUp");
         }
-        workDir = TestUtil.getTempDir("TestDoc");
+        workDir = createTempDir("TestDoc");
         workDir.mkdirs();
 
-        indexDir = TestUtil.getTempDir("testIndex");
+        indexDir = createTempDir("testIndex");
         indexDir.mkdirs();
 
         Directory directory = newFSDirectory(indexDir);
         directory.close();
 
-        files = new LinkedList<File>();
+        files = new LinkedList<>();
         files.add(createOutput("test.txt",
             "This is the first test file"
         ));
@@ -89,7 +90,7 @@ public class TestDoc extends LuceneTestCase {
             File f = new File(workDir, name);
             if (f.exists()) f.delete();
 
-            fw = new OutputStreamWriter(new FileOutputStream(f), "UTF-8");
+            fw = new OutputStreamWriter(new FileOutputStream(f), StandardCharsets.UTF_8);
             pw = new PrintWriter(fw);
             pw.println(text);
             return f;
@@ -134,7 +135,7 @@ public class TestDoc extends LuceneTestCase {
 
       SegmentCommitInfo si2 = indexDoc(writer, "test2.txt");
       printSegment(out, si2);
-      writer.close();
+      writer.shutdown();
 
       SegmentCommitInfo siMerge = merge(directory, si1, si2, "_merge", false);
       printSegment(out, siMerge);
@@ -176,7 +177,7 @@ public class TestDoc extends LuceneTestCase {
 
       si2 = indexDoc(writer, "test2.txt");
       printSegment(out, si2);
-      writer.close();
+      writer.shutdown();
 
       siMerge = merge(directory, si1, si2, "_merge", true);
       printSegment(out, siMerge);
@@ -200,7 +201,7 @@ public class TestDoc extends LuceneTestCase {
    {
       File file = new File(workDir, fileName);
       Document doc = new Document();
-      InputStreamReader is = new InputStreamReader(new FileInputStream(file), "UTF-8");
+      InputStreamReader is = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8);
       doc.add(new TextField("contents", is));
       writer.addDocument(doc);
       writer.commit();
@@ -221,7 +222,7 @@ public class TestDoc extends LuceneTestCase {
 
       SegmentMerger merger = new SegmentMerger(Arrays.<AtomicReader>asList(r1, r2),
           si, InfoStream.getDefault(), trackingDir,
-          MergeState.CheckAbort.NONE, new FieldInfos.FieldNumbers(), context);
+          MergeState.CheckAbort.NONE, new FieldInfos.FieldNumbers(), context, true);
 
       MergeState mergeState = merger.merge();
       r1.close();
@@ -229,7 +230,7 @@ public class TestDoc extends LuceneTestCase {
       final SegmentInfo info = new SegmentInfo(si1.info.dir, Constants.LUCENE_MAIN_VERSION, merged,
                                                si1.info.getDocCount() + si2.info.getDocCount(),
                                                false, codec, null);
-      info.setFiles(new HashSet<String>(trackingDir.getCreatedFiles()));
+      info.setFiles(new HashSet<>(trackingDir.getCreatedFiles()));
       
       if (useCompoundFile) {
         Collection<String> filesToDelete = IndexWriter.createCompoundFile(InfoStream.getDefault(), dir, MergeState.CheckAbort.NONE, info, newIOContext(random()));

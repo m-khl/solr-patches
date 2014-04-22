@@ -40,9 +40,9 @@ public class TestMultiFields extends LuceneTestCase {
       // we can do this because we use NoMergePolicy (and dont merge to "nothing")
       w.setKeepFullyDeletedSegments(true);
 
-      Map<BytesRef,List<Integer>> docs = new HashMap<BytesRef,List<Integer>>();
-      Set<Integer> deleted = new HashSet<Integer>();
-      List<BytesRef> terms = new ArrayList<BytesRef>();
+      Map<BytesRef,List<Integer>> docs = new HashMap<>();
+      Set<Integer> deleted = new HashSet<>();
+      List<BytesRef> terms = new ArrayList<>();
 
       int numDocs = TestUtil.nextInt(random(), 1, 100 * RANDOM_MULTIPLIER);
       Document doc = new Document();
@@ -55,7 +55,7 @@ public class TestMultiFields extends LuceneTestCase {
       if (VERBOSE) {
         System.out.println("TEST: onlyUniqueTerms=" + onlyUniqueTerms + " numDocs=" + numDocs);
       }
-      Set<BytesRef> uniqueTerms = new HashSet<BytesRef>();
+      Set<BytesRef> uniqueTerms = new HashSet<>();
       for(int i=0;i<numDocs;i++) {
 
         if (!onlyUniqueTerms && random().nextBoolean() && terms.size() > 0) {
@@ -90,7 +90,7 @@ public class TestMultiFields extends LuceneTestCase {
       }
 
       if (VERBOSE) {
-        List<BytesRef> termsList = new ArrayList<BytesRef>(uniqueTerms);
+        List<BytesRef> termsList = new ArrayList<>(uniqueTerms);
         Collections.sort(termsList, BytesRef.getUTF8SortedAsUTF16Comparator());
         System.out.println("TEST: terms in UTF16 order:");
         for(BytesRef b : termsList) {
@@ -106,7 +106,7 @@ public class TestMultiFields extends LuceneTestCase {
       }
 
       IndexReader reader = w.getReader();
-      w.close();
+      w.shutdown();
       if (VERBOSE) {
         System.out.println("TEST: reader=" + reader);
       }
@@ -162,7 +162,7 @@ public class TestMultiFields extends LuceneTestCase {
     w.commit();
     w.addDocument(d);
     IndexReader r = w.getReader();
-    w.close();
+    w.shutdown();
     DocsEnum d1 = TestUtil.docs(random(), r, "f", new BytesRef("j"), null, null, DocsEnum.FLAG_NONE);
     DocsEnum d2 = TestUtil.docs(random(), r, "f", new BytesRef("j"), null, null, DocsEnum.FLAG_NONE);
     assertEquals(0, d1.nextDoc());
@@ -180,7 +180,7 @@ public class TestMultiFields extends LuceneTestCase {
     w.commit();
     w.addDocument(d);
     IndexReader r = w.getReader();
-    w.close();
+    w.shutdown();
     DocsEnum de = MultiFields.getTermDocsEnum(r, null, "f", new BytesRef("j"));
     assertEquals(0, de.nextDoc());
     assertEquals(1, de.nextDoc());

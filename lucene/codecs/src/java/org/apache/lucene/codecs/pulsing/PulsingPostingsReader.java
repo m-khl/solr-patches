@@ -76,7 +76,7 @@ public class PulsingPostingsReader extends PostingsReaderBase {
         version < PulsingPostingsWriter.VERSION_META_ARRAY) {
       fields = null;
     } else {
-      fields = new TreeMap<Integer, Integer>();
+      fields = new TreeMap<>();
       String summaryFileName = IndexFileNames.segmentFileName(segmentState.segmentInfo.name, segmentState.segmentSuffix, PulsingPostingsWriter.SUMMARY_EXTENSION);
       IndexInput in = null;
       try { 
@@ -628,7 +628,7 @@ public class PulsingPostingsReader extends PostingsReaderBase {
     // another pulsing, because this is just stupid and wasteful. 
     // we still have to be careful in case someone does Pulsing(Stomping(Pulsing(...
     private final Map<PulsingPostingsReader,DocsEnum> enums = 
-      new IdentityHashMap<PulsingPostingsReader,DocsEnum>();
+      new IdentityHashMap<>();
       
     @Override
     public Map<PulsingPostingsReader,DocsEnum> enums() {
@@ -652,5 +652,10 @@ public class PulsingPostingsReader extends PostingsReaderBase {
   @Override
   public long ramBytesUsed() {
     return ((wrappedPostingsReader!=null) ? wrappedPostingsReader.ramBytesUsed(): 0);
+  }
+
+  @Override
+  public void checkIntegrity() throws IOException {
+    wrappedPostingsReader.checkIntegrity();
   }
 }

@@ -35,7 +35,7 @@ import org.apache.lucene.util.IOUtils;
 
 class SimpleTextFieldsWriter extends FieldsConsumer implements Closeable {
   
-  private final IndexOutput out;
+  private IndexOutput out;
   private final BytesRef scratch = new BytesRef(10);
   private final SegmentWriteState writeState;
 
@@ -215,11 +215,15 @@ class SimpleTextFieldsWriter extends FieldsConsumer implements Closeable {
 
   @Override
   public void close() throws IOException {
-    try {
-      write(END);
-      newline();
-    } finally {
-      out.close();
+    if (out != null) {
+      try {
+        write(END);
+        newline();
+        SimpleTextUtil.writeChecksum(out, scratch);
+      } finally {
+        out.close();
+        out = null;
+      }
     }
   }
 }

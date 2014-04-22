@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.TreeMap;
 
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.search.Filter;
@@ -98,14 +99,14 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
     List<RangeFacetRequest> rangeFreqs = request.getRangeFacets();
     List<QueryFacetRequest> queryFreqs = request.getQueryFacets();
 
-    this.fieldFacetExpressions = new LinkedHashMap<String,Map<String,Expression[]>>(fieldFreqs.size());
-    this.rangeFacetExpressions = new LinkedHashMap<String,Map<String,Expression[]>>(rangeFreqs.size());
-    this.queryFacetExpressions = new LinkedHashMap<String,Map<String,Expression[]>>(queryFreqs.size());
-    this.fieldFacetCollectors = new LinkedHashMap<String,Map<String,StatsCollector[]>>(fieldFreqs.size());
-    this.rangeFacetCollectors = new LinkedHashMap<String,Map<String,StatsCollector[]>>(rangeFreqs.size());
-    this.queryFacetCollectors = new LinkedHashMap<String,Map<String,StatsCollector[]>>(queryFreqs.size());
-    this.facetAccumulators = new ArrayList<FieldFacetAccumulator>();
-    this.hiddenFieldFacets = new HashSet<String>();
+    this.fieldFacetExpressions = new TreeMap<>();
+    this.rangeFacetExpressions = new LinkedHashMap<>(rangeFreqs.size());
+    this.queryFacetExpressions = new LinkedHashMap<>(queryFreqs.size());
+    this.fieldFacetCollectors = new LinkedHashMap<>(fieldFreqs.size());
+    this.rangeFacetCollectors = new LinkedHashMap<>(rangeFreqs.size());
+    this.queryFacetCollectors = new LinkedHashMap<>(queryFreqs.size());
+    this.facetAccumulators = new ArrayList<>();
+    this.hiddenFieldFacets = new HashSet<>();
     
     /**
      * For each field facet request add a bucket to the {@link Expression} map and {@link StatsCollector} map.
@@ -120,8 +121,8 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
       final SchemaField ff = fr.getField();
       final FieldFacetAccumulator facc = FieldFacetAccumulator.create(searcher, this, ff);
       facetAccumulators.add(facc);
-      fieldFacetExpressions.put(freq.getName(), new LinkedHashMap<String,Expression[]>() );
-      fieldFacetCollectors.put(freq.getName(), new LinkedHashMap<String,StatsCollector[]>());
+      fieldFacetExpressions.put(freq.getName(), new TreeMap<String, Expression[]>() );
+      fieldFacetCollectors.put(freq.getName(), new TreeMap<String,StatsCollector[]>());
     }
     /**
      * For each range and query facet request add a bucket to the corresponding
@@ -130,13 +131,13 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
      * are not created initially.
      */
     for( RangeFacetRequest freq : rangeFreqs ){
-      if( rangeFacets == null ) rangeFacets = new ArrayList<RangeFacetRequest>();
+      if( rangeFacets == null ) rangeFacets = new ArrayList<>();
       rangeFacets.add(freq);
       rangeFacetExpressions.put(freq.getName(), new LinkedHashMap<String,Expression[]>() );
       rangeFacetCollectors.put(freq.getName(), new LinkedHashMap<String,StatsCollector[]>());
     }
     for( QueryFacetRequest freq : queryFreqs ){
-      if( queryFacets == null ) queryFacets = new ArrayList<QueryFacetRequest>();
+      if( queryFacets == null ) queryFacets = new ArrayList<>();
       queryFacets.add(freq);
       queryFacetExpressions.put(freq.getName(), new LinkedHashMap<String,Expression[]>() );
       queryFacetCollectors.put(freq.getName(), new LinkedHashMap<String,StatsCollector[]>());
@@ -154,8 +155,8 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
    * @throws IOException if there is an error setting the next reader
    */
   @Override
-  public void setNextReader(AtomicReaderContext context) throws IOException {
-    super.setNextReader(context);
+  protected void doSetNextReader(AtomicReaderContext context) throws IOException {
+    super.doSetNextReader(context);
     for( Map<String,StatsCollector[]> valueList : fieldFacetCollectors.values() ){
       for (StatsCollector[] statsCollectorList : valueList.values()) {
         for (StatsCollector statsCollector : statsCollectorList) {
@@ -164,7 +165,7 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
       }
     }
     for (FieldFacetAccumulator fa : facetAccumulators) {
-      fa.setNextReader(context);
+      fa.getLeafCollector(context);
     }
   }
   
@@ -174,7 +175,7 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
    * @throws IOException if there is an error setting the next reader
    */
   public void setRangeStatsCollectorReaders(AtomicReaderContext context) throws IOException {
-    super.setNextReader(context);
+    super.getLeafCollector(context);
     for( Map<String,StatsCollector[]> rangeList : rangeFacetCollectors.values() ){
       for (StatsCollector[] statsCollectorList : rangeList.values()) {
         for (StatsCollector statsCollector : statsCollectorList) {
@@ -191,7 +192,7 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
    * @throws IOException if there is an error setting the next reader
    */
   public void setQueryStatsCollectorReaders(AtomicReaderContext context) throws IOException {
-    super.setNextReader(context);
+    super.getLeafCollector(context);
     for( Map<String,StatsCollector[]> queryList : queryFacetCollectors.values() ){
       for (StatsCollector[] statsCollectorList : queryList.values()) {
         for (StatsCollector statsCollector : statsCollectorList) {
@@ -442,7 +443,7 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
   @SuppressWarnings("unchecked")
   public NamedList<?> export() {
     final NamedList<Object> base = (NamedList<Object>)super.export();
-    NamedList<NamedList<?>> facetList = new NamedList<NamedList<?>>();
+    NamedList<NamedList<?>> facetList = new NamedList<>();
     
     // Add the field facet buckets to the output
     base.add("fieldFacets",facetList);
@@ -452,7 +453,7 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
         continue;
       }
       final Map<String,Expression[]> buckets = fieldFacetExpressions.get(name);
-      final NamedList<Object> bucketBase = new NamedList<Object>();
+      final NamedList<Object> bucketBase = new NamedList<>();
 
       Iterable<Entry<String,Expression[]>> iter = buckets.entrySet();
       
@@ -471,7 +472,7 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
         final Expression first = buckets.values().iterator().next()[sortPlace];
         final Comparator<Expression> comp = (Comparator<Expression>) first.comparator(sort.getDirection());
         
-        final List<Entry<String,Expression[]>> sorted = new ArrayList<Entry<String,Expression[]>>(buckets.size());
+        final List<Entry<String,Expression[]>> sorted = new ArrayList<>(buckets.size());
         Iterables.addAll(sorted, iter);
         Collections.sort(sorted, new EntryComparator(comp,sortPlace));
         iter = sorted;
@@ -493,12 +494,12 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
     }
 
     // Add the range facet buckets to the output
-    facetList = new NamedList<NamedList<?>>();
+    facetList = new NamedList<>();
     base.add("rangeFacets",facetList);
     for( RangeFacetRequest freq : request.getRangeFacets() ){
       final String name = freq.getName();
       final Map<String,Expression[]> buckets = rangeFacetExpressions.get(name);
-      final NamedList<Object> bucketBase = new NamedList<Object>();
+      final NamedList<Object> bucketBase = new NamedList<>();
 
       Iterable<Entry<String,Expression[]>> iter = buckets.entrySet();
       
@@ -510,12 +511,12 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
     }
     
     // Add the query facet buckets to the output
-    facetList = new NamedList<NamedList<?>>();
+    facetList = new NamedList<>();
     base.add("queryFacets",facetList);
     for( QueryFacetRequest freq : request.getQueryFacets() ){
       final String name = freq.getName();
       final Map<String,Expression[]> buckets = queryFacetExpressions.get(name);
-      final NamedList<Object> bucketBase = new NamedList<Object>();
+      final NamedList<Object> bucketBase = new NamedList<>();
 
       Iterable<Entry<String,Expression[]>> iter = buckets.entrySet();
       
@@ -535,7 +536,7 @@ public class FacetingAccumulator extends BasicAccumulator implements FacetValueA
    * @return named list of expressions
    */
   public NamedList<?> export(Expression[] expressionArr) {
-    NamedList<Object> base = new NamedList<Object>();
+    NamedList<Object> base = new NamedList<>();
     for (int count = 0; count < expressionArr.length; count++) {
       if (!hiddenExpressions.contains(expressionNames[count])) {
         base.add(expressionNames[count], expressionArr[count].getValue());

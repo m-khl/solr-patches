@@ -40,7 +40,7 @@ public class TestThaiAnalyzer extends BaseTokenStreamTestCase {
   @Override
   public void setUp() throws Exception {
     super.setUp();
-    assumeTrue("JRE does not support Thai dictionary-based BreakIterator", ThaiWordFilter.DBBI_AVAILABLE);
+    assumeTrue("JRE does not support Thai dictionary-based BreakIterator", ThaiTokenizer.DBBI_AVAILABLE);
   }
   /* 
    * testcase for offsets
@@ -60,16 +60,6 @@ public class TestThaiAnalyzer extends BaseTokenStreamTestCase {
         new int[] { 5, 2, 1 });
   }
   
-  public void testTokenType() throws Exception {
-      assertAnalyzesTo(new ThaiAnalyzer(TEST_VERSION_CURRENT, CharArraySet.EMPTY_SET), "การที่ได้ต้องแสดงว่างานดี ๑๒๓", 
-                       new String[] { "การ", "ที่", "ได้", "ต้อง", "แสดง", "ว่า", "งาน", "ดี", "๑๒๓" },
-                       new String[] { "<SOUTHEAST_ASIAN>", "<SOUTHEAST_ASIAN>", 
-                                      "<SOUTHEAST_ASIAN>", "<SOUTHEAST_ASIAN>", 
-                                      "<SOUTHEAST_ASIAN>", "<SOUTHEAST_ASIAN>",
-                                      "<SOUTHEAST_ASIAN>", "<SOUTHEAST_ASIAN>",
-                                      "<NUM>" });
-  }
-
   /*
    * Test that position increments are adjusted correctly for stopwords.
    */
@@ -128,14 +118,10 @@ public class TestThaiAnalyzer extends BaseTokenStreamTestCase {
     assertTokenStreamContents(ts, new String[] { "ภาษา", "ไทย" });
   }
   
-  public void testEmptyTerm() throws IOException {
-    Analyzer a = new Analyzer() {
-      @Override
-      protected TokenStreamComponents createComponents(String fieldName) {
-        Tokenizer tokenizer = new KeywordTokenizer();
-        return new TokenStreamComponents(tokenizer, new ThaiWordFilter(TEST_VERSION_CURRENT, tokenizer));
-      }
-    };
-    checkOneTerm(a, "", "");
+  public void testTwoSentences() throws Exception {
+    assertAnalyzesTo(new ThaiAnalyzer(TEST_VERSION_CURRENT, CharArraySet.EMPTY_SET), "This is a test. การที่ได้ต้องแสดงว่างานดี", 
+          new String[] { "this", "is", "a", "test", "การ", "ที่", "ได้", "ต้อง", "แสดง", "ว่า", "งาน", "ดี" },
+          new int[] { 0, 5, 8, 10, 16, 19, 22, 25, 29, 33, 36, 39 },
+          new int[] { 4, 7, 9, 14, 19, 22, 25, 29, 33, 36, 39, 41 });
   }
 }

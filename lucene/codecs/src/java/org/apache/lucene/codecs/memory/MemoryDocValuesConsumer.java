@@ -59,7 +59,7 @@ import static org.apache.lucene.codecs.memory.MemoryDocValuesProducer.UNCOMPRESS
  * Writer for {@link MemoryDocValuesFormat}
  */
 class MemoryDocValuesConsumer extends DocValuesConsumer {
-  final IndexOutput data, meta;
+  IndexOutput data, meta;
   final int maxDoc;
   final float acceptableOverheadRatio;
   
@@ -158,7 +158,7 @@ class MemoryDocValuesConsumer extends DocValuesConsumer {
       } else {
         meta.writeByte(TABLE_COMPRESSED); // table-compressed
         Long[] decode = uniqueValues.toArray(new Long[uniqueValues.size()]);
-        final HashMap<Long,Integer> encode = new HashMap<Long,Integer>();
+        final HashMap<Long,Integer> encode = new HashMap<>();
         data.writeVInt(decode.length);
         for (int i = 0; i < decode.length; i++) {
           data.writeLong(decode[i]);
@@ -208,6 +208,10 @@ class MemoryDocValuesConsumer extends DocValuesConsumer {
     try {
       if (meta != null) {
         meta.writeVInt(-1); // write EOF marker
+        CodecUtil.writeFooter(meta); // write checksum
+      }
+      if (data != null) {
+        CodecUtil.writeFooter(data);
       }
       success = true;
     } finally {
@@ -216,6 +220,7 @@ class MemoryDocValuesConsumer extends DocValuesConsumer {
       } else {
         IOUtils.closeWhileHandlingException(data, meta);
       }
+      data = meta = null;
     }
   }
 
@@ -281,7 +286,7 @@ class MemoryDocValuesConsumer extends DocValuesConsumer {
     meta.writeByte(FST);
     meta.writeLong(data.getFilePointer());
     PositiveIntOutputs outputs = PositiveIntOutputs.getSingleton();
-    Builder<Long> builder = new Builder<Long>(INPUT_TYPE.BYTE1, outputs);
+    Builder<Long> builder = new Builder<>(INPUT_TYPE.BYTE1, outputs);
     IntsRef scratch = new IntsRef();
     long ord = 0;
     for (BytesRef v : values) {

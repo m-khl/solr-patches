@@ -82,7 +82,7 @@ public class SimpleSortedSetFacetsExample {
     doc.add(new SortedSetDocValuesFacetField("Publish Year", "1999"));
     indexWriter.addDocument(config.build(doc));
     
-    indexWriter.close();
+    indexWriter.shutdown();
   }
 
   /** User runs a query and counts facets. */
@@ -102,7 +102,7 @@ public class SimpleSortedSetFacetsExample {
     // Retrieve results
     Facets facets = new SortedSetDocValuesFacetCounts(state, fc);
 
-    List<FacetResult> results = new ArrayList<FacetResult>();
+    List<FacetResult> results = new ArrayList<>();
     results.add(facets.getTopChildren(10, "Author"));
     results.add(facets.getTopChildren(10, "Publish Year"));
     indexReader.close();

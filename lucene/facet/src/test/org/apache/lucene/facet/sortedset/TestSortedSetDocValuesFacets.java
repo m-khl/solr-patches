@@ -92,7 +92,8 @@ public class TestSortedSetDocValuesFacets extends FacetTestCase {
     TopDocs hits = searcher.search(q, 1);
     assertEquals(1, hits.totalHits);
 
-    IOUtils.close(writer, searcher.getIndexReader(), dir);
+    writer.shutdown();
+    IOUtils.close(searcher.getIndexReader(), dir);
   }
 
   // LUCENE-5090
@@ -134,7 +135,7 @@ public class TestSortedSetDocValuesFacets extends FacetTestCase {
     }
 
     r.close();
-    writer.close();
+    writer.shutdown();
     searcher.getIndexReader().close();
     dir.close();
   }
@@ -173,7 +174,7 @@ public class TestSortedSetDocValuesFacets extends FacetTestCase {
 
     // NRT open
     IndexSearcher searcher = newSearcher(writer.getReader());
-    writer.close();
+    writer.shutdown();
 
     // Per-top-reader state:
     SortedSetDocValuesReaderState state = new DefaultSortedSetDocValuesReaderState(searcher.getIndexReader());
@@ -218,7 +219,7 @@ public class TestSortedSetDocValuesFacets extends FacetTestCase {
 
     // NRT open
     IndexSearcher searcher = newSearcher(writer.getReader());
-    writer.close();
+    writer.shutdown();
 
     // Per-top-reader state:
     SortedSetDocValuesReaderState state = new DefaultSortedSetDocValuesReaderState(searcher.getIndexReader());
@@ -265,7 +266,8 @@ public class TestSortedSetDocValuesFacets extends FacetTestCase {
     // Ask for top 10 labels for any dims that have counts:
     assertEquals("dim=a path=[] value=2 childCount=2\n  foo1 (1)\n  foo2 (1)\n", facets.getTopChildren(10, "a").toString());
 
-    IOUtils.close(writer, searcher.getIndexReader(), dir);
+    writer.shutdown();
+    IOUtils.close(searcher.getIndexReader(), dir);
   }
 
 
@@ -310,7 +312,7 @@ public class TestSortedSetDocValuesFacets extends FacetTestCase {
       // Slow, yet hopefully bug-free, faceting:
       @SuppressWarnings({"rawtypes","unchecked"}) Map<String,Integer>[] expectedCounts = new HashMap[numDims];
       for(int i=0;i<numDims;i++) {
-        expectedCounts[i] = new HashMap<String,Integer>();
+        expectedCounts[i] = new HashMap<>();
       }
 
       for(TestDoc doc : testDocs) {
@@ -328,9 +330,9 @@ public class TestSortedSetDocValuesFacets extends FacetTestCase {
         }
       }
 
-      List<FacetResult> expected = new ArrayList<FacetResult>();
+      List<FacetResult> expected = new ArrayList<>();
       for(int i=0;i<numDims;i++) {
-        List<LabelAndValue> labelValues = new ArrayList<LabelAndValue>();
+        List<LabelAndValue> labelValues = new ArrayList<>();
         int totCount = 0;
         for(Map.Entry<String,Integer> ent : expectedCounts[i].entrySet()) {
           labelValues.add(new LabelAndValue(ent.getKey(), ent.getValue()));
@@ -353,6 +355,7 @@ public class TestSortedSetDocValuesFacets extends FacetTestCase {
       assertEquals(expected, actual);
     }
 
-    IOUtils.close(w, searcher.getIndexReader(), indexDir, taxoDir);
+    w.shutdown();
+    IOUtils.close(searcher.getIndexReader(), indexDir, taxoDir);
   }
 }

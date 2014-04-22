@@ -20,7 +20,6 @@ package org.apache.solr.analytics.expression;
 import com.google.common.collect.ObjectArrays;
 
 import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.util.LuceneTestCase.BadApple;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.analytics.AbstractAnalyticsStatsTest;
@@ -36,7 +35,6 @@ import java.util.ArrayList;
 import java.util.Scanner;
 
 @SuppressCodecs({"Lucene3x", "Lucene40", "Lucene41", "Lucene42", "Appending", "Asserting"})
-@BadApple(bugUrl = "https://issues.apache.org/jira/browse/SOLR-5302")
 public class ExpressionTest extends AbstractAnalyticsStatsTest {
   private static final String fileName = "/analytics/requestFiles/expressions.txt";
 
@@ -237,7 +235,7 @@ public class ExpressionTest extends AbstractAnalyticsStatsTest {
     if (in == null) throw new FileNotFoundException("Resource not found: " + fileName);
     Scanner file = new Scanner(in, "UTF-8");
     try { 
-      ArrayList<String> strList = new ArrayList<String>();
+      ArrayList<String> strList = new ArrayList<>();
       while (file.hasNextLine()) {
         String line = file.nextLine();
         if (line.length()<2) {

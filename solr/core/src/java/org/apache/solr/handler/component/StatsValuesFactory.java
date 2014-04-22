@@ -44,18 +44,10 @@ public class StatsValuesFactory {
   public static StatsValues createStatsValues(SchemaField sf, boolean calcDistinct) {
     // TODO: allow for custom field types
     FieldType fieldType = sf.getType();
-    if (DoubleField.class.isInstance(fieldType) ||
-        IntField.class.isInstance(fieldType) ||
-        LongField.class.isInstance(fieldType) ||
-        FloatField.class.isInstance(fieldType) ||
-        TrieField.class.isInstance(fieldType) ||
-        SortableDoubleField.class.isInstance(fieldType) ||
-        SortableIntField.class.isInstance(fieldType) ||
-        SortableLongField.class.isInstance(fieldType) ||
-        SortableFloatField.class.isInstance(fieldType)) {
-      return new NumericStatsValues(sf, calcDistinct);
-    } else if (DateField.class.isInstance(fieldType)) {
+    if (TrieDateField.class.isInstance(fieldType)) {
       return new DateStatsValues(sf, calcDistinct);
+    } else if (TrieField.class.isInstance(fieldType)) {
+      return new NumericStatsValues(sf, calcDistinct);
     } else if (StrField.class.isInstance(fieldType)) {
       return new StringStatsValues(sf, calcDistinct);
     } else if (sf.getType().getClass().equals(EnumField.class)) {
@@ -88,12 +80,12 @@ abstract class AbstractStatsValues<T> implements StatsValues {
   protected boolean calcDistinct = false;
   
   // facetField   facetValue
-  protected Map<String, Map<String, StatsValues>> facets = new HashMap<String, Map<String, StatsValues>>();
+  protected Map<String, Map<String, StatsValues>> facets = new HashMap<>();
 
   protected AbstractStatsValues(SchemaField sf, boolean calcDistinct) {
     this.sf = sf;
     this.ft = sf.getType();
-    this.distinctValues = new TreeSet<T>();
+    this.distinctValues = new TreeSet<>();
     this.calcDistinct = calcDistinct;
   }
 
@@ -122,7 +114,7 @@ abstract class AbstractStatsValues<T> implements StatsValues {
       NamedList vals = (NamedList) f.getVal(i);
       Map<String, StatsValues> addTo = facets.get(field);
       if (addTo == null) {
-        addTo = new HashMap<String, StatsValues>();
+        addTo = new HashMap<>();
         facets.put(field, addTo);
       }
       for (int j = 0; j < vals.size(); j++) {
@@ -185,7 +177,7 @@ abstract class AbstractStatsValues<T> implements StatsValues {
    */
   @Override
   public NamedList<?> getStatsValues() {
-    NamedList<Object> res = new SimpleOrderedMap<Object>();
+    NamedList<Object> res = new SimpleOrderedMap<>();
 
     res.add("min", min);
     res.add("max", max);
@@ -199,9 +191,9 @@ abstract class AbstractStatsValues<T> implements StatsValues {
     addTypeSpecificStats(res);
 
      // add the facet stats
-    NamedList<NamedList<?>> nl = new SimpleOrderedMap<NamedList<?>>();
+    NamedList<NamedList<?>> nl = new SimpleOrderedMap<>();
     for (Map.Entry<String, Map<String, StatsValues>> entry : facets.entrySet()) {
-      NamedList<NamedList<?>> nl2 = new SimpleOrderedMap<NamedList<?>>();
+      NamedList<NamedList<?>> nl2 = new SimpleOrderedMap<>();
       nl.add(entry.getKey(), nl2);
       for (Map.Entry<String, StatsValues> e2 : entry.getValue().entrySet()) {
         nl2.add(e2.getKey(), e2.getValue().getStatsValues());

@@ -124,13 +124,14 @@ public class FSTTermsWriter extends FieldsConsumer {
   static final String TERMS_EXTENSION = "tmp";
   static final String TERMS_CODEC_NAME = "FST_TERMS_DICT";
   public static final int TERMS_VERSION_START = 0;
-  public static final int TERMS_VERSION_CURRENT = TERMS_VERSION_START;
+  public static final int TERMS_VERSION_CHECKSUM = 1;
+  public static final int TERMS_VERSION_CURRENT = TERMS_VERSION_CHECKSUM;
   
   final PostingsWriterBase postingsWriter;
   final FieldInfos fieldInfos;
-  final IndexOutput out;
+  IndexOutput out;
   final int maxDoc;
-  final List<FieldMetaData> fields = new ArrayList<FieldMetaData>();
+  final List<FieldMetaData> fields = new ArrayList<>();
 
   public FSTTermsWriter(SegmentWriteState state, PostingsWriterBase postingsWriter) throws IOException {
     final String termsFileName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, TERMS_EXTENSION);
@@ -199,28 +200,32 @@ public class FSTTermsWriter extends FieldsConsumer {
   }
 
   public void close() throws IOException {
-    IOException ioe = null;
-    try {
-      // write field summary
-      final long dirStart = out.getFilePointer();
-      
-      out.writeVInt(fields.size());
-      for (FieldMetaData field : fields) {
-        out.writeVInt(field.fieldInfo.number);
-        out.writeVLong(field.numTerms);
-        if (field.fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
-          out.writeVLong(field.sumTotalTermFreq);
+    if (out != null) {
+      IOException ioe = null;
+      try {
+        // write field summary
+        final long dirStart = out.getFilePointer();
+        
+        out.writeVInt(fields.size());
+        for (FieldMetaData field : fields) {
+          out.writeVInt(field.fieldInfo.number);
+          out.writeVLong(field.numTerms);
+          if (field.fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
+            out.writeVLong(field.sumTotalTermFreq);
+          }
+          out.writeVLong(field.sumDocFreq);
+          out.writeVInt(field.docCount);
+          out.writeVInt(field.longsSize);
+          field.dict.save(out);
         }
-        out.writeVLong(field.sumDocFreq);
-        out.writeVInt(field.docCount);
-        out.writeVInt(field.longsSize);
-        field.dict.save(out);
+        writeTrailer(out, dirStart);
+        CodecUtil.writeFooter(out);
+      } catch (IOException ioe2) {
+        ioe = ioe2;
+      } finally {
+        IOUtils.closeWhileHandlingException(ioe, out, postingsWriter);
+        out = null;
       }
-      writeTrailer(out, dirStart);
-    } catch (IOException ioe2) {
-      ioe = ioe2;
-    } finally {
-      IOUtils.closeWhileHandlingException(ioe, out, postingsWriter);
     }
   }
 
@@ -259,7 +264,7 @@ public class FSTTermsWriter extends FieldsConsumer {
       this.fieldInfo = fieldInfo;
       this.longsSize = postingsWriter.setField(fieldInfo);
       this.outputs = new FSTTermOutputs(fieldInfo, longsSize);
-      this.builder = new Builder<FSTTermOutputs.TermData>(FST.INPUT_TYPE.BYTE1, outputs);
+      this.builder = new Builder<>(FST.INPUT_TYPE.BYTE1, outputs);
     }
 
     public void finishTerm(BytesRef text, BlockTermState state) throws IOException {

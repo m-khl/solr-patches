@@ -67,8 +67,8 @@ public class TestSearcherTaxonomyManager extends FacetTestCase {
     @Override
     public void run() {
       try {
-        Set<String> seen = new HashSet<String>();
-        List<String> paths = new ArrayList<String>();
+        Set<String> seen = new HashSet<>();
+        List<String> paths = new ArrayList<>();
         while (true) {
           Document doc = new Document();
           int numPaths = TestUtil.nextInt(random(), 1, 5);
@@ -203,7 +203,8 @@ public class TestSearcherTaxonomyManager extends FacetTestCase {
       System.out.println("TEST: now stop");
     }
 
-    IOUtils.close(mgr, tw, w, taxoDir, dir);
+    w.shutdown();
+    IOUtils.close(mgr, tw, taxoDir, dir);
   }
   
   public void testDirectory() throws Exception {
@@ -255,7 +256,8 @@ public class TestSearcherTaxonomyManager extends FacetTestCase {
       System.out.println("TEST: now stop");
     }
 
-    IOUtils.close(mgr, tw, w, taxoDir, indexDir);
+    w.shutdown();
+    IOUtils.close(mgr, tw, taxoDir, indexDir);
   }
   
   public void testReplaceTaxonomyNRT() throws Exception {
@@ -280,7 +282,8 @@ public class TestSearcherTaxonomyManager extends FacetTestCase {
       // expected
     }
 
-    IOUtils.close(mgr, tw, w, taxoDir, dir);
+    w.shutdown();
+    IOUtils.close(mgr, tw, taxoDir, dir);
   }
   
   public void testReplaceTaxonomyDirectory() throws Exception {
@@ -318,7 +321,8 @@ public class TestSearcherTaxonomyManager extends FacetTestCase {
       mgr.release(pair);
     }
 
-    IOUtils.close(mgr, tw, w, taxoDir, indexDir);
+    w.shutdown();
+    IOUtils.close(mgr, tw, taxoDir, indexDir);
   }
 
 }

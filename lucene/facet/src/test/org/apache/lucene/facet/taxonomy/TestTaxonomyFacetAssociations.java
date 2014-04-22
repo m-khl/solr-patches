@@ -19,6 +19,7 @@ package org.apache.lucene.facet.taxonomy;
 
 
 import org.apache.lucene.document.Document;
+import org.apache.lucene.facet.DrillDownQuery;
 import org.apache.lucene.facet.FacetTestCase;
 import org.apache.lucene.facet.Facets;
 import org.apache.lucene.facet.FacetsCollector;
@@ -85,7 +86,7 @@ public class TestTaxonomyFacetAssociations extends FacetTestCase {
     
     taxoWriter.close();
     reader = writer.getReader();
-    writer.close();
+    writer.shutdown();
     taxoReader = new DirectoryTaxonomyReader(taxoDir);
   }
   
@@ -181,7 +182,8 @@ public class TestTaxonomyFacetAssociations extends FacetTestCase {
     } catch (IllegalArgumentException exc) {
       // expected
     }
-    IOUtils.close(writer, taxoWriter, dir, taxoDir);
+    writer.shutdown();
+    IOUtils.close(taxoWriter, dir, taxoDir);
   }
 
   public void testNoHierarchy() throws Exception {
@@ -201,7 +203,8 @@ public class TestTaxonomyFacetAssociations extends FacetTestCase {
     } catch (IllegalArgumentException exc) {
       // expected
     }
-    IOUtils.close(writer, taxoWriter, dir, taxoDir);
+    writer.shutdown();
+    IOUtils.close(taxoWriter, dir, taxoDir);
   }
 
   public void testRequireDimCount() throws Exception {
@@ -221,6 +224,22 @@ public class TestTaxonomyFacetAssociations extends FacetTestCase {
     } catch (IllegalArgumentException exc) {
       // expected
     }
-    IOUtils.close(writer, taxoWriter, dir, taxoDir);
+    writer.shutdown();
+    IOUtils.close(taxoWriter, dir, taxoDir);
   }
+  
+  public void testIntSumAssociationDrillDown() throws Exception {
+    FacetsCollector fc = new FacetsCollector();
+    
+    IndexSearcher searcher = newSearcher(reader);
+    DrillDownQuery q = new DrillDownQuery(config);
+    q.add("int", "b");
+    searcher.search(q, fc);
+
+    Facets facets = new TaxonomyFacetSumIntAssociations("$facets.int", taxoReader, config, fc);
+    assertEquals("dim=int path=[] value=-1 childCount=2\n  b (150)\n  a (100)\n", facets.getTopChildren(10, "int").toString());
+    assertEquals("Wrong count for category 'a'!", 100, facets.getSpecificValue("int", "a").intValue());
+    assertEquals("Wrong count for category 'b'!", 150, facets.getSpecificValue("int", "b").intValue());
+  }
+
 }

@@ -65,7 +65,7 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
   public abstract ValueSource parse(FunctionQParser fp) throws SyntaxError;
 
   /* standard functions */
-  public static Map<String, ValueSourceParser> standardValueSourceParsers = new HashMap<String, ValueSourceParser>();
+  public static Map<String, ValueSourceParser> standardValueSourceParsers = new HashMap<>();
 
   /** Adds a new parser for the name and returns any existing one that was overriden.
    *  This is not thread safe.
@@ -849,8 +849,8 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
       }
     } else {
       int dim = sources.size() / 2;
-      List<ValueSource> sources1 = new ArrayList<ValueSource>(dim);
-      List<ValueSource> sources2 = new ArrayList<ValueSource>(dim);
+      List<ValueSource> sources1 = new ArrayList<>(dim);
+      List<ValueSource> sources2 = new ArrayList<>(dim);
       //Get dim value sources for the first vector
       splitSources(dim, sources, sources1, sources2);
       mvr.mv1 = new VectorValueSource(sources1);
@@ -876,7 +876,7 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
 
 
 class DateValueSourceParser extends ValueSourceParser {
-  DateField df = new TrieDateField();
+  TrieDateField df = new TrieDateField();
 
   @Override
   public void init(NamedList args) {
@@ -893,9 +893,6 @@ class DateValueSourceParser extends ValueSourceParser {
   public ValueSource getValueSource(FunctionQParser fp, String arg) {
     if (arg == null) return null;
     SchemaField f = fp.req.getSchema().getField(arg);
-    if (f.getType().getClass() == DateField.class) {
-      throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Can't use ms() function on non-numeric legacy date field " + arg);
-    }
     return f.getType().getValueSource(f, fp);
   }
 

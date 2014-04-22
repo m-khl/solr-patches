@@ -18,6 +18,7 @@ package org.apache.lucene.index;
  */
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -56,8 +57,6 @@ import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.MockDirectoryWrapper.Throttling;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.TestUtil;
 
 import com.carrotsearch.randomizedtesting.generators.RandomInts;
@@ -69,28 +68,16 @@ import com.carrotsearch.randomizedtesting.generators.RandomPicks;
  * uses it and extend this class and override {@link #getCodec()}.
  * @lucene.experimental
  */
-public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
-  private Codec savedCodec;
-
-  /**
-   * Returns the Codec to run tests against
-   */
-  protected abstract Codec getCodec();
+public abstract class BaseStoredFieldsFormatTestCase extends BaseIndexFileFormatTestCase {
 
   @Override
-  public void setUp() throws Exception {
-    super.setUp();
-    // set the default codec, so adding test cases to this isn't fragile
-    savedCodec = Codec.getDefault();
-    Codec.setDefault(getCodec());
+  protected void addRandomFields(Document d) {
+    final int numValues = random().nextInt(3);
+    for (int i = 0; i < numValues; ++i) {
+      d.add(new StoredField("f", TestUtil.randomSimpleString(random(), 100)));
+    }
   }
 
-  @Override
-  public void tearDown() throws Exception {
-    Codec.setDefault(savedCodec); // restore
-    super.tearDown();
-  }
-  
   public void testRandomStoredFields() throws IOException {
     Directory dir = newDirectory();
     Random rand = random();
@@ -99,7 +86,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
     final int docCount = atLeast(200);
     final int fieldCount = TestUtil.nextInt(rand, 1, 5);
 
-    final List<Integer> fieldIDs = new ArrayList<Integer>();
+    final List<Integer> fieldIDs = new ArrayList<>();
 
     FieldType customType = new FieldType(TextField.TYPE_STORED);
     customType.setTokenized(false);
@@ -109,7 +96,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
       fieldIDs.add(i);
     }
 
-    final Map<String,Document> docs = new HashMap<String,Document>();
+    final Map<String,Document> docs = new HashMap<>();
 
     if (VERBOSE) {
       System.out.println("TEST: build index docCount=" + docCount);
@@ -183,7 +170,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
         w.forceMerge(1);
       }
     }
-    w.close();
+    w.shutdown();
     dir.close();
   }
   
@@ -218,7 +205,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
     assertEquals(f.stringValue(), "1 2 3");
     assertFalse(it.hasNext());
     r.close();
-    w.close();
+    w.shutdown();
     d.close();
   }
   
@@ -239,7 +226,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
     assertEquals(17, f.binaryValue().length);
     doc.add(f);
     w.addDocument(doc);
-    w.close();
+    w.shutdown();
 
     IndexReader ir = DirectoryReader.open(dir);
     StoredDocument doc2 = ir.document(0);
@@ -305,7 +292,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
       w.addDocument(doc);
     }
     final DirectoryReader r = w.getReader();
-    w.close();
+    w.shutdown();
     
     assertEquals(numDocs, r.numDocs());
 
@@ -333,7 +320,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
     doc.add(new StringField("field2", "value", Field.Store.YES));
     w.addDocument(doc);
     IndexReader r = w.getReader();
-    w.close();
+    w.shutdown();
     assertFalse(r.document(0).getField("field").fieldType().indexed());
     assertTrue(r.document(0).getField("field2").fieldType().indexed());
     r.close();
@@ -351,7 +338,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
     ft.freeze();
 
     final String string = TestUtil.randomSimpleString(random(), 50);
-    final byte[] bytes = string.getBytes("UTF-8");
+    final byte[] bytes = string.getBytes(StandardCharsets.UTF_8);
     final long l = random().nextBoolean() ? random().nextInt(42) : random().nextLong();
     final int i = random().nextBoolean() ? random().nextInt(42) : random().nextInt();
     final float f = random().nextFloat();
@@ -389,7 +376,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
       }
     }
     reader.close();
-    iw.close();
+    iw.shutdown();
     dir.close();
   }
   
@@ -414,7 +401,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
     }
     rd.close();
     
-    iw.close();
+    iw.shutdown();
     dir.close();
   }
   
@@ -439,8 +426,8 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
     final IndexSearcher searcher = new IndexSearcher(rd);
     final int concurrentReads = atLeast(5);
     final int readsPerThread = atLeast(50);
-    final List<Thread> readThreads = new ArrayList<Thread>();
-    final AtomicReference<Exception> ex = new AtomicReference<Exception>();
+    final List<Thread> readThreads = new ArrayList<>();
+    final AtomicReference<Exception> ex = new AtomicReference<>();
     for (int i = 0; i < concurrentReads; ++i) {
       readThreads.add(new Thread() {
 
@@ -487,7 +474,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
       throw ex.get();
     }
     
-    iw.close();
+    iw.shutdown();
     dir.close();
   }
   
@@ -542,7 +529,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
       }
       iw.w.addDocument(doc);
       if (random().nextBoolean() && (i % (data.length / 10) == 0)) {
-        iw.w.close();
+        iw.w.shutdown();
         // test merging against a non-compressing codec
         if (iwConf.getCodec() == otherCodec) {
           iwConf.setCodec(Codec.getDefault());
@@ -588,7 +575,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
     iw.commit();
     iw.forceMerge(1);
     
-    iw.close();
+    iw.shutdown();
     dir.close();
   }
   
@@ -598,7 +585,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
     // for this test we force a FS dir
     // we can't just use newFSDirectory, because this test doesn't really index anything.
     // so if we get NRTCachingDir+SimpleText, we make massive stored fields and OOM (LUCENE-4484)
-    Directory dir = new MockDirectoryWrapper(random(), new MMapDirectory(TestUtil.getTempDir("testBigDocuments")));
+    Directory dir = new MockDirectoryWrapper(random(), new MMapDirectory(createTempDir("testBigDocuments")));
     IndexWriterConfig iwConf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
     iwConf.setMaxBufferedDocs(RandomInts.randomIntBetween(random(), 2, 30));
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwConf);
@@ -657,7 +644,33 @@ public abstract class BaseStoredFieldsFormatTestCase extends LuceneTestCase {
       }
     }
     rd.close();
-    iw.close();
+    iw.shutdown();
     dir.close();
   }
+
+  public void testBulkMergeWithDeletes() throws IOException {
+    final int numDocs = atLeast(200);
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMergePolicy(NoMergePolicy.COMPOUND_FILES));
+    for (int i = 0; i < numDocs; ++i) {
+      Document doc = new Document();
+      doc.add(new StringField("id", Integer.toString(i), Store.YES));
+      doc.add(new StoredField("f", TestUtil.randomSimpleString(random())));
+      w.addDocument(doc);
+    }
+    final int deleteCount = TestUtil.nextInt(random(), 5, numDocs);
+    for (int i = 0; i < deleteCount; ++i) {
+      final int id = random().nextInt(numDocs);
+      w.deleteDocuments(new Term("id", Integer.toString(id)));
+    }
+    w.commit();
+    w.close();
+    w = new RandomIndexWriter(random(), dir);
+    w.forceMerge(TestUtil.nextInt(random(), 1, 3));
+    w.commit();
+    w.close();
+    TestUtil.checkIndex(dir);
+    dir.close();
+  }
+
 }

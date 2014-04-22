@@ -118,7 +118,7 @@ public class TestGraphTokenizers extends BaseTokenStreamTestCase {
 
       final String[] parts = sb.toString().split(" ");
 
-      tokens = new ArrayList<Token>();
+      tokens = new ArrayList<>();
       int pos = 0;
       int maxPos = -1;
       int offset = 0;
@@ -445,7 +445,7 @@ public class TestGraphTokenizers extends BaseTokenStreamTestCase {
     final String s = a.toDot();
     Writer w = new OutputStreamWriter(new FileOutputStream("/x/tmp/out.dot"));
     w.write(s);
-    w.close();
+    w.shutdown();
     System.out.println("TEST: saved to /x/tmp/out.dot");
   }
   */
@@ -454,7 +454,7 @@ public class TestGraphTokenizers extends BaseTokenStreamTestCase {
   private static final Automaton HOLE_A = BasicAutomata.makeChar(TokenStreamToAutomaton.HOLE);
 
   private Automaton join(String ... strings) {
-    List<Automaton> as = new ArrayList<Automaton>();
+    List<Automaton> as = new ArrayList<>();
     for(String s : strings) {
       as.add(BasicAutomata.makeString(s));
       as.add(SEP_A);

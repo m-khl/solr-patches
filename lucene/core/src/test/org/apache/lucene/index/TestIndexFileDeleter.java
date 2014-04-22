@@ -66,7 +66,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     for(;i<45;i++) {
       addDoc(writer, i);
     }
-    writer.close();
+    writer.shutdown();
 
     // Delete one doc so we get a .del file:
     writer = new IndexWriter(
@@ -76,7 +76,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     );
     Term searchTerm = new Term("id", "7");
     writer.deleteDocuments(searchTerm);
-    writer.close();
+    writer.shutdown();
 
     // Now, artificially create an extra .del file & extra
     // .s0 file:
@@ -116,8 +116,8 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     // Create a bogus cfs file shadowing a non-cfs segment:
     
     // TODO: assert is bogus (relies upon codec-specific filenames)
-    assertTrue(dir.fileExists("_3.fdt") || dir.fileExists("_3.fld"));
-    assertTrue(!dir.fileExists("_3.cfs"));
+    assertTrue(slowFileExists(dir, "_3.fdt") || slowFileExists(dir, "_3.fld"));
+    assertTrue(!slowFileExists(dir, "_3.cfs"));
     copyFile(dir, "_1.cfs", "_3.cfs");
     
     String[] filesPre = dir.listAll();
@@ -125,7 +125,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     // Open & close a writer: it should delete the above 4
     // files and nothing more:
     writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setOpenMode(OpenMode.APPEND));
-    writer.close();
+    writer.shutdown();
 
     String[] files2 = dir.listAll();
     dir.close();
@@ -141,9 +141,9 @@ public class TestIndexFileDeleter extends LuceneTestCase {
   }
 
   private static Set<String> difFiles(String[] files1, String[] files2) {
-    Set<String> set1 = new HashSet<String>();
-    Set<String> set2 = new HashSet<String>();
-    Set<String> extra = new HashSet<String>();
+    Set<String> set1 = new HashSet<>();
+    Set<String> set2 = new HashSet<>();
+    Set<String> extra = new HashSet<>();
     
     for (int x=0; x < files1.length; x++) {
       set1.add(files1[x]);

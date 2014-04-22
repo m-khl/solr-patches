@@ -60,6 +60,7 @@ import org.apache.lucene.index.StoredFieldVisitor;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Collector;
@@ -71,9 +72,11 @@ import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
+import org.apache.lucene.search.MultiCollector;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
@@ -153,7 +156,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
   
   // map of generic caches - not synchronized since it's read-only after the constructor.
   private final HashMap<String, SolrCache> cacheMap;
-  private static final HashMap<String, SolrCache> noGenericCaches=new HashMap<String,SolrCache>(0);
+  private static final HashMap<String, SolrCache> noGenericCaches=new HashMap<>(0);
 
   // list of all caches associated with this searcher.
   private final SolrCache[] cacheList;
@@ -225,7 +228,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     
     cachingEnabled=enableCache;
     if (cachingEnabled) {
-      ArrayList<SolrCache> clist = new ArrayList<SolrCache>();
+      ArrayList<SolrCache> clist = new ArrayList<>();
       fieldValueCache = solrConfig.fieldValueCacheConfig==null ? null : solrConfig.fieldValueCacheConfig.newInstance();
       if (fieldValueCache!=null) clist.add(fieldValueCache);
       filterCache= solrConfig.filterCacheConfig==null ? null : solrConfig.filterCacheConfig.newInstance();
@@ -238,7 +241,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       if (solrConfig.userCacheConfigs == null) {
         cacheMap = noGenericCaches;
       } else {
-        cacheMap = new HashMap<String,SolrCache>(solrConfig.userCacheConfigs.length);
+        cacheMap = new HashMap<>(solrConfig.userCacheConfigs.length);
         for (CacheConfig userCacheConfig : solrConfig.userCacheConfigs) {
           SolrCache cache = null;
           if (userCacheConfig != null) cache = userCacheConfig.newInstance();
@@ -263,7 +266,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
 //    optimizer = solrConfig.filtOptEnabled ? new LuceneQueryOptimizer(solrConfig.filtOptCacheSize,solrConfig.filtOptThreshold) : null;
     optimizer = null;
     
-    fieldNames = new HashSet<String>();
+    fieldNames = new HashSet<>();
     fieldInfos = atomicReader.getFieldInfos();
     for(FieldInfo fieldInfo : fieldInfos) {
       fieldNames.add(fieldInfo.name);
@@ -272,7 +275,9 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     // do this at the end since an exception in the constructor means we won't close    
     numOpens.incrementAndGet();
   }
-  
+
+  public boolean isCachingEnabled() { return cachingEnabled; }
+
   public String getPath() {
     return path;
   }
@@ -388,7 +393,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
   public Collection<String> getStoredHighlightFieldNames() {
     synchronized (this) {
       if (storedHighlightFieldNames == null) {
-        storedHighlightFieldNames = new LinkedList<String>();
+        storedHighlightFieldNames = new LinkedList<>();
         for (String fieldName : fieldNames) {
           try {
             SchemaField field = schema.getField(fieldName);
@@ -928,17 +933,17 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
         if (idIter == null) continue;
       }
 
-      collector.setNextReader(leaf);
+      final LeafCollector leafCollector = collector.getLeafCollector(leaf);
       int max = reader.maxDoc();
 
       if (idIter == null) {
         for (int docid = 0; docid<max; docid++) {
           if (liveDocs != null && !liveDocs.get(docid)) continue;
-          collector.collect(docid);
+          leafCollector.collect(docid);
         }
       } else {
         for (int docid = -1; (docid = idIter.advance(docid+1)) < max; ) {
-          collector.collect(docid);
+          leafCollector.collect(docid);
         }
       }
     }
@@ -980,10 +985,10 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
         ExtendedQuery eq = (ExtendedQuery)q;
         if (!eq.getCache()) {
           if (eq.getCost() >= 100 && eq instanceof PostFilter) {
-            if (postFilters == null) postFilters = new ArrayList<Query>(sets.length-end);
+            if (postFilters == null) postFilters = new ArrayList<>(sets.length-end);
             postFilters.add(q);
           } else {
-            if (notCached == null) notCached = new ArrayList<Query>(sets.length-end);
+            if (notCached == null) notCached = new ArrayList<>(sets.length-end);
             notCached.add(q);
           }
           continue;
@@ -992,7 +997,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       
       if (filterCache == null) {
         // there is no cache: don't pull bitsets
-        if (notCached == null) notCached = new ArrayList<Query>(sets.length-end);
+        if (notCached == null) notCached = new ArrayList<>(sets.length-end);
         WrappedQuery uncached = new WrappedQuery(q);
         uncached.setCache(false);
         notCached.add(uncached);
@@ -1036,7 +1041,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
 
     if (notCached != null) {
       Collections.sort(notCached, sortByCost);
-      List<Weight> weights = new ArrayList<Weight>(notCached.size());
+      List<Weight> weights = new ArrayList<>(notCached.size());
       for (Query q : notCached) {
         Query qq = QueryUtils.makeQueryable(q);
         weights.add(createNormalizedWeight(qq));
@@ -1323,7 +1328,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
               if (cmd.getFilterList()==null) {
                 out.docSet = getDocSet(cmd.getQuery());
               } else {
-                List<Query> newList = new ArrayList<Query>(cmd.getFilterList().size()+1);
+                List<Query> newList = new ArrayList<>(cmd.getFilterList().size()+1);
                 newList.add(cmd.getQuery());
                 newList.addAll(cmd.getFilterList());
                 out.docSet = getDocSet(newList);
@@ -1524,16 +1529,10 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       Collector collector;
 
       if (!needScores) {
-        collector = new Collector () {
-          @Override
-          public void setScorer(Scorer scorer) {
-          }
+        collector = new SimpleCollector () {
           @Override
           public void collect(int doc) {
             numHits[0]++;
-          }
-          @Override
-          public void setNextReader(AtomicReaderContext context) {
           }
           @Override
           public boolean acceptsDocsOutOfOrder() {
@@ -1541,7 +1540,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
           }
         };
       } else {
-        collector = new Collector() {
+        collector = new SimpleCollector() {
           Scorer scorer;
           @Override
           public void setScorer(Scorer scorer) {
@@ -1552,9 +1551,6 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
             numHits[0]++;
             float score = scorer.score();
             if (score > topscore[0]) topscore[0]=score;            
-          }
-          @Override
-          public void setNextReader(AtomicReaderContext context) {
           }
           @Override
           public boolean acceptsDocsOutOfOrder() {
@@ -1665,30 +1661,33 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       final float[] topscore = new float[] { Float.NEGATIVE_INFINITY };
 
       Collector collector;
-      DocSetCollector setCollector;
+      final DocSetCollector setCollector = new DocSetCollector(smallSetSize, maxDoc);
 
        if (!needScores) {
-         collector = setCollector = new DocSetCollector(smallSetSize, maxDoc);
+         collector = setCollector;
        } else {
-         collector = setCollector = new DocSetDelegateCollector(smallSetSize, maxDoc, new Collector() {
+         final Collector topScoreCollector = new SimpleCollector() {
+          
            Scorer scorer;
+           
            @Override
-          public void setScorer(Scorer scorer) {
-             this.scorer = scorer;
-           }
-           @Override
+          public void setScorer(Scorer scorer) throws IOException {
+            this.scorer = scorer;
+          }
+           
+          @Override
           public void collect(int doc) throws IOException {
-             float score = scorer.score();
-             if (score > topscore[0]) topscore[0]=score;
-           }
-           @Override
-          public void setNextReader(AtomicReaderContext context) {
-           }
-           @Override
+            float score = scorer.score();
+            if (score > topscore[0]) topscore[0] = score;
+          }
+          
+          @Override
           public boolean acceptsDocsOutOfOrder() {
-             return false;
-           }
-         });
+            return true;
+          }
+        };
+        
+        collector = MultiCollector.wrap(setCollector, topScoreCollector);
        }
        if (terminateEarly) {
          collector = new EarlyTerminatingCollector(collector, cmd.len);
@@ -1724,8 +1723,8 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     } else {
 
       final TopDocsCollector topCollector = buildTopDocsCollector(len, cmd);
-      DocSetCollector setCollector = new DocSetDelegateCollector(maxDoc>>6, maxDoc, topCollector);
-      Collector collector = setCollector;
+      DocSetCollector setCollector = new DocSetCollector(maxDoc>>6, maxDoc);
+      Collector collector = MultiCollector.wrap(topCollector, setCollector);
       if (terminateEarly) {
         collector = new EarlyTerminatingCollector(collector, cmd.len);
       }
@@ -2029,7 +2028,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
         AtomicReaderContext leaf = leafContexts.get(readerIndex++);
         base = leaf.docBase;
         end = base + leaf.reader().maxDoc();
-        topCollector.setNextReader(leaf);
+        topCollector.getLeafCollector(leaf);
         // we should never need to set the scorer given the settings for the collector
       }
       topCollector.collect(doc-base);
@@ -2241,7 +2240,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
 
   @Override
   public NamedList<Object> getStatistics() {
-    NamedList<Object> lst = new SimpleOrderedMap<Object>();
+    NamedList<Object> lst = new SimpleOrderedMap<>();
     lst.add("searcherName", name);
     lst.add("caching", cachingEnabled);
     lst.add("numDocs", reader.numDocs());
@@ -2319,7 +2318,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       }
       filterList = null;
       if (f != null) {
-        filterList = new ArrayList<Query>(2);
+        filterList = new ArrayList<>(2);
         filterList.add(f);
       }
       return this;
@@ -2465,14 +2464,14 @@ class FilterImpl extends Filter {
 
     @Override
     public DocIdSetIterator iterator() throws IOException {
-      List<DocIdSetIterator> iterators = new ArrayList<DocIdSetIterator>(weights.size()+1);
+      List<DocIdSetIterator> iterators = new ArrayList<>(weights.size()+1);
       if (docIdSet != null) {
         DocIdSetIterator iter = docIdSet.iterator();
         if (iter == null) return null;
         iterators.add(iter);
       }
       for (Weight w : weights) {
-        Scorer scorer = w.scorer(context, true, false, context.reader().getLiveDocs());
+        Scorer scorer = w.scorer(context, context.reader().getLiveDocs());
         if (scorer == null) return null;
         iterators.add(scorer);
       }

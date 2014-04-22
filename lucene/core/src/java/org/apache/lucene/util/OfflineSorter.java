@@ -94,7 +94,7 @@ public final class OfflineSorter {
     
     /**
      * Creates a {@link BufferSize} in MB. The given 
-     * values must be $gt; 0 and &lt; 2048.
+     * values must be &gt; 0 and &lt; 2048.
      */
     public static BufferSize megabytes(long mb) {
       return new BufferSize(mb * MB);
@@ -225,7 +225,7 @@ public final class OfflineSorter {
 
     output.delete();
 
-    ArrayList<File> merges = new ArrayList<File>();
+    ArrayList<File> merges = new ArrayList<>();
     boolean success2 = false;
     try {
       ByteSequencesReader is = new ByteSequencesReader(input);

@@ -134,13 +134,13 @@ public class TestBlockPostingsFormat3 extends LuceneTestCase {
       field8.setStringValue(stringValue);
       iw.addDocument(doc);
     }
-    iw.close();
+    iw.shutdown();
     verify(dir);
     TestUtil.checkIndex(dir); // for some extra coverage, checkIndex before we forceMerge
     iwc.setOpenMode(OpenMode.APPEND);
     IndexWriter iw2 = new IndexWriter(dir, iwc.clone());
     iw2.forceMerge(1);
-    iw2.close();
+    iw2.shutdown();
     verify(dir);
     dir.close();
   }
@@ -201,7 +201,7 @@ public class TestBlockPostingsFormat3 extends LuceneTestCase {
     Random random = random();
     
     // collect this number of terms from the left side
-    HashSet<BytesRef> tests = new HashSet<BytesRef>();
+    HashSet<BytesRef> tests = new HashSet<>();
     int numPasses = 0;
     while (numPasses < 10 && tests.size() < numTests) {
       leftEnum = leftTerms.iterator(leftEnum);
@@ -228,7 +228,7 @@ public class TestBlockPostingsFormat3 extends LuceneTestCase {
       numPasses++;
     }
     
-    ArrayList<BytesRef> shuffledTests = new ArrayList<BytesRef>(tests);
+    ArrayList<BytesRef> shuffledTests = new ArrayList<>(tests);
     Collections.shuffle(shuffledTests, random);
     
     for (BytesRef b : shuffledTests) {

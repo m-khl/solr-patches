@@ -79,7 +79,7 @@ public class TestPhraseQuery extends LuceneTestCase {
     writer.addDocument(doc);
 
     reader = writer.getReader();
-    writer.close();
+    writer.shutdown();
 
     searcher = newSearcher(reader);
   }
@@ -220,7 +220,7 @@ public class TestPhraseQuery extends LuceneTestCase {
     doc.add(newTextField("field", "the stop words are here", Field.Store.YES));
     writer.addDocument(doc);
     IndexReader reader = writer.getReader();
-    writer.close();
+    writer.shutdown();
 
     IndexSearcher searcher = newSearcher(reader);
 
@@ -250,7 +250,7 @@ public class TestPhraseQuery extends LuceneTestCase {
     writer.addDocument(doc);
     
     IndexReader reader = writer.getReader();
-    writer.close();
+    writer.shutdown();
     
     IndexSearcher searcher = newSearcher(reader);
     
@@ -288,7 +288,7 @@ public class TestPhraseQuery extends LuceneTestCase {
     writer.addDocument(doc);
 
     reader = writer.getReader();
-    writer.close();
+    writer.shutdown();
     
     searcher = newSearcher(reader);
     
@@ -341,7 +341,7 @@ public class TestPhraseQuery extends LuceneTestCase {
     writer.addDocument(doc3);
     
     IndexReader reader = writer.getReader();
-    writer.close();
+    writer.shutdown();
 
     IndexSearcher searcher = newSearcher(reader);
     searcher.setSimilarity(new DefaultSimilarity());
@@ -590,7 +590,7 @@ public class TestPhraseQuery extends LuceneTestCase {
     Analyzer analyzer = new MockAnalyzer(random());
 
     RandomIndexWriter w  = new RandomIndexWriter(random(), dir, newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer).setMergePolicy(newLogMergePolicy()));
-    List<List<String>> docs = new ArrayList<List<String>>();
+    List<List<String>> docs = new ArrayList<>();
     Document d = new Document();
     Field f = newTextField("f", "", Field.Store.NO);
     d.add(f);
@@ -602,7 +602,7 @@ public class TestPhraseQuery extends LuceneTestCase {
       // must be > 4096 so it spans multiple chunks
       int termCount = TestUtil.nextInt(random(), 4097, 8200);
 
-      List<String> doc = new ArrayList<String>();
+      List<String> doc = new ArrayList<>();
 
       StringBuilder sb = new StringBuilder();
       while(doc.size() < termCount) {
@@ -644,7 +644,7 @@ public class TestPhraseQuery extends LuceneTestCase {
 
     IndexReader reader = w.getReader();
     IndexSearcher s = newSearcher(reader);
-    w.close();
+    w.shutdown();
 
     // now search
     int num = atLeast(10);

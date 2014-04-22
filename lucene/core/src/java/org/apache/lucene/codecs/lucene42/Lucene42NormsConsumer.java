@@ -34,14 +34,12 @@ import org.apache.lucene.util.packed.BlockPackedWriter;
 import org.apache.lucene.util.packed.PackedInts.FormatAndBits;
 import org.apache.lucene.util.packed.PackedInts;
 
+import static org.apache.lucene.codecs.lucene42.Lucene42DocValuesProducer.VERSION_CURRENT;
+
 /**
  * Writer for {@link Lucene42NormsFormat}
  */
-class Lucene42NormsConsumer extends DocValuesConsumer {
-  static final int VERSION_START = 0;
-  static final int VERSION_GCD_COMPRESSION = 1;
-  static final int VERSION_CURRENT = VERSION_GCD_COMPRESSION;
-  
+class Lucene42NormsConsumer extends DocValuesConsumer { 
   static final byte NUMBER = 0;
 
   static final int BLOCK_SIZE = 4096;
@@ -51,7 +49,7 @@ class Lucene42NormsConsumer extends DocValuesConsumer {
   static final byte UNCOMPRESSED = 2;
   static final byte GCD_COMPRESSED = 3;
 
-  final IndexOutput data, meta;
+  IndexOutput data, meta;
   final int maxDoc;
   final float acceptableOverheadRatio;
   
@@ -131,7 +129,7 @@ class Lucene42NormsConsumer extends DocValuesConsumer {
       } else {
         meta.writeByte(TABLE_COMPRESSED); // table-compressed
         Long[] decode = uniqueValues.toArray(new Long[uniqueValues.size()]);
-        final HashMap<Long,Integer> encode = new HashMap<Long,Integer>();
+        final HashMap<Long,Integer> encode = new HashMap<>();
         data.writeVInt(decode.length);
         for (int i = 0; i < decode.length; i++) {
           data.writeLong(decode[i]);
@@ -181,6 +179,10 @@ class Lucene42NormsConsumer extends DocValuesConsumer {
     try {
       if (meta != null) {
         meta.writeVInt(-1); // write EOF marker
+        CodecUtil.writeFooter(meta); // write checksum
+      }
+      if (data != null) {
+        CodecUtil.writeFooter(data); // write checksum
       }
       success = true;
     } finally {
@@ -189,6 +191,7 @@ class Lucene42NormsConsumer extends DocValuesConsumer {
       } else {
         IOUtils.closeWhileHandlingException(data, meta);
       }
+      meta = data = null;
     }
   }
 

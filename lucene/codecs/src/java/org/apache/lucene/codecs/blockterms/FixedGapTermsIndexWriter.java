@@ -26,7 +26,6 @@ import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.util.packed.MonotonicAppendingLongBuffer;
 import org.apache.lucene.util.packed.MonotonicBlockPackedWriter;
 import org.apache.lucene.util.packed.PackedInts;
 
@@ -43,7 +42,7 @@ import java.io.IOException;
  *
  * @lucene.experimental */
 public class FixedGapTermsIndexWriter extends TermsIndexWriterBase {
-  protected final IndexOutput out;
+  protected IndexOutput out;
 
   /** Extension of terms index file */
   static final String TERMS_INDEX_EXTENSION = "tii";
@@ -52,13 +51,14 @@ public class FixedGapTermsIndexWriter extends TermsIndexWriterBase {
   final static int VERSION_START = 0;
   final static int VERSION_APPEND_ONLY = 1;
   final static int VERSION_MONOTONIC_ADDRESSING = 2;
-  final static int VERSION_CURRENT = VERSION_MONOTONIC_ADDRESSING;
+  final static int VERSION_CHECKSUM = 3;
+  final static int VERSION_CURRENT = VERSION_CHECKSUM;
 
   final static int BLOCKSIZE = 4096;
   final private int termIndexInterval;
   public static final int DEFAULT_TERM_INDEX_INTERVAL = 32;
 
-  private final List<SimpleFieldWriter> fields = new ArrayList<SimpleFieldWriter>();
+  private final List<SimpleFieldWriter> fields = new ArrayList<>();
   
   public FixedGapTermsIndexWriter(SegmentWriteState state) throws IOException {
     this(state, DEFAULT_TERM_INDEX_INTERVAL);
@@ -207,38 +207,42 @@ public class FixedGapTermsIndexWriter extends TermsIndexWriterBase {
 
   @Override
   public void close() throws IOException {
-    boolean success = false;
-    try {
-      final long dirStart = out.getFilePointer();
-      final int fieldCount = fields.size();
-      
-      int nonNullFieldCount = 0;
-      for(int i=0;i<fieldCount;i++) {
-        SimpleFieldWriter field = fields.get(i);
-        if (field.numIndexTerms > 0) {
-          nonNullFieldCount++;
+    if (out != null) {
+      boolean success = false;
+      try {
+        final long dirStart = out.getFilePointer();
+        final int fieldCount = fields.size();
+        
+        int nonNullFieldCount = 0;
+        for(int i=0;i<fieldCount;i++) {
+          SimpleFieldWriter field = fields.get(i);
+          if (field.numIndexTerms > 0) {
+            nonNullFieldCount++;
+          }
         }
-      }
-      
-      out.writeVInt(nonNullFieldCount);
-      for(int i=0;i<fieldCount;i++) {
-        SimpleFieldWriter field = fields.get(i);
-        if (field.numIndexTerms > 0) {
-          out.writeVInt(field.fieldInfo.number);
-          out.writeVInt(field.numIndexTerms);
-          out.writeVLong(field.termsStart);
-          out.writeVLong(field.indexStart);
-          out.writeVLong(field.packedIndexStart);
-          out.writeVLong(field.packedOffsetsStart);
+        
+        out.writeVInt(nonNullFieldCount);
+        for(int i=0;i<fieldCount;i++) {
+          SimpleFieldWriter field = fields.get(i);
+          if (field.numIndexTerms > 0) {
+            out.writeVInt(field.fieldInfo.number);
+            out.writeVInt(field.numIndexTerms);
+            out.writeVLong(field.termsStart);
+            out.writeVLong(field.indexStart);
+            out.writeVLong(field.packedIndexStart);
+            out.writeVLong(field.packedOffsetsStart);
+          }
         }
-      }
-      writeTrailer(dirStart);
-      success = true;
-    } finally {
-      if (success) {
-        IOUtils.close(out);
-      } else {
-        IOUtils.closeWhileHandlingException(out);
+        writeTrailer(dirStart);
+        CodecUtil.writeFooter(out);
+        success = true;
+      } finally {
+        if (success) {
+          IOUtils.close(out);
+        } else {
+          IOUtils.closeWhileHandlingException(out);
+        }
+        out = null;
       }
     }
   }

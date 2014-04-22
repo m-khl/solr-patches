@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.IOUtils;
@@ -78,7 +79,7 @@ final class StandardDirectoryReader extends DirectoryReader {
     // no need to process segments in reverse order
     final int numSegments = infos.size();
 
-    List<SegmentReader> readers = new ArrayList<SegmentReader>();
+    List<SegmentReader> readers = new ArrayList<>();
     final Directory dir = writer.getDirectory();
 
     final SegmentInfos segmentInfos = infos.clone();
@@ -134,7 +135,7 @@ final class StandardDirectoryReader extends DirectoryReader {
 
     // we put the old SegmentReaders in a map, that allows us
     // to lookup a reader using its segment name
-    final Map<String,Integer> segmentReaders = new HashMap<String,Integer>();
+    final Map<String,Integer> segmentReaders = new HashMap<>();
 
     if (oldReaders != null) {
       // create a Map SegmentName->SegmentReader
@@ -365,11 +366,15 @@ final class StandardDirectoryReader extends DirectoryReader {
     }
 
     if (writer != null) {
-      writer.decRefDeleter(segmentInfos);
-      
-      // Since we just closed, writer may now be able to
-      // delete unused files:
-      writer.deletePendingFiles();
+      try {
+        writer.decRefDeleter(segmentInfos);
+      } catch (AlreadyClosedException ex) {
+        // This is OK, it just means our original writer was
+        // closed before we were, and this may leave some
+        // un-referenced files in the index, which is
+        // harmless.  The next time IW is opened on the
+        // index, it will delete them.
+      }
     }
 
     // throw the first exception

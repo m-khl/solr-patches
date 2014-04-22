@@ -125,8 +125,8 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
           @Override
           public void run() {
             // TODO: would be better if this were cross thread, so that we make sure one thread deleting anothers added docs works:
-            final List<String> toDeleteIDs = new ArrayList<String>();
-            final List<SubDocs> toDeleteSubDocs = new ArrayList<SubDocs>();
+            final List<String> toDeleteIDs = new ArrayList<>();
+            final List<SubDocs> toDeleteSubDocs = new ArrayList<>();
             while(System.currentTimeMillis() < stopTime && !failed.get()) {
               try {
 
@@ -180,9 +180,9 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
                     }
 
                     final Field packIDField = newStringField("packID", packID, Field.Store.YES);
-                    final List<String> docIDs = new ArrayList<String>();
+                    final List<String> docIDs = new ArrayList<>();
                     final SubDocs subDocs = new SubDocs(packID, docIDs);
-                    final List<Document> docsList = new ArrayList<Document>();
+                    final List<Document> docsList = new ArrayList<>();
 
                     allSubDocs.add(subDocs);
                     doc.add(packIDField);
@@ -435,7 +435,7 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
 
     Random random = new Random(random().nextLong());
     final LineFileDocs docs = new LineFileDocs(random, true);
-    final File tempDir = TestUtil.getTempDir(testName);
+    final File tempDir = createTempDir(testName);
     dir = getDirectory(newMockFSDirectory(tempDir)); // some subclasses rely on this being MDW
     if (dir instanceof BaseDirectoryWrapper) {
       ((BaseDirectoryWrapper) dir).setCheckIndexOnClose(false); // don't double-checkIndex, we do it ourselves.
@@ -633,7 +633,8 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
     assertEquals("index=" + writer.segString() + " addCount=" + addCount + " delCount=" + delCount, addCount.get() - delCount.get(), writer.numDocs());
 
     doClose();
-    writer.close(false);
+
+    writer.shutdown(false);
 
     // Cannot shutdown until after writer is closed because
     // writer has merged segment warmer that uses IS to run
@@ -645,7 +646,7 @@ public abstract class ThreadedIndexingAndSearchingTestCase extends LuceneTestCas
 
     TestUtil.checkIndex(dir);
     dir.close();
-    TestUtil.rmDir(tempDir);
+    TestUtil.rm(tempDir);
 
     if (VERBOSE) {
       System.out.println("TEST: done [" + (System.currentTimeMillis()-t0) + " ms]");

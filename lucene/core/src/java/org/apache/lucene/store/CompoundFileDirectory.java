@@ -52,14 +52,15 @@ import java.io.IOException;
  * </ul>
  * <p>Description:</p>
  * <ul>
- *   <li>Compound (.cfs) --&gt; Header, FileData <sup>FileCount</sup></li>
+ *   <li>Compound (.cfs) --&gt; Header, FileData <sup>FileCount</sup>, Footer</li>
  *   <li>Compound Entry Table (.cfe) --&gt; Header, FileCount, &lt;FileName,
  *       DataOffset, DataLength&gt; <sup>FileCount</sup></li>
  *   <li>Header --&gt; {@link CodecUtil#writeHeader CodecHeader}</li>
  *   <li>FileCount --&gt; {@link DataOutput#writeVInt VInt}</li>
- *   <li>DataOffset,DataLength --&gt; {@link DataOutput#writeLong UInt64}</li>
+ *   <li>DataOffset,DataLength,Checksum --&gt; {@link DataOutput#writeLong UInt64}</li>
  *   <li>FileName --&gt; {@link DataOutput#writeString String}</li>
  *   <li>FileData --&gt; raw file data</li>
+ *   <li>Footer --&gt; {@link CodecUtil#writeFooter CodecFooter}</li>
  * </ul>
  * <p>Notes:</p>
  * <ul>
@@ -87,6 +88,7 @@ public final class CompoundFileDirectory extends BaseDirectory {
   private static final Map<String,FileEntry> SENTINEL = Collections.emptyMap();
   private final CompoundFileWriter writer;
   private final IndexInputSlicer handle;
+  private int version;
   
   /**
    * Create a new CompoundFileDirectory.
@@ -120,17 +122,17 @@ public final class CompoundFileDirectory extends BaseDirectory {
   }
 
   /** Helper method that reads CFS entries from an input stream */
-  private static final Map<String, FileEntry> readEntries(Directory dir, String name) throws IOException {
+  private final Map<String, FileEntry> readEntries(Directory dir, String name) throws IOException {
     IOException priorE = null;
-    IndexInput entriesStream = null;
+    ChecksumIndexInput entriesStream = null;
     try {
       final String entriesFileName = IndexFileNames.segmentFileName(
                                             IndexFileNames.stripExtension(name), "",
                                              IndexFileNames.COMPOUND_FILE_ENTRIES_EXTENSION);
-      entriesStream = dir.openInput(entriesFileName, IOContext.READONCE);
-      CodecUtil.checkHeader(entriesStream, CompoundFileWriter.ENTRY_CODEC, CompoundFileWriter.VERSION_START, CompoundFileWriter.VERSION_START);
+      entriesStream = dir.openChecksumInput(entriesFileName, IOContext.READONCE);
+      version = CodecUtil.checkHeader(entriesStream, CompoundFileWriter.ENTRY_CODEC, CompoundFileWriter.VERSION_START, CompoundFileWriter.VERSION_CURRENT);
       final int numEntries = entriesStream.readVInt();
-      final Map<String, FileEntry> mapping = new HashMap<String,FileEntry>(numEntries);
+      final Map<String, FileEntry> mapping = new HashMap<>(numEntries);
       for (int i = 0; i < numEntries; i++) {
         final FileEntry fileEntry = new FileEntry();
         final String id = entriesStream.readString();
@@ -140,6 +142,11 @@ public final class CompoundFileDirectory extends BaseDirectory {
         }
         fileEntry.offset = entriesStream.readLong();
         fileEntry.length = entriesStream.readLong();
+      }
+      if (version >= CompoundFileWriter.VERSION_CHECKSUM) {
+        CodecUtil.checkFooter(entriesStream);
+      } else {
+        CodecUtil.checkEOF(entriesStream);
       }
       return mapping;
     } catch (IOException ioe) {
@@ -202,16 +209,6 @@ public final class CompoundFileDirectory extends BaseDirectory {
       }
     }
     return res;
-  }
-  
-  /** Returns true iff a file with the given name exists. */
-  @Override
-  public boolean fileExists(String name) {
-    ensureOpen();
-    if (this.writer != null) {
-      return writer.fileExists(name);
-    }
-    return entries.containsKey(IndexFileNames.stripSegmentName(name));
   }
   
   /** Not implemented

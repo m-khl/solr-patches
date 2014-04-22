@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.net.ConnectException;
 import java.util.ArrayList;
 import java.util.List;
-
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
@@ -47,8 +46,8 @@ public class SolrCmdDistributor {
   private int retryPause = 500;
   private int maxRetriesOnForward = MAX_RETRIES_ON_FORWARD;
   
-  private List<Error> allErrors = new ArrayList<Error>();
-  private List<Error> errors = new ArrayList<Error>();
+  private List<Error> allErrors = new ArrayList<>();
+  private List<Error> errors = new ArrayList<>();
   
   public static interface AbortCheck {
     public boolean abortCheck();
@@ -76,9 +75,9 @@ public class SolrCmdDistributor {
   private void doRetriesIfNeeded() {
     // NOTE: retries will be forwards to a single url
     
-    List<Error> errors = new ArrayList<Error>(this.errors);
+    List<Error> errors = new ArrayList<>(this.errors);
     errors.addAll(servers.getErrors());
-    List<Error> resubmitList = new ArrayList<Error>();
+    List<Error> resubmitList = new ArrayList<>();
 
     for (Error err : errors) {
       try {
@@ -206,7 +205,7 @@ public class SolrCmdDistributor {
   void addCommit(UpdateRequest ureq, CommitUpdateCommand cmd) {
     if (cmd == null) return;
     ureq.setAction(cmd.optimize ? AbstractUpdateRequest.ACTION.OPTIMIZE
-        : AbstractUpdateRequest.ACTION.COMMIT, false, cmd.waitSearcher, cmd.maxOptimizeSegments, cmd.softCommit, cmd.expungeDeletes);
+        : AbstractUpdateRequest.ACTION.COMMIT, false, cmd.waitSearcher, cmd.maxOptimizeSegments, cmd.softCommit, cmd.expungeDeletes, cmd.openSearcher);
   }
 
   private void submit(Req req) {
@@ -266,7 +265,7 @@ public class SolrCmdDistributor {
 
   
   public static class Response {
-    public List<Error> errors = new ArrayList<Error>();
+    public List<Error> errors = new ArrayList<>();
   }
   
   public static class Error {

@@ -40,7 +40,6 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
-import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.ArrayUtil;
 
 public class TestBufferedIndexInput extends LuceneTestCase {
@@ -223,7 +222,7 @@ public class TestBufferedIndexInput extends LuceneTestCase {
     }
 
     public void testSetBufferSize() throws IOException {
-      File indexDir = TestUtil.getTempDir("testSetBufferSize");
+      File indexDir = createTempDir("testSetBufferSize");
       MockFSDirectory dir = new MockFSDirectory(indexDir, random());
       try {
         IndexWriter writer = new IndexWriter(
@@ -272,16 +271,16 @@ public class TestBufferedIndexInput extends LuceneTestCase {
         hits = searcher.search(new TermQuery(aaa), null, 1000).scoreDocs;
         dir.tweakBufferSizes();
         assertEquals(35, hits.length);
-        writer.close();
+        writer.shutdown();
         reader.close();
       } finally {
-        TestUtil.rmDir(indexDir);
+        TestUtil.rm(indexDir);
       }
     }
 
     private static class MockFSDirectory extends BaseDirectory {
 
-      List<IndexInput> allIndexInputs = new ArrayList<IndexInput>();
+      List<IndexInput> allIndexInputs = new ArrayList<>();
 
       Random rand;
 
@@ -328,12 +327,6 @@ public class TestBufferedIndexInput extends LuceneTestCase {
         throws IOException
       {
         dir.deleteFile(name);
-      }
-      @Override
-      public boolean fileExists(String name)
-        throws IOException
-      {
-        return dir.fileExists(name);
       }
       @Override
       public String[] listAll()

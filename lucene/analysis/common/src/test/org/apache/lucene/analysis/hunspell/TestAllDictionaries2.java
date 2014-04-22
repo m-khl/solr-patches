@@ -19,6 +19,7 @@ package org.apache.lucene.analysis.hunspell;
 
 import java.io.File;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -61,7 +62,7 @@ public class TestAllDictionaries2 extends LuceneTestCase {
     "ceske_slovniky_pro_kontrolu_pravopisu-1.0.4-tb+sm+fx.xpi",                       "dictionaries/cs.dic",                "dictionaries/cs.aff",
     "chichewa_spell_checker-0.3-fx+tb+fn+sm+sb.xpi",                                  "dictionaries/ny_MW.dic",             "dictionaries/ny_MW.aff",
     "corrector_de_galego-13.10.0-fn+sm+tb+fx.xpi",                                    "dictionaries/gl_ES.dic",             "dictionaries/gl_ES.aff",
-    "corrector_orthographic_de_interlingua-6.0-fn+sm+tb+fx.xpi",                      "dictionaries/ia-ia.dic",             "dictionaries/ia-ia.aff",
+//BUG: broken flags "corrector_orthographic_de_interlingua-6.0-fn+sm+tb+fx.xpi",                      "dictionaries/ia-ia.dic",             "dictionaries/ia-ia.aff",
     "corrector_ortografico_aragones-0.2-fx+tb+sm.xpi",                                "dictionaries/an_ES.dic",             "dictionaries/an_ES.aff",
     "croatian_dictionary_-_hrvatski_rjecnik-1.0.1-firefox+thunderbird+seamonkey.xpi", "dictionaries/hr.dic",                "dictionaries/hr.aff",
     "croatian_dictionary_hrvatski_rjecnik-1.0.9-an+fx+fn+tb+sm.xpi",                  "dictionaries/hr-HR.dic",             "dictionaries/hr-HR.aff",
@@ -149,7 +150,7 @@ public class TestAllDictionaries2 extends LuceneTestCase {
 //BUG: broken file (hunspell refuses to load, too)    "thamizha_solthiruthitamil_spellchecker-0.8-fx+tb.xpi",                           "dictionaries/ta_IN.dic",             "dictionaries/ta_IN.aff",
     "tsonga_spell_checker-20110323-tb+sm+fx+fn.xpi",                                  "dictionaries/ts-ZA.dic",             "dictionaries/ts-ZA.aff",
     "tswana_spell_checker-20110323-tb+sm+fx+fn.xpi",                                  "dictionaries/tn-ZA.dic",             "dictionaries/tn-ZA.aff",
-    "turkce_yazm_denetimi-3.5-sm+tb+fx.xpi",                                          "dictionaries/tr.dic",                "dictionaries/tr.aff",
+//BUG: missing FLAG declaration "turkce_yazm_denetimi-3.5-sm+tb+fx.xpi",                                          "dictionaries/tr.dic",                "dictionaries/tr.aff",
     "turkmen_spell_checker_dictionary-0.1.6-tb+fx+sm.xpi",                            "dictionaries/tk_TM.dic",             "dictionaries/tk_TM.aff",
     "ukrainian_dictionary-1.7.0-sm+an+fx+fn+tb.xpi",                                  "dictionaries/uk-UA.dic",             "dictionaries/uk-UA.aff",
     "united_states_english_spellchecker-7.0.1-sm+tb+fx+an.xpi",                       "dictionaries/en-US.dic",             "dictionaries/en-US.aff",
@@ -173,7 +174,7 @@ public class TestAllDictionaries2 extends LuceneTestCase {
       File f = new File(DICTIONARY_HOME, tests[i]);
       assert f.exists();
       
-      try (ZipFile zip = new ZipFile(f, IOUtils.CHARSET_UTF_8)) {
+      try (ZipFile zip = new ZipFile(f, StandardCharsets.UTF_8)) {
         ZipEntry dicEntry = zip.getEntry(tests[i+1]);
         assert dicEntry != null;
         ZipEntry affEntry = zip.getEntry(tests[i+2]);
@@ -185,7 +186,7 @@ public class TestAllDictionaries2 extends LuceneTestCase {
           System.out.println(tests[i] + "\t" + RamUsageEstimator.humanSizeOf(dic) + "\t(" +
                              "words=" + RamUsageEstimator.humanSizeOf(dic.words) + ", " +
                              "flags=" + RamUsageEstimator.humanSizeOf(dic.flagLookup) + ", " +
-                             "strips=" + RamUsageEstimator.humanSizeOf(dic.stripLookup) + ", " +
+                             "strips=" + RamUsageEstimator.humanSizeOf(dic.stripData) + ", " +
                              "conditions=" + RamUsageEstimator.humanSizeOf(dic.patterns) + ", " +
                              "affixData=" + RamUsageEstimator.humanSizeOf(dic.affixData) + ", " +
                              "prefixes=" + RamUsageEstimator.humanSizeOf(dic.prefixes) + ", " +
@@ -202,7 +203,7 @@ public class TestAllDictionaries2 extends LuceneTestCase {
         File f = new File(DICTIONARY_HOME, tests[i]);
         assert f.exists();
         
-        try (ZipFile zip = new ZipFile(f, IOUtils.CHARSET_UTF_8)) {
+        try (ZipFile zip = new ZipFile(f, StandardCharsets.UTF_8)) {
           ZipEntry dicEntry = zip.getEntry(tests[i+1]);
           assert dicEntry != null;
           ZipEntry affEntry = zip.getEntry(tests[i+2]);

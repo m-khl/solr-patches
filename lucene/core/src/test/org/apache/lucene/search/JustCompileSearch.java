@@ -39,7 +39,7 @@ final class JustCompileSearch {
 
   private static final String UNSUPPORTED_MSG = "unsupported: used for back-compat testing only !";
 
-  static final class JustCompileCollector extends Collector {
+  static final class JustCompileCollector extends SimpleCollector {
 
     @Override
     public void collect(int doc) {
@@ -47,7 +47,7 @@ final class JustCompileSearch {
     }
 
     @Override
-    public void setNextReader(AtomicReaderContext context) {
+    protected void doSetNextReader(AtomicReaderContext context) throws IOException {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
 
@@ -232,11 +232,6 @@ final class JustCompileSearch {
     }
 
     @Override
-    public boolean score(Collector collector, int max, int firstDocID) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-    
-    @Override
     public float score() {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
@@ -297,7 +292,7 @@ final class JustCompileSearch {
     }
 
     @Override
-    public void setNextReader(AtomicReaderContext context) {
+    protected void doSetNextReader(AtomicReaderContext context) throws IOException {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
 
@@ -351,8 +346,7 @@ final class JustCompileSearch {
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
-        boolean topScorer, Bits acceptDocs) {
+    public Scorer scorer(AtomicReaderContext context, Bits acceptDocs) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
     

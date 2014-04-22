@@ -73,14 +73,10 @@ import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.handler.component.ResponseBuilder;
 import org.apache.solr.schema.BoolField;
-import org.apache.solr.schema.DateField;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
-import org.apache.solr.schema.SortableDoubleField;
-import org.apache.solr.schema.SortableFloatField;
-import org.apache.solr.schema.SortableIntField;
-import org.apache.solr.schema.SortableLongField;
+import org.apache.solr.schema.TrieDateField;
 import org.apache.solr.schema.TrieField;
 import org.apache.solr.search.BitDocSet;
 import org.apache.solr.search.DocIterator;
@@ -184,7 +180,7 @@ public class SimpleFacets {
     if (tagMap != null && rb != null) {
       List<String> excludeTagList = StrUtils.splitSmart(excludeStr,',');
 
-      IdentityHashMap<Query,Boolean> excludeSet = new IdentityHashMap<Query,Boolean>();
+      IdentityHashMap<Query,Boolean> excludeSet = new IdentityHashMap<>();
       for (String excludeTag : excludeTagList) {
         Object olst = tagMap.get(excludeTag);
         // tagMap has entries of List<String,List<QParser>>, but subject to change in the future
@@ -197,7 +193,7 @@ public class SimpleFacets {
       }
       if (excludeSet.size() == 0) return;
 
-      List<Query> qlist = new ArrayList<Query>();
+      List<Query> qlist = new ArrayList<>();
 
       // add the base query
       if (!excludeSet.containsKey(rb.getQuery())) {
@@ -254,7 +250,7 @@ public class SimpleFacets {
     if (!params.getBool(FacetParams.FACET,true))
       return null;
 
-    facetResponse = new SimpleOrderedMap<Object>();
+    facetResponse = new SimpleOrderedMap<>();
     try {
       facetResponse.add("facet_queries", getFacetQueryCounts());
       facetResponse.add("facet_fields", getFacetFieldCounts());
@@ -277,7 +273,7 @@ public class SimpleFacets {
    */
   public NamedList<Integer> getFacetQueryCounts() throws IOException,SyntaxError {
 
-    NamedList<Integer> res = new SimpleOrderedMap<Integer>();
+    NamedList<Integer> res = new SimpleOrderedMap<>();
 
     /* Ignore CommonParams.DF - could have init param facet.query assuming
      * the schema default with query param DF intented to only affect Q.
@@ -341,7 +337,7 @@ public class SimpleFacets {
   public NamedList<Integer> getTermCounts(String field, DocSet base) throws IOException {
     int offset = params.getFieldInt(field, FacetParams.FACET_OFFSET, 0);
     int limit = params.getFieldInt(field, FacetParams.FACET_LIMIT, 100);
-    if (limit == 0) return new NamedList<Integer>();
+    if (limit == 0) return new NamedList<>();
     Integer mincount = params.getFieldInt(field, FacetParams.FACET_MINCOUNT);
     if (mincount==null) {
       Boolean zeros = params.getFieldBool(field, FacetParams.FACET_ZEROS);
@@ -481,7 +477,7 @@ public class SimpleFacets {
 
     CharsRef charsRef = new CharsRef();
     FieldType facetFieldType = searcher.getSchema().getFieldType(field);
-    NamedList<Integer> facetCounts = new NamedList<Integer>();
+    NamedList<Integer> facetCounts = new NamedList<>();
     List<TermGroupFacetCollector.FacetEntry> scopedEntries 
       = result.getFacetEntries(offset, limit < 0 ? Integer.MAX_VALUE : limit);
     for (TermGroupFacetCollector.FacetEntry facetEntry : scopedEntries) {
@@ -524,7 +520,7 @@ public class SimpleFacets {
   public NamedList<Object> getFacetFieldCounts()
       throws IOException, SyntaxError {
 
-    NamedList<Object> res = new SimpleOrderedMap<Object>();
+    NamedList<Object> res = new SimpleOrderedMap<>();
     String[] facetFs = params.getParams(FacetParams.FACET_FIELD);
     if (null == facetFs) {
       return res;
@@ -536,7 +532,7 @@ public class SimpleFacets {
     int maxThreads = req.getParams().getInt(FacetParams.FACET_THREADS, 0);
     Executor executor = maxThreads == 0 ? directExecutor : facetExecutor;
     final Semaphore semaphore = new Semaphore((maxThreads <= 0) ? Integer.MAX_VALUE : maxThreads);
-    List<Future<NamedList>> futures = new ArrayList<Future<NamedList>>(facetFs.length);
+    List<Future<NamedList>> futures = new ArrayList<>(facetFs.length);
 
     try {
       //Loop over fields; submit to executor, keeping the future
@@ -550,7 +546,7 @@ public class SimpleFacets {
           @Override
           public NamedList call() throws Exception {
             try {
-              NamedList<Object> result = new SimpleOrderedMap<Object>();
+              NamedList<Object> result = new SimpleOrderedMap<>();
               if(termList != null) {
                 result.add(workerKey, getListedTermCounts(workerFacetValue, termList, workerBase));
               } else {
@@ -568,7 +564,7 @@ public class SimpleFacets {
           }
         };
 
-        RunnableFuture<NamedList> runnableFuture = new FutureTask<NamedList>(callable);
+        RunnableFuture<NamedList> runnableFuture = new FutureTask<>(callable);
         semaphore.acquire();//may block and/or interrupt
         executor.execute(runnableFuture);//releases semaphore when done
         futures.add(runnableFuture);
@@ -602,7 +598,7 @@ public class SimpleFacets {
   private NamedList getListedTermCounts(String field, String termList, DocSet base) throws IOException {
     FieldType ft = searcher.getSchema().getFieldType(field);
     List<String> terms = StrUtils.splitSmart(termList, ",", true);
-    NamedList<Integer> res = new NamedList<Integer>();
+    NamedList<Integer> res = new NamedList<>();
     for (String term : terms) {
       String internal = ft.toInternal(term);
       int count = searcher.numDocs(new TermQuery(new Term(field, internal)), base);
@@ -646,7 +642,7 @@ public class SimpleFacets {
     // trying to pass all the various params around.
 
     FieldType ft = searcher.getSchema().getFieldType(fieldName);
-    NamedList<Integer> res = new NamedList<Integer>();
+    NamedList<Integer> res = new NamedList<>();
 
     SortedDocValues si = FieldCache.DEFAULT.getTermsIndex(searcher.getAtomicReader(), fieldName);
 
@@ -808,7 +804,7 @@ public class SimpleFacets {
     boolean sortByCount = sort.equals("count") || sort.equals("true");
     final int maxsize = limit>=0 ? offset+limit : Integer.MAX_VALUE-1;
     final BoundedTreeSet<CountPair<BytesRef,Integer>> queue = sortByCount ? new BoundedTreeSet<CountPair<BytesRef,Integer>>(maxsize) : null;
-    final NamedList<Integer> res = new NamedList<Integer>();
+    final NamedList<Integer> res = new NamedList<>();
 
     int min=mincount-1;  // the smallest value in the top 'N' values    
     int off=offset;
@@ -908,7 +904,7 @@ public class SimpleFacets {
           if (sortByCount) {
             if (c>min) {
               BytesRef termCopy = BytesRef.deepCopyOf(term);
-              queue.add(new CountPair<BytesRef,Integer>(termCopy, c));
+              queue.add(new CountPair<>(termCopy, c));
               if (queue.size()>=maxsize) min=queue.last().val;
             }
           } else {
@@ -952,7 +948,7 @@ public class SimpleFacets {
   public NamedList<Object> getFacetDateCounts()
     throws IOException, SyntaxError {
 
-    final NamedList<Object> resOuter = new SimpleOrderedMap<Object>();
+    final NamedList<Object> resOuter = new SimpleOrderedMap<>();
     final String[] fields = params.getParams(FacetParams.FACET_DATE);
 
     if (null == fields || 0 == fields.length) return resOuter;
@@ -977,15 +973,15 @@ public class SimpleFacets {
     String f = facetValue;
 
 
-    final NamedList<Object> resInner = new SimpleOrderedMap<Object>();
+    final NamedList<Object> resInner = new SimpleOrderedMap<>();
     resOuter.add(key, resInner);
     final SchemaField sf = schema.getField(f);
-    if (! (sf.getType() instanceof DateField)) {
+    if (! (sf.getType() instanceof TrieDateField)) {
       throw new SolrException
           (SolrException.ErrorCode.BAD_REQUEST,
-              "Can not date facet on a field which is not a DateField: " + f);
+              "Can not date facet on a field which is not a TrieDateField: " + f);
     }
-    final DateField ft = (DateField) sf.getType();
+    final TrieDateField ft = (TrieDateField) sf.getType();
     final String startS
         = required.getFieldParam(f,FacetParams.FACET_DATE_START);
     final Date start;
@@ -1133,7 +1129,7 @@ public class SimpleFacets {
    */
 
   public NamedList<Object> getFacetRangeCounts() throws IOException, SyntaxError {
-    final NamedList<Object> resOuter = new SimpleOrderedMap<Object>();
+    final NamedList<Object> resOuter = new SimpleOrderedMap<>();
     final String[] fields = params.getParams(FacetParams.FACET_RANGE);
 
     if (null == fields || 0 == fields.length) return resOuter;
@@ -1179,16 +1175,8 @@ public class SimpleFacets {
               (SolrException.ErrorCode.BAD_REQUEST,
                   "Unable to range facet on tried field of unexpected type:" + f);
       }
-    } else if (ft instanceof DateField) {
+    } else if (ft instanceof TrieDateField) {
       calc = new DateRangeEndpointCalculator(sf, null);
-    } else if (ft instanceof SortableIntField) {
-      calc = new IntegerRangeEndpointCalculator(sf);
-    } else if (ft instanceof SortableLongField) {
-      calc = new LongRangeEndpointCalculator(sf);
-    } else if (ft instanceof SortableFloatField) {
-      calc = new FloatRangeEndpointCalculator(sf);
-    } else if (ft instanceof SortableDoubleField) {
-      calc = new DoubleRangeEndpointCalculator(sf);
     } else {
       throw new SolrException
           (SolrException.ErrorCode.BAD_REQUEST,
@@ -1203,8 +1191,8 @@ public class SimpleFacets {
      final RangeEndpointCalculator<T> calc) throws IOException {
     
     final String f = sf.getName();
-    final NamedList<Object> res = new SimpleOrderedMap<Object>();
-    final NamedList<Integer> counts = new NamedList<Integer>();
+    final NamedList<Object> res = new SimpleOrderedMap<>();
+    final NamedList<Integer> counts = new NamedList<>();
     res.add("counts", counts);
 
     final T start = calc.getValue(required.getFieldParam(f,FacetParams.FACET_RANGE_START));
@@ -1346,7 +1334,7 @@ public class SimpleFacets {
   @Deprecated
   protected int rangeCount(SchemaField sf, Date low, Date high,
                            boolean iLow, boolean iHigh) throws IOException {
-    Query rangeQ = ((DateField)(sf.getType())).getRangeQuery(null, sf, low, high, iLow, iHigh);
+    Query rangeQ = ((TrieDateField)(sf.getType())).getRangeQuery(null, sf, low, high, iLow, iHigh);
     return searcher.numDocs(rangeQ, docs);
   }
   
@@ -1534,18 +1522,18 @@ public class SimpleFacets {
                                        final Date now) { 
       super(f); 
       this.now = now;
-      if (! (field.getType() instanceof DateField) ) {
+      if (! (field.getType() instanceof TrieDateField) ) {
         throw new IllegalArgumentException
-          ("SchemaField must use filed type extending DateField");
+          ("SchemaField must use field type extending TrieDateField");
       }
     }
     @Override
     public String formatValue(Date val) {
-      return ((DateField)field.getType()).toExternal(val);
+      return ((TrieDateField)field.getType()).toExternal(val);
     }
     @Override
     protected Date parseVal(String rawval) {
-      return ((DateField)field.getType()).parseMath(now, rawval);
+      return ((TrieDateField)field.getType()).parseMath(now, rawval);
     }
     @Override
     protected Object parseGap(final String rawval) {

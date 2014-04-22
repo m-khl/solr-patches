@@ -60,7 +60,6 @@ public class CommonTermsQueryTest extends LuceneTestCase {
   public void testBasics() throws IOException {
     Directory dir = newDirectory();
     MockAnalyzer analyzer = new MockAnalyzer(random());
-    analyzer.setMaxTokenLength(TestUtil.nextInt(random(), 1, IndexWriter.MAX_TERM_LENGTH));
     RandomIndexWriter w = new RandomIndexWriter(random(), dir, analyzer);
     String[] docs = new String[] {"this is the end of the world right",
         "is this it or maybe not",
@@ -128,7 +127,7 @@ public class CommonTermsQueryTest extends LuceneTestCase {
       
     }
     r.close();
-    w.close();
+    w.shutdown();
     dir.close();
   }
   
@@ -191,7 +190,6 @@ public class CommonTermsQueryTest extends LuceneTestCase {
   public void testMinShouldMatch() throws IOException {
     Directory dir = newDirectory();
     MockAnalyzer analyzer = new MockAnalyzer(random());
-    analyzer.setMaxTokenLength(TestUtil.nextInt(random(), 1, IndexWriter.MAX_TERM_LENGTH));
     RandomIndexWriter w = new RandomIndexWriter(random(), dir, analyzer);
     String[] docs = new String[] {"this is the end of the world right",
         "is this it or maybe not",
@@ -324,7 +322,7 @@ public class CommonTermsQueryTest extends LuceneTestCase {
               r.document(search.scoreDocs[1].doc).get("id"))));
     }
     r.close();
-    w.close();
+    w.shutdown();
     dir.close();
   }
   
@@ -351,7 +349,6 @@ public class CommonTermsQueryTest extends LuceneTestCase {
   public void testExtend() throws IOException {
     Directory dir = newDirectory();
     MockAnalyzer analyzer = new MockAnalyzer(random());
-    analyzer.setMaxTokenLength(TestUtil.nextInt(random(), 1, IndexWriter.MAX_TERM_LENGTH));
     RandomIndexWriter w = new RandomIndexWriter(random(), dir, analyzer);
     String[] docs = new String[] {"this is the end of the world right",
         "is this it or maybe not",
@@ -399,7 +396,7 @@ public class CommonTermsQueryTest extends LuceneTestCase {
       assertEquals("0", r.document(search.scoreDocs[2].doc).get("id"));
     }
     r.close();
-    w.close();
+    w.shutdown();
     dir.close();
   }
   
@@ -477,7 +474,7 @@ public class CommonTermsQueryTest extends LuceneTestCase {
       
       TopDocs verifySearch = searcher.search(verifyQuery, reader.maxDoc());
       assertEquals(verifySearch.totalHits, cqSearch.totalHits);
-      Set<Integer> hits = new HashSet<Integer>();
+      Set<Integer> hits = new HashSet<>();
       for (ScoreDoc doc : verifySearch.scoreDocs) {
         hits.add(doc.doc);
       }
@@ -501,14 +498,14 @@ public class CommonTermsQueryTest extends LuceneTestCase {
     } finally {
       reader.close();
       wrapper.close();
-      w.close();
+      w.shutdown();
       dir.close();
     }
     
   }
   
   private static List<TermAndFreq> queueToList(PriorityQueue<TermAndFreq> queue) {
-    List<TermAndFreq> terms = new ArrayList<CommonTermsQueryTest.TermAndFreq>();
+    List<TermAndFreq> terms = new ArrayList<>();
     while (queue.size() > 0) {
       terms.add(queue.pop());
     }

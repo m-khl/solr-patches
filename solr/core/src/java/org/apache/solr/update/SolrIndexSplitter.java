@@ -90,7 +90,7 @@ public class SolrIndexSplitter {
   public void split() throws IOException {
 
     List<AtomicReaderContext> leaves = searcher.getTopReaderContext().leaves();
-    List<FixedBitSet[]> segmentDocSets = new ArrayList<FixedBitSet[]>(leaves.size());
+    List<FixedBitSet[]> segmentDocSets = new ArrayList<>(leaves.size());
 
     log.info("SolrIndexSplitter: partitions=" + numPieces + " segments="+leaves.size());
 
@@ -138,7 +138,7 @@ public class SolrIndexSplitter {
           iwRef.decref();
         } else {
           if (success) {
-            IOUtils.close(iw);
+            iw.shutdown();
           } else {
             IOUtils.closeWhileHandlingException(iw);
           }

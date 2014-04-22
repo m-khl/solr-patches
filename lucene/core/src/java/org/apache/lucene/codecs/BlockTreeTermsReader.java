@@ -96,7 +96,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
   // produce DocsEnum on demand
   private final PostingsReaderBase postingsReader;
 
-  private final TreeMap<String,FieldReader> fields = new TreeMap<String,FieldReader>();
+  private final TreeMap<String,FieldReader> fields = new TreeMap<>();
 
   /** File offset where the directory starts in the terms file. */
   private long dirOffset;
@@ -131,6 +131,11 @@ public class BlockTreeTermsReader extends FieldsProducer {
       if (indexVersion != version) {
         throw new CorruptIndexException("mixmatched version files: " + in + "=" + version + "," + indexIn + "=" + indexVersion);
       }
+      
+      // verify
+      if (version >= BlockTreeTermsWriter.VERSION_CHECKSUM) {
+        CodecUtil.checksumEntireFile(indexIn);
+      }
 
       // Have PostingsReader init itself
       postingsReader.init(in);
@@ -157,7 +162,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
         final long sumTotalTermFreq = fieldInfo.getIndexOptions() == IndexOptions.DOCS_ONLY ? -1 : in.readVLong();
         final long sumDocFreq = in.readVLong();
         final int docCount = in.readVInt();
-        final int longsSize = version >= BlockTreeTermsWriter.TERMS_VERSION_META_ARRAY ? in.readVInt() : 0;
+        final int longsSize = version >= BlockTreeTermsWriter.VERSION_META_ARRAY ? in.readVInt() : 0;
         if (docCount < 0 || docCount > info.getDocCount()) { // #docs with field must be <= #docs
           throw new CorruptIndexException("invalid docCount: " + docCount + " maxDoc: " + info.getDocCount() + " (resource=" + in + ")");
         }
@@ -187,9 +192,9 @@ public class BlockTreeTermsReader extends FieldsProducer {
   /** Reads terms file header. */
   private int readHeader(IndexInput input) throws IOException {
     int version = CodecUtil.checkHeader(input, BlockTreeTermsWriter.TERMS_CODEC_NAME,
-                          BlockTreeTermsWriter.TERMS_VERSION_START,
-                          BlockTreeTermsWriter.TERMS_VERSION_CURRENT);
-    if (version < BlockTreeTermsWriter.TERMS_VERSION_APPEND_ONLY) {
+                          BlockTreeTermsWriter.VERSION_START,
+                          BlockTreeTermsWriter.VERSION_CURRENT);
+    if (version < BlockTreeTermsWriter.VERSION_APPEND_ONLY) {
       dirOffset = input.readLong();
     }
     return version;
@@ -198,9 +203,9 @@ public class BlockTreeTermsReader extends FieldsProducer {
   /** Reads index file header. */
   private int readIndexHeader(IndexInput input) throws IOException {
     int version = CodecUtil.checkHeader(input, BlockTreeTermsWriter.TERMS_INDEX_CODEC_NAME,
-                          BlockTreeTermsWriter.TERMS_INDEX_VERSION_START,
-                          BlockTreeTermsWriter.TERMS_INDEX_VERSION_CURRENT);
-    if (version < BlockTreeTermsWriter.TERMS_INDEX_VERSION_APPEND_ONLY) {
+                          BlockTreeTermsWriter.VERSION_START,
+                          BlockTreeTermsWriter.VERSION_CURRENT);
+    if (version < BlockTreeTermsWriter.VERSION_APPEND_ONLY) {
       indexDirOffset = input.readLong(); 
     }
     return version;
@@ -209,7 +214,10 @@ public class BlockTreeTermsReader extends FieldsProducer {
   /** Seek {@code input} to the directory offset. */
   private void seekDir(IndexInput input, long dirOffset)
       throws IOException {
-    if (version >= BlockTreeTermsWriter.TERMS_INDEX_VERSION_APPEND_ONLY) {
+    if (version >= BlockTreeTermsWriter.VERSION_CHECKSUM) {
+      input.seek(input.length() - CodecUtil.footerLength() - 8);
+      dirOffset = input.readLong();
+    } else if (version >= BlockTreeTermsWriter.VERSION_APPEND_ONLY) {
       input.seek(input.length() - 8);
       dirOffset = input.readLong();
     }
@@ -391,7 +399,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
       final ByteArrayOutputStream bos = new ByteArrayOutputStream(1024);
       PrintStream out;
       try {
-        out = new PrintStream(bos, false, "UTF-8");
+        out = new PrintStream(bos, false, IOUtils.UTF_8);
       } catch (UnsupportedEncodingException bogus) {
         throw new RuntimeException(bogus);
       }
@@ -428,7 +436,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
       }
 
       try {
-        return bos.toString("UTF-8");
+        return bos.toString(IOUtils.UTF_8);
       } catch (UnsupportedEncodingException bogus) {
         throw new RuntimeException(bogus);
       }
@@ -474,7 +482,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
         final IndexInput clone = indexIn.clone();
         //System.out.println("start=" + indexStartFP + " field=" + fieldInfo.name);
         clone.seek(indexStartFP);
-        index = new FST<BytesRef>(clone, ByteSequenceOutputs.getSingleton());
+        index = new FST<>(clone, ByteSequenceOutputs.getSingleton());
         
         /*
         if (false) {
@@ -848,7 +856,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
           stack[idx] = new Frame(idx);
         }
         for(int arcIdx=0;arcIdx<arcs.length;arcIdx++) {
-          arcs[arcIdx] = new FST.Arc<BytesRef>();
+          arcs[arcIdx] = new FST.Arc<>();
         }
 
         if (index == null) {
@@ -917,7 +925,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
             new FST.Arc[ArrayUtil.oversize(1+ord, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
           System.arraycopy(arcs, 0, next, 0, arcs.length);
           for(int arcOrd=arcs.length;arcOrd<next.length;arcOrd++) {
-            next[arcOrd] = new FST.Arc<BytesRef>();
+            next[arcOrd] = new FST.Arc<>();
           }
           arcs = next;
         }
@@ -1299,7 +1307,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
         // Init w/ root block; don't use index since it may
         // not (and need not) have been loaded
         for(int arcIdx=0;arcIdx<arcs.length;arcIdx++) {
-          arcs[arcIdx] = new FST.Arc<BytesRef>();
+          arcs[arcIdx] = new FST.Arc<>();
         }
 
         currentFrame = staticFrame;
@@ -1441,7 +1449,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
               new FST.Arc[ArrayUtil.oversize(1+ord, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
           System.arraycopy(arcs, 0, next, 0, arcs.length);
           for(int arcOrd=arcs.length;arcOrd<next.length;arcOrd++) {
-            next[arcOrd] = new FST.Arc<BytesRef>();
+            next[arcOrd] = new FST.Arc<>();
           }
           arcs = next;
         }
@@ -2976,5 +2984,16 @@ public class BlockTreeTermsReader extends FieldsProducer {
       sizeInByes += reader.ramBytesUsed();
     }
     return sizeInByes;
+  }
+
+  @Override
+  public void checkIntegrity() throws IOException {
+    if (version >= BlockTreeTermsWriter.VERSION_CHECKSUM) {      
+      // term dictionary
+      CodecUtil.checksumEntireFile(in);
+      
+      // postings
+      postingsReader.checkIntegrity();
+    }
   }
 }

@@ -45,11 +45,6 @@ public class NullIndexOutput extends IndexOutput {
   }
   
   @Override
-  public long length() throws IOException {
-    return length;
-  }
-  
-  @Override
   public void writeByte(byte b) throws IOException {
     pos++;
     updateLength();
@@ -66,5 +61,9 @@ public class NullIndexOutput extends IndexOutput {
       length = pos;
     }
   }
-  
+
+  @Override
+  public long getChecksum() throws IOException {
+    return 0; // we don't write anything.
+  }
 }

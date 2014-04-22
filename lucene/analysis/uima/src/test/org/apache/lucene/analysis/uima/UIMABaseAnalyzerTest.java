@@ -114,7 +114,7 @@ public class UIMABaseAnalyzerTest extends BaseTokenStreamTestCase {
     indexSearcher = newSearcher(directoryReader);
     result = indexSearcher.search(new MatchAllDocsQuery(), 2);
     assertEquals(2, result.totalHits);
-    writer.close();
+    writer.shutdown();
     indexSearcher.getIndexReader().close();
     dir.close();
   }
@@ -127,7 +127,7 @@ public class UIMABaseAnalyzerTest extends BaseTokenStreamTestCase {
 
   @Test
   public void testRandomStringsWithConfigurationParameters() throws Exception {
-    Map<String, Object> cp = new HashMap<String, Object>();
+    Map<String, Object> cp = new HashMap<>();
     cp.put("line-end", "\r");
     checkRandomData(random(), new UIMABaseAnalyzer("/uima/TestWSTokenizerAE.xml", "org.apache.lucene.uima.ts.TokenAnnotation", cp),
         100 * RANDOM_MULTIPLIER);

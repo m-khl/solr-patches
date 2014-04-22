@@ -50,7 +50,7 @@ public class TestSearch extends LuceneTestCase {
         d.add(newTextField("foo", "bar", Field.Store.YES));
         writer.addDocument(d);
       } finally {
-        writer.close();
+        writer.shutdown();
       }
       
       IndexReader reader = DirectoryReader.open(directory);
@@ -130,7 +130,7 @@ public class TestSearch extends LuceneTestCase {
         d.add(new IntField("id", j, Field.Store.NO));
         writer.addDocument(d);
       }
-      writer.close();
+      writer.shutdown();
 
       IndexReader reader = DirectoryReader.open(directory);
       IndexSearcher searcher = newSearcher(reader);
@@ -159,7 +159,7 @@ public class TestSearch extends LuceneTestCase {
   }
 
   private List<Query> buildQueries() {
-    List<Query> queries = new ArrayList<Query>();
+    List<Query> queries = new ArrayList<>();
 
     BooleanQuery booleanAB = new BooleanQuery();
     booleanAB.add(new TermQuery(new Term("contents", "a")), BooleanClause.Occur.SHOULD);

@@ -21,6 +21,7 @@ import java.io.ByteArrayInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -51,7 +52,7 @@ import com.google.common.collect.ObjectArrays;
 public class AbstractAnalyticsStatsTest extends SolrTestCaseJ4 {
   
   protected static final String[] BASEPARMS = new String[]{ "q", "*:*", "indent", "true", "olap", "true", "rows", "0" };
-  protected static final HashMap<String,Object> defaults = new HashMap<String,Object>();
+  protected static final HashMap<String,Object> defaults = new HashMap<>();
 
   public static enum VAL_TYPE {
     INTEGER("int"),
@@ -82,7 +83,7 @@ public class AbstractAnalyticsStatsTest extends SolrTestCaseJ4 {
     DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
     factory.setNamespaceAware(true); // never forget this!
     DocumentBuilder builder = factory.newDocumentBuilder();
-    doc = builder.parse(new InputSource(new ByteArrayInputStream(response.getBytes("UTF-8"))));
+    doc = builder.parse(new InputSource(new ByteArrayInputStream(response.getBytes(StandardCharsets.UTF_8))));
     xPathFact = XPathFactory.newInstance();
     rawResponse = response;
   }
@@ -106,8 +107,8 @@ public class AbstractAnalyticsStatsTest extends SolrTestCaseJ4 {
         case DOUBLE:  return Double.parseDouble(val);
         case FLOAT:   return Float.parseFloat(val);
         case LONG:    return Long.parseLong(val);
-        case STRING:  return val;
-        case DATE:    return val;
+        case STRING:  assertTrue(rawResponse, val != null && val.length() > 0 ); return val;
+        case DATE:    assertTrue(rawResponse, val != null && val.length() > 0 ); return val;
       }
     } catch (Exception e) {
       e.printStackTrace();
@@ -162,7 +163,7 @@ public class AbstractAnalyticsStatsTest extends SolrTestCaseJ4 {
     } else if (stat.equals("count")) {
       result = Long.valueOf(list.size());
     } else if (stat.equals("unique")) {
-      HashSet<T> set = new HashSet<T>();
+      HashSet<T> set = new HashSet<>();
       set.addAll(list);
       result = Long.valueOf((long)set.size());
     } else if (stat.equals("max")) {
@@ -198,7 +199,7 @@ public class AbstractAnalyticsStatsTest extends SolrTestCaseJ4 {
     if (in == null) throw new FileNotFoundException("Resource not found: " + fileName);
     Scanner file = new Scanner(in, "UTF-8");
     try { 
-      ArrayList<String> strList = new ArrayList<String>();
+      ArrayList<String> strList = new ArrayList<>();
       while (file.hasNextLine()) {
         String line = file.nextLine();
         line = line.trim();

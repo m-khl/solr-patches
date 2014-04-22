@@ -16,16 +16,17 @@
  */
 package org.apache.solr.handler.dataimport;
 
-import org.junit.Test;
-
 import java.io.File;
 import java.io.Reader;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+
+import org.junit.Test;
 
 /**
  * <p>
@@ -42,11 +43,9 @@ public class TestXPathEntityProcessor extends AbstractDataImportHandlerTestCase 
   
   @Test
   public void withFieldsAndXpath() throws Exception {
-    File tmpdir = File.createTempFile("test", "tmp", TEMP_DIR);
-    tmpdir.delete();
-    tmpdir.mkdir();
-    tmpdir.deleteOnExit();
-    createFile(tmpdir, "x.xsl", xsl.getBytes("UTF-8"), false);
+    File tmpdir = createTempDir();
+    
+    createFile(tmpdir, "x.xsl", xsl.getBytes(StandardCharsets.UTF_8), false);
     Map entityAttrs = createMap("name", "e", "url", "cd.xml",
             XPathEntityProcessor.FOR_EACH, "/catalog/cd");
     List fields = new ArrayList();
@@ -57,7 +56,7 @@ public class TestXPathEntityProcessor extends AbstractDataImportHandlerTestCase 
             new VariableResolver(), getDataSource(cdData), Context.FULL_DUMP, fields, entityAttrs);
     XPathEntityProcessor xPathEntityProcessor = new XPathEntityProcessor();
     xPathEntityProcessor.init(c);
-    List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+    List<Map<String, Object>> result = new ArrayList<>();
     while (true) {
       Map<String, Object> row = xPathEntityProcessor.nextRow();
       if (row == null)
@@ -80,7 +79,7 @@ public class TestXPathEntityProcessor extends AbstractDataImportHandlerTestCase 
             new VariableResolver(), getDataSource(testXml), Context.FULL_DUMP, fields, entityAttrs);
     XPathEntityProcessor xPathEntityProcessor = new XPathEntityProcessor();
     xPathEntityProcessor.init(c);
-    List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+    List<Map<String, Object>> result = new ArrayList<>();
     while (true) {
       Map<String, Object> row = xPathEntityProcessor.nextRow();
       if (row == null)
@@ -109,7 +108,7 @@ public class TestXPathEntityProcessor extends AbstractDataImportHandlerTestCase 
             new VariableResolver(), getDataSource(textMultipleDocuments), Context.FULL_DUMP, fields, entityAttrs);
     XPathEntityProcessor xPathEntityProcessor = new XPathEntityProcessor();
     xPathEntityProcessor.init(c);
-    List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+    List<Map<String, Object>> result = new ArrayList<>();
     while (true) {
       Map<String, Object> row = xPathEntityProcessor.nextRow();
       if (row == null)
@@ -276,7 +275,7 @@ public class TestXPathEntityProcessor extends AbstractDataImportHandlerTestCase 
     xPathEntityProcessor.blockingQueueTimeOutUnits = TimeUnit.MICROSECONDS;
     
     xPathEntityProcessor.init(c);
-    List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+    List<Map<String, Object>> result = new ArrayList<>();
     while (true) {
       if (rowsToRead >= 0 && result.size() >= rowsToRead) {
         Thread.currentThread().interrupt();
@@ -333,12 +332,10 @@ public class TestXPathEntityProcessor extends AbstractDataImportHandlerTestCase 
   
   @Test
   public void withDefaultSolrAndXsl() throws Exception {
-    File tmpdir = File.createTempFile("test", "tmp", TEMP_DIR);
-    tmpdir.delete();
-    tmpdir.mkdir();
-    tmpdir.deleteOnExit();
-    AbstractDataImportHandlerTestCase.createFile(tmpdir, "x.xsl", xsl.getBytes("UTF-8"),
+    File tmpdir = createTempDir();
+    AbstractDataImportHandlerTestCase.createFile(tmpdir, "x.xsl", xsl.getBytes(StandardCharsets.UTF_8),
             false);
+
     Map entityAttrs = createMap("name", "e",
             XPathEntityProcessor.USE_SOLR_ADD_SCHEMA, "true", "xsl", ""
             + new File(tmpdir, "x.xsl").toURI(), "url", "cd.xml");
@@ -346,7 +343,7 @@ public class TestXPathEntityProcessor extends AbstractDataImportHandlerTestCase 
             new VariableResolver(), getDataSource(cdData), Context.FULL_DUMP, null, entityAttrs);
     XPathEntityProcessor xPathEntityProcessor = new XPathEntityProcessor();
     xPathEntityProcessor.init(c);
-    List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+    List<Map<String, Object>> result = new ArrayList<>();
     while (true) {
       Map<String, Object> row = xPathEntityProcessor.nextRow();
       if (row == null)

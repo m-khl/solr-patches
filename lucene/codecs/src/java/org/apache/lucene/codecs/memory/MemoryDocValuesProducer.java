@@ -26,6 +26,7 @@ import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.CorruptIndexException;
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.FieldInfo;
@@ -37,6 +38,7 @@ import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.ByteArrayDataInput;
+import org.apache.lucene.store.ChecksumIndexInput;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
@@ -68,15 +70,16 @@ class MemoryDocValuesProducer extends DocValuesProducer {
   
   // ram instances we have already loaded
   private final Map<Integer,NumericDocValues> numericInstances = 
-      new HashMap<Integer,NumericDocValues>();
+      new HashMap<>();
   private final Map<Integer,BinaryDocValues> binaryInstances =
-      new HashMap<Integer,BinaryDocValues>();
+      new HashMap<>();
   private final Map<Integer,FST<Long>> fstInstances =
-      new HashMap<Integer,FST<Long>>();
-  private final Map<Integer,Bits> docsWithFieldInstances = new HashMap<Integer,Bits>();
+      new HashMap<>();
+  private final Map<Integer,Bits> docsWithFieldInstances = new HashMap<>();
   
   private final int maxDoc;
   private final AtomicLong ramBytesUsed;
+  private final int version;
   
   static final byte NUMBER = 0;
   static final byte BYTES = 1;
@@ -91,23 +94,28 @@ class MemoryDocValuesProducer extends DocValuesProducer {
   
   static final int VERSION_START = 0;
   static final int VERSION_GCD_COMPRESSION = 1;
-  static final int VERSION_CURRENT = VERSION_GCD_COMPRESSION;
+  static final int VERSION_CHECKSUM = 2;
+  static final int VERSION_CURRENT = VERSION_CHECKSUM;
     
   MemoryDocValuesProducer(SegmentReadState state, String dataCodec, String dataExtension, String metaCodec, String metaExtension) throws IOException {
     maxDoc = state.segmentInfo.getDocCount();
     String metaName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, metaExtension);
     // read in the entries from the metadata file.
-    IndexInput in = state.directory.openInput(metaName, state.context);
+    ChecksumIndexInput in = state.directory.openChecksumInput(metaName, state.context);
     boolean success = false;
-    final int version;
     try {
       version = CodecUtil.checkHeader(in, metaCodec, 
                                       VERSION_START,
                                       VERSION_CURRENT);
-      numerics = new HashMap<Integer,NumericEntry>();
-      binaries = new HashMap<Integer,BinaryEntry>();
-      fsts = new HashMap<Integer,FSTEntry>();
+      numerics = new HashMap<>();
+      binaries = new HashMap<>();
+      fsts = new HashMap<>();
       readFields(in, state.fieldInfos);
+      if (version >= VERSION_CHECKSUM) {
+        CodecUtil.checkFooter(in);
+      } else {
+        CodecUtil.checkEOF(in);
+      }
       ramBytesUsed = new AtomicLong(RamUsageEstimator.shallowSizeOfInstance(getClass()));
       success = true;
     } finally {
@@ -206,6 +214,13 @@ class MemoryDocValuesProducer extends DocValuesProducer {
   @Override
   public long ramBytesUsed() {
     return ramBytesUsed.get();
+  }
+  
+  @Override
+  public void checkIntegrity() throws IOException {
+    if (version >= VERSION_CHECKSUM) {
+      CodecUtil.checksumEntireFile(data);
+    }
   }
   
   private NumericDocValues loadNumeric(FieldInfo field) throws IOException {
@@ -307,14 +322,14 @@ class MemoryDocValuesProducer extends DocValuesProducer {
   public SortedDocValues getSorted(FieldInfo field) throws IOException {
     final FSTEntry entry = fsts.get(field.number);
     if (entry.numOrds == 0) {
-      return SortedDocValues.EMPTY;
+      return DocValues.EMPTY_SORTED;
     }
     FST<Long> instance;
     synchronized(this) {
       instance = fstInstances.get(field.number);
       if (instance == null) {
         data.seek(entry.offset);
-        instance = new FST<Long>(data, PositiveIntOutputs.getSingleton());
+        instance = new FST<>(data, PositiveIntOutputs.getSingleton());
         ramBytesUsed.addAndGet(instance.sizeInBytes());
         fstInstances.put(field.number, instance);
       }
@@ -324,10 +339,10 @@ class MemoryDocValuesProducer extends DocValuesProducer {
     
     // per-thread resources
     final BytesReader in = fst.getBytesReader();
-    final Arc<Long> firstArc = new Arc<Long>();
-    final Arc<Long> scratchArc = new Arc<Long>();
+    final Arc<Long> firstArc = new Arc<>();
+    final Arc<Long> scratchArc = new Arc<>();
     final IntsRef scratchInts = new IntsRef();
-    final BytesRefFSTEnum<Long> fstEnum = new BytesRefFSTEnum<Long>(fst); 
+    final BytesRefFSTEnum<Long> fstEnum = new BytesRefFSTEnum<>(fst);
     
     return new SortedDocValues() {
       @Override
@@ -382,14 +397,14 @@ class MemoryDocValuesProducer extends DocValuesProducer {
   public SortedSetDocValues getSortedSet(FieldInfo field) throws IOException {
     final FSTEntry entry = fsts.get(field.number);
     if (entry.numOrds == 0) {
-      return SortedSetDocValues.EMPTY; // empty FST!
+      return DocValues.EMPTY_SORTED_SET; // empty FST!
     }
     FST<Long> instance;
     synchronized(this) {
       instance = fstInstances.get(field.number);
       if (instance == null) {
         data.seek(entry.offset);
-        instance = new FST<Long>(data, PositiveIntOutputs.getSingleton());
+        instance = new FST<>(data, PositiveIntOutputs.getSingleton());
         ramBytesUsed.addAndGet(instance.sizeInBytes());
         fstInstances.put(field.number, instance);
       }
@@ -399,10 +414,10 @@ class MemoryDocValuesProducer extends DocValuesProducer {
     
     // per-thread resources
     final BytesReader in = fst.getBytesReader();
-    final Arc<Long> firstArc = new Arc<Long>();
-    final Arc<Long> scratchArc = new Arc<Long>();
+    final Arc<Long> firstArc = new Arc<>();
+    final Arc<Long> scratchArc = new Arc<>();
     final IntsRef scratchInts = new IntsRef();
-    final BytesRefFSTEnum<Long> fstEnum = new BytesRefFSTEnum<Long>(fst); 
+    final BytesRefFSTEnum<Long> fstEnum = new BytesRefFSTEnum<>(fst);
     final BytesRef ref = new BytesRef();
     final ByteArrayDataInput input = new ByteArrayDataInput();
     return new SortedSetDocValues() {
@@ -495,9 +510,9 @@ class MemoryDocValuesProducer extends DocValuesProducer {
   public Bits getDocsWithField(FieldInfo field) throws IOException {
     switch(field.getDocValuesType()) {
       case SORTED_SET:
-        return new SortedSetDocsWithField(getSortedSet(field), maxDoc);
+        return DocValues.docsWithValue(getSortedSet(field), maxDoc);
       case SORTED:
-        return new SortedDocsWithField(getSorted(field), maxDoc);
+        return DocValues.docsWithValue(getSorted(field), maxDoc);
       case BINARY:
         BinaryEntry be = binaries.get(field.number);
         return getMissingBits(field.number, be.missingOffset, be.missingBytes);
@@ -546,14 +561,14 @@ class MemoryDocValuesProducer extends DocValuesProducer {
     // maybe we should add a FSTEnum that supports this operation?
     final FST<Long> fst;
     final FST.BytesReader bytesReader;
-    final Arc<Long> firstArc = new Arc<Long>();
-    final Arc<Long> scratchArc = new Arc<Long>();
+    final Arc<Long> firstArc = new Arc<>();
+    final Arc<Long> scratchArc = new Arc<>();
     final IntsRef scratchInts = new IntsRef();
     final BytesRef scratchBytes = new BytesRef();
     
     FSTTermsEnum(FST<Long> fst) {
       this.fst = fst;
-      in = new BytesRefFSTEnum<Long>(fst);
+      in = new BytesRefFSTEnum<>(fst);
       bytesReader = fst.getBytesReader();
     }
 

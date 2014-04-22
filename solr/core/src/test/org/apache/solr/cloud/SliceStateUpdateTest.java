@@ -74,11 +74,10 @@ public class SliceStateUpdateTest extends SolrTestCaseJ4 {
   @Override
   public void setUp() throws Exception {
     super.setUp();
-    createTempDir();
+
     System.setProperty("zkClientTimeout", "3000");
 
-    zkDir = dataDir.getAbsolutePath() + File.separator
-        + "zookeeper/server1/data";
+    zkDir = createTempDir("zkData").getAbsolutePath();
     zkServer = new ZkTestServer(zkDir);
     zkServer.run();
     System.setProperty("zkHost", zkServer.getZkAddress());
@@ -86,7 +85,7 @@ public class SliceStateUpdateTest extends SolrTestCaseJ4 {
         .getZkAddress(), "solrconfig.xml", "schema.xml");
 
     log.info("####SETUP_START " + getTestName());
-    Map<String, Object> props2 = new HashMap<String, Object>();
+    Map<String, Object> props2 = new HashMap<>();
     props2.put("configName", "conf1");
 
     ZkNodeProps zkProps2 = new ZkNodeProps(props2);
@@ -99,11 +98,9 @@ public class SliceStateUpdateTest extends SolrTestCaseJ4 {
         CreateMode.PERSISTENT, true);
     zkClient.close();
 
-    dataDir1 = new File(dataDir + File.separator + "data1");
-    dataDir1.mkdirs();
+    dataDir1 = createTempDir("data1");
 
-    dataDir2 = new File(dataDir + File.separator + "data2");
-    dataDir2.mkdirs();
+    dataDir2 = createTempDir("data2");
 
     // set some system properties for use by tests
     System.setProperty("solr.test.sys.prop1", "propone");
@@ -147,7 +144,7 @@ public class SliceStateUpdateTest extends SolrTestCaseJ4 {
 //        new LinkedHashMap<String, DocCollection>(clusterState.getCollectionStates());
 
     Map<String, Slice> slicesMap = clusterState.getSlicesMap("collection1");
-    Map<String, Object> props = new HashMap<String, Object>(1);
+    Map<String, Object> props = new HashMap<>(1);
     Slice slice = slicesMap.get("shard1");
     Map<String, Object> prop = slice.getProperties();
     prop.put("state", "inactive");

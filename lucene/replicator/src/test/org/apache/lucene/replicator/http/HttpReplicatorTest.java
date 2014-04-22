@@ -68,7 +68,7 @@ public class HttpReplicatorTest extends ReplicatorTestCase {
   public void setUp() throws Exception {
     super.setUp();
     System.setProperty("org.eclipse.jetty.LEVEL", "DEBUG"); // sets stderr logging to DEBUG level
-    clientWorkDir = TestUtil.getTempDir("httpReplicatorTest");
+    clientWorkDir = createTempDir("httpReplicatorTest");
     handlerIndexDir = newDirectory();
     serverIndexDir = newDirectory();
     serverReplicator = new LocalReplicator();
@@ -83,7 +83,8 @@ public class HttpReplicatorTest extends ReplicatorTestCase {
   @Override
   public void tearDown() throws Exception {
     stopHttpServer(server);
-    IOUtils.close(reader, writer, handlerIndexDir, serverIndexDir);
+    writer.rollback();
+    IOUtils.close(reader, handlerIndexDir, serverIndexDir);
     System.clearProperty("org.eclipse.jetty.LEVEL");
     super.tearDown();
   }

@@ -53,7 +53,7 @@ public class TestMixedCodecs extends LuceneTestCase {
           iwc.setCodec(Codec.forName("SimpleText"));
         }
         if (w != null) {
-          w.close();
+          w.shutdown();
         }
         w = new RandomIndexWriter(random(), dir, iwc);
         docsLeftInThisSegment = TestUtil.nextInt(random(), 10, 100);
@@ -70,7 +70,7 @@ public class TestMixedCodecs extends LuceneTestCase {
     }
 
     // Random delete half the docs:
-    final Set<Integer> deleted = new HashSet<Integer>();
+    final Set<Integer> deleted = new HashSet<>();
     while(deleted.size() < NUM_DOCS/2) {
       final Integer toDelete = random().nextInt(NUM_DOCS);
       if (!deleted.contains(toDelete)) {
@@ -84,7 +84,7 @@ public class TestMixedCodecs extends LuceneTestCase {
       }
     }
 
-    w.close();
+    w.shutdown();
     dir.close();
   }
 }

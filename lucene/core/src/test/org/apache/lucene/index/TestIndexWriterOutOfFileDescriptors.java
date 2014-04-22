@@ -32,7 +32,7 @@ import org.apache.lucene.util.TestUtil;
 
 public class TestIndexWriterOutOfFileDescriptors extends LuceneTestCase {
   public void test() throws Exception {
-    MockDirectoryWrapper dir = newMockFSDirectory(TestUtil.getTempDir("TestIndexWriterOutOfFileDescriptors"));
+    MockDirectoryWrapper dir = newMockFSDirectory(createTempDir("TestIndexWriterOutOfFileDescriptors"));
     dir.setPreventDoubleWrite(false);
     double rate = random().nextDouble()*0.01;
     //System.out.println("rate=" + rate);
@@ -83,7 +83,8 @@ public class TestIndexWriterOutOfFileDescriptors extends LuceneTestCase {
           }
           w.addDocument(docs.nextDoc());
         }
-        w.close();
+        dir.setRandomIOExceptionRateOnOpen(0.0);
+        w.shutdown();
         w = null;
 
         // NOTE: This is O(N^2)!  Only enable for temporary debugging:
@@ -131,8 +132,8 @@ public class TestIndexWriterOutOfFileDescriptors extends LuceneTestCase {
         // it to addIndexes later:
         dir.setRandomIOExceptionRateOnOpen(0.0);
         r = DirectoryReader.open(dir);
-        dirCopy = newMockFSDirectory(TestUtil.getTempDir("TestIndexWriterOutOfFileDescriptors.copy"));
-        Set<String> files = new HashSet<String>();
+        dirCopy = newMockFSDirectory(createTempDir("TestIndexWriterOutOfFileDescriptors.copy"));
+        Set<String> files = new HashSet<>();
         for (String file : dir.listAll()) {
           dir.copy(dirCopy, file, file, IOContext.DEFAULT);
           files.add(file);
@@ -142,7 +143,7 @@ public class TestIndexWriterOutOfFileDescriptors extends LuceneTestCase {
         // files ... we can easily have leftover files at
         // the time we take a copy because we are holding
         // open a reader:
-        new IndexWriter(dirCopy, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))).close();
+        new IndexWriter(dirCopy, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))).shutdown();
         dirCopy.setRandomIOExceptionRate(rate);
         dir.setRandomIOExceptionRateOnOpen(rate);
       }

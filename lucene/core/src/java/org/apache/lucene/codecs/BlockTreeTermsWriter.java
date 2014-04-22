@@ -109,7 +109,7 @@ import org.apache.lucene.util.packed.PackedInts;
  *
  * <ul>
  *    <li>TermsDict (.tim) --&gt; Header, <i>PostingsHeader</i>, NodeBlock<sup>NumBlocks</sup>,
- *                               FieldSummary, DirOffset</li>
+ *                               FieldSummary, DirOffset, Footer</li>
  *    <li>NodeBlock --&gt; (OuterNode | InnerNode)</li>
  *    <li>OuterNode --&gt; EntryCount, SuffixLength, Byte<sup>SuffixLength</sup>, StatsLength, &lt; TermStats &gt;<sup>EntryCount</sup>, MetaLength, &lt;<i>TermMetadata</i>&gt;<sup>EntryCount</sup></li>
  *    <li>InnerNode --&gt; EntryCount, SuffixLength[,Sub?], Byte<sup>SuffixLength</sup>, StatsLength, &lt; TermStats ? &gt;<sup>EntryCount</sup>, MetaLength, &lt;<i>TermMetadata ? </i>&gt;<sup>EntryCount</sup></li>
@@ -122,6 +122,7 @@ import org.apache.lucene.util.packed.PackedInts;
  *        FieldNumber,RootCodeLength,DocCount --&gt; {@link DataOutput#writeVInt VInt}</li>
  *    <li>TotalTermFreq,NumTerms,SumTotalTermFreq,SumDocFreq --&gt; 
  *        {@link DataOutput#writeVLong VLong}</li>
+ *    <li>Footer --&gt; {@link CodecUtil#writeFooter CodecFooter}</li>
  * </ul>
  * <p>Notes:</p>
  * <ul>
@@ -150,12 +151,13 @@ import org.apache.lucene.util.packed.PackedInts;
  * when a given term cannot exist on disk (in the .tim file), saving a disk seek.</p>
  * <ul>
  *   <li>TermsIndex (.tip) --&gt; Header, FSTIndex<sup>NumFields</sup>
- *                                &lt;IndexStartFP&gt;<sup>NumFields</sup>, DirOffset</li>
+ *                                &lt;IndexStartFP&gt;<sup>NumFields</sup>, DirOffset, Footer</li>
  *   <li>Header --&gt; {@link CodecUtil#writeHeader CodecHeader}</li>
  *   <li>DirOffset --&gt; {@link DataOutput#writeLong Uint64}</li>
  *   <li>IndexStartFP --&gt; {@link DataOutput#writeVLong VLong}</li>
  *   <!-- TODO: better describe FST output here -->
  *   <li>FSTIndex --&gt; {@link FST FST&lt;byte[]&gt;}</li>
+ *   <li>Footer --&gt; {@link CodecUtil#writeFooter CodecFooter}</li>
  * </ul>
  * <p>Notes:</p>
  * <ul>
@@ -178,7 +180,6 @@ import org.apache.lucene.util.packed.PackedInts;
  * @see BlockTreeTermsReader
  * @lucene.experimental
  */
-
 public class BlockTreeTermsWriter extends FieldsConsumer implements Closeable {
 
   /** Suggested default value for the {@code
@@ -204,32 +205,23 @@ public class BlockTreeTermsWriter extends FieldsConsumer implements Closeable {
   final static String TERMS_CODEC_NAME = "BLOCK_TREE_TERMS_DICT";
 
   /** Initial terms format. */
-  public static final int TERMS_VERSION_START = 0;
+  public static final int VERSION_START = 0;
   
   /** Append-only */
-  public static final int TERMS_VERSION_APPEND_ONLY = 1;
+  public static final int VERSION_APPEND_ONLY = 1;
 
   /** Meta data as array */
-  public static final int TERMS_VERSION_META_ARRAY = 2;
+  public static final int VERSION_META_ARRAY = 2;
+  
+  /** checksums */
+  public static final int VERSION_CHECKSUM = 3;
 
   /** Current terms format. */
-  public static final int TERMS_VERSION_CURRENT = TERMS_VERSION_META_ARRAY;
+  public static final int VERSION_CURRENT = VERSION_CHECKSUM;
 
   /** Extension of terms index file */
   static final String TERMS_INDEX_EXTENSION = "tip";
   final static String TERMS_INDEX_CODEC_NAME = "BLOCK_TREE_TERMS_INDEX";
-
-  /** Initial index format. */
-  public static final int TERMS_INDEX_VERSION_START = 0;
-  
-  /** Append-only */
-  public static final int TERMS_INDEX_VERSION_APPEND_ONLY = 1;
-
-  /** Meta data as array */
-  public static final int TERMS_INDEX_VERSION_META_ARRAY = 2;
-
-  /** Current index format. */
-  public static final int TERMS_INDEX_VERSION_CURRENT = TERMS_INDEX_VERSION_META_ARRAY;
 
   private final IndexOutput out;
   private final IndexOutput indexOut;
@@ -264,7 +256,7 @@ public class BlockTreeTermsWriter extends FieldsConsumer implements Closeable {
     }
   }
 
-  private final List<FieldMetaData> fields = new ArrayList<FieldMetaData>();
+  private final List<FieldMetaData> fields = new ArrayList<>();
   // private final String segment;
 
   /** Create a new writer.  The number of items (terms or
@@ -326,12 +318,12 @@ public class BlockTreeTermsWriter extends FieldsConsumer implements Closeable {
 
   /** Writes the terms file header. */
   private void writeHeader(IndexOutput out) throws IOException {
-    CodecUtil.writeHeader(out, TERMS_CODEC_NAME, TERMS_VERSION_CURRENT);   
+    CodecUtil.writeHeader(out, TERMS_CODEC_NAME, VERSION_CURRENT);   
   }
 
   /** Writes the index file header. */
   private void writeIndexHeader(IndexOutput out) throws IOException {
-    CodecUtil.writeHeader(out, TERMS_INDEX_CODEC_NAME, TERMS_INDEX_VERSION_CURRENT); 
+    CodecUtil.writeHeader(out, TERMS_INDEX_CODEC_NAME, VERSION_CURRENT); 
   }
 
   /** Writes the terms file trailer. */
@@ -462,7 +454,7 @@ public class BlockTreeTermsWriter extends FieldsConsumer implements Closeable {
       }
 
       final ByteSequenceOutputs outputs = ByteSequenceOutputs.getSingleton();
-      final Builder<BytesRef> indexBuilder = new Builder<BytesRef>(FST.INPUT_TYPE.BYTE1,
+      final Builder<BytesRef> indexBuilder = new Builder<>(FST.INPUT_TYPE.BYTE1,
                                                                    0, 0, true, false, Integer.MAX_VALUE,
                                                                    outputs, null, false,
                                                                    PackedInts.COMPACT, true, 15);
@@ -510,7 +502,7 @@ public class BlockTreeTermsWriter extends FieldsConsumer implements Closeable {
     // Builder?  Takes FST and unions it w/ current
     // FST.
     private void append(Builder<BytesRef> builder, FST<BytesRef> subIndex) throws IOException {
-      final BytesRefFSTEnum<BytesRef> subIndexEnum = new BytesRefFSTEnum<BytesRef>(subIndex);
+      final BytesRefFSTEnum<BytesRef> subIndexEnum = new BytesRefFSTEnum<>(subIndex);
       BytesRefFSTEnum.InputOutput<BytesRef> indexEnt;
       while((indexEnt = subIndexEnum.next()) != null) {
         //if (DEBUG) {
@@ -538,7 +530,7 @@ public class BlockTreeTermsWriter extends FieldsConsumer implements Closeable {
     private final Builder<Object> blockBuilder;
 
     // PendingTerm or PendingBlock:
-    private final List<PendingEntry> pending = new ArrayList<PendingEntry>();
+    private final List<PendingEntry> pending = new ArrayList<>();
 
     // Index into pending of most recently written block
     private int lastBlockIndex = -1;
@@ -593,7 +585,7 @@ public class BlockTreeTermsWriter extends FieldsConsumer implements Closeable {
             // stragglers!  carry count upwards
             node.inputCount = totCount;
           }
-          frontier[idx] = new Builder.UnCompiledNode<Object>(blockBuilder, idx);
+          frontier[idx] = new Builder.UnCompiledNode<>(blockBuilder, idx);
         }
       }
     }
@@ -743,7 +735,7 @@ public class BlockTreeTermsWriter extends FieldsConsumer implements Closeable {
         int curStart = count;
         subCount = 0;
 
-        final List<PendingBlock> floorBlocks = new ArrayList<PendingBlock>();
+        final List<PendingBlock> floorBlocks = new ArrayList<>();
         PendingBlock firstBlock = null;
 
         for(int sub=0;sub<numSubs;sub++) {
@@ -925,7 +917,7 @@ public class BlockTreeTermsWriter extends FieldsConsumer implements Closeable {
         }
         termCount = length;
       } else {
-        subIndices = new ArrayList<FST<BytesRef>>();
+        subIndices = new ArrayList<>();
         termCount = 0;
         for (PendingEntry ent : slice) {
           if (ent.isTerm) {
@@ -1042,7 +1034,7 @@ public class BlockTreeTermsWriter extends FieldsConsumer implements Closeable {
       // This Builder is just used transiently to fragment
       // terms into "good" blocks; we don't save the
       // resulting FST:
-      blockBuilder = new Builder<Object>(FST.INPUT_TYPE.BYTE1,
+      blockBuilder = new Builder<>(FST.INPUT_TYPE.BYTE1,
                                          0, 0, true,
                                          true, Integer.MAX_VALUE,
                                          noOutputs,
@@ -1139,13 +1131,13 @@ public class BlockTreeTermsWriter extends FieldsConsumer implements Closeable {
         }
         out.writeVLong(field.sumDocFreq);
         out.writeVInt(field.docCount);
-        if (TERMS_VERSION_CURRENT >= TERMS_VERSION_META_ARRAY) {
-          out.writeVInt(field.longsSize);
-        }
+        out.writeVInt(field.longsSize);
         indexOut.writeVLong(field.indexStartFP);
       }
       writeTrailer(out, dirStart);
+      CodecUtil.writeFooter(out);
       writeIndexTrailer(indexOut, indexDirStart);
+      CodecUtil.writeFooter(indexOut);
     } catch (IOException ioe2) {
       ioe = ioe2;
     } finally {

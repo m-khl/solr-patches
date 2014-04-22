@@ -21,17 +21,6 @@ package org.apache.lucene.search.suggest.analyzing;
 //   - test w/ syns
 //   - add pruning of low-freq ngrams?
 
-import java.io.File;
-import java.io.IOException;
-//import java.io.PrintWriter;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Random;
-import java.util.Set;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.AnalyzerWrapper;
 import org.apache.lucene.analysis.TokenStream;
@@ -64,17 +53,30 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.IntsRef;
+import org.apache.lucene.util.OfflineSorter;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util.Version;
 import org.apache.lucene.util.fst.Builder;
+import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.FST.Arc;
 import org.apache.lucene.util.fst.FST.BytesReader;
-import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.Outputs;
 import org.apache.lucene.util.fst.PositiveIntOutputs;
-import org.apache.lucene.util.fst.Util.MinResult;
 import org.apache.lucene.util.fst.Util;
-import org.apache.lucene.util.OfflineSorter;
+import org.apache.lucene.util.fst.Util.Result;
+import org.apache.lucene.util.fst.Util.TopResults;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Random;
+import java.util.Set;
+
+//import java.io.PrintWriter;
 
 /**
  * Builds an ngram model from the text sent to {@link
@@ -284,7 +286,10 @@ public class FreeTextSuggester extends Lookup {
    *  the weights for the suggestions are ignored. */
   public void build(InputIterator iterator, double ramBufferSizeMB) throws IOException {
     if (iterator.hasPayloads()) {
-      throw new IllegalArgumentException("payloads are not supported");
+      throw new IllegalArgumentException("this suggester doesn't support payloads");
+    }
+    if (iterator.hasContexts()) {
+      throw new IllegalArgumentException("this suggester doesn't support contexts");
     }
 
     String prefix = getClass().getSimpleName();
@@ -343,7 +348,7 @@ public class FreeTextSuggester extends Lookup {
       TermsEnum termsEnum = terms.iterator(null);
 
       Outputs<Long> outputs = PositiveIntOutputs.getSingleton();
-      Builder<Long> builder = new Builder<Long>(FST.INPUT_TYPE.BYTE1, outputs);
+      Builder<Long> builder = new Builder<>(FST.INPUT_TYPE.BYTE1, outputs);
 
       IntsRef scratchInts = new IntsRef();
       while (true) {
@@ -374,13 +379,17 @@ public class FreeTextSuggester extends Lookup {
       pw.close();
       */
 
+      // Writer was only temporary, to count up bigrams,
+      // which we transferred to the FST, so now we
+      // rollback:
+      writer.rollback();
       success = true;
     } finally {
       try {
         if (success) {
-          IOUtils.close(writer, reader);
+          IOUtils.close(reader);
         } else {
-          IOUtils.closeWhileHandlingException(writer, reader);
+          IOUtils.closeWhileHandlingException(reader, writer);
         }
       } finally {
         for(String file : dir.listAll()) {
@@ -424,15 +433,25 @@ public class FreeTextSuggester extends Lookup {
     }
     totTokens = input.readVLong();
 
-    fst = new FST<Long>(input, PositiveIntOutputs.getSingleton());
+    fst = new FST<>(input, PositiveIntOutputs.getSingleton());
 
     return true;
   }
 
   @Override
   public List<LookupResult> lookup(final CharSequence key, /* ignored */ boolean onlyMorePopular, int num) {
+    return lookup(key, null, onlyMorePopular, num);
+  }
+
+  /** Lookup, without any context. */
+  public List<LookupResult> lookup(final CharSequence key, int num) {
+    return lookup(key, null, true, num);
+  }
+
+  @Override
+  public List<LookupResult> lookup(final CharSequence key, Set<BytesRef> contexts, /* ignored */ boolean onlyMorePopular, int num) {
     try {
-      return lookup(key, num);
+      return lookup(key, contexts, num);
     } catch (IOException ioe) {
       // bogus:
       throw new RuntimeException(ioe);
@@ -456,7 +475,11 @@ public class FreeTextSuggester extends Lookup {
   }
 
   /** Retrieve suggestions. */
-  public List<LookupResult> lookup(final CharSequence key, int num) throws IOException {
+  public List<LookupResult> lookup(final CharSequence key, Set<BytesRef> contexts, int num) throws IOException {
+    if (contexts != null) {
+      throw new IllegalArgumentException("this suggester doesn't support contexts");
+    }
+
     try (TokenStream ts = queryAnalyzer.tokenStream("", key.toString())) {
       TermToBytesRefAttribute termBytesAtt = ts.addAttribute(TermToBytesRefAttribute.class);
       OffsetAttribute offsetAtt = ts.addAttribute(OffsetAttribute.class);
@@ -527,7 +550,7 @@ public class FreeTextSuggester extends Lookup {
         lastTokens[0] = new BytesRef();
       }
       
-      Arc<Long> arc = new Arc<Long>();
+      Arc<Long> arc = new Arc<>();
       
       BytesReader bytesReader = fst.getBytesReader();
       
@@ -535,12 +558,12 @@ public class FreeTextSuggester extends Lookup {
       // results, return that; else, fallback:
       double backoff = 1.0;
       
-      List<LookupResult> results = new ArrayList<LookupResult>(num);
+      List<LookupResult> results = new ArrayList<>(num);
       
       // We only add a given suffix once, from the highest
       // order model that saw it; for subsequent lower order
       // models we skip it:
-      final Set<BytesRef> seen = new HashSet<BytesRef>();
+      final Set<BytesRef> seen = new HashSet<>();
       
       for(int gram=grams-1;gram>=0;gram--) {
         BytesRef token = lastTokens[gram];
@@ -611,7 +634,7 @@ public class FreeTextSuggester extends Lookup {
         CharsRef spare = new CharsRef();
         
         // complete top-N
-        MinResult<Long> completions[] = null;
+        TopResults<Long> completions = null;
         try {
           
           // Because we store multiple models in one FST
@@ -658,6 +681,7 @@ public class FreeTextSuggester extends Lookup {
           searcher.addStartPaths(arc, prefixOutput, true, new IntsRef());
           
           completions = searcher.search();
+          assert completions.isComplete;
         } catch (IOException bogus) {
           throw new RuntimeException(bogus);
         }
@@ -668,7 +692,7 @@ public class FreeTextSuggester extends Lookup {
         //System.out.println("    " + completions.length + " completions");
         
         nextCompletion:
-          for (MinResult<Long> completion : completions) {
+          for (Result<Long> completion : completions) {
             token.length = prefixLength;
             // append suffix
             Util.toBytesRef(completion.input, suffix);

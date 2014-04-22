@@ -45,24 +45,24 @@ public class TestFieldCacheTermsFilter extends LuceneTestCase {
       w.addDocument(doc);
     }
     IndexReader reader = w.getReader();
-    w.close();
+    w.shutdown();
 
     IndexSearcher searcher = newSearcher(reader);
     int numDocs = reader.numDocs();
     ScoreDoc[] results;
     MatchAllDocsQuery q = new MatchAllDocsQuery();
 
-    List<String> terms = new ArrayList<String>();
+    List<String> terms = new ArrayList<>();
     terms.add("5");
     results = searcher.search(q, new FieldCacheTermsFilter(fieldName,  terms.toArray(new String[0])), numDocs).scoreDocs;
     assertEquals("Must match nothing", 0, results.length);
 
-    terms = new ArrayList<String>();
+    terms = new ArrayList<>();
     terms.add("10");
     results = searcher.search(q, new FieldCacheTermsFilter(fieldName,  terms.toArray(new String[0])), numDocs).scoreDocs;
     assertEquals("Must match 1", 1, results.length);
 
-    terms = new ArrayList<String>();
+    terms = new ArrayList<>();
     terms.add("10");
     terms.add("20");
     results = searcher.search(q, new FieldCacheTermsFilter(fieldName,  terms.toArray(new String[0])), numDocs).scoreDocs;

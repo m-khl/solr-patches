@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
 
 public class BinaryResponseWriter implements BinaryQueryResponseWriter {
   private static final Logger LOG = LoggerFactory.getLogger(BinaryResponseWriter.class);
-  public static final Set<Class> KNOWN_TYPES = new HashSet<Class>();
+  public static final Set<Class> KNOWN_TYPES = new HashSet<>();
 
   @Override
   public void write(OutputStream out, SolrQueryRequest req, SolrQueryResponse response) throws IOException {
@@ -256,18 +256,6 @@ public class BinaryResponseWriter implements BinaryQueryResponseWriter {
 
   static {
     KNOWN_TYPES.add(BoolField.class);
-    KNOWN_TYPES.add(BCDIntField.class);
-    KNOWN_TYPES.add(BCDLongField.class);
-    KNOWN_TYPES.add(BCDStrField.class);
-    KNOWN_TYPES.add(DateField.class);
-    KNOWN_TYPES.add(DoubleField.class);
-    KNOWN_TYPES.add(FloatField.class);
-    KNOWN_TYPES.add(IntField.class);
-    KNOWN_TYPES.add(LongField.class);
-    KNOWN_TYPES.add(SortableLongField.class);
-    KNOWN_TYPES.add(SortableIntField.class);
-    KNOWN_TYPES.add(SortableFloatField.class);
-    KNOWN_TYPES.add(SortableDoubleField.class);
     KNOWN_TYPES.add(StrField.class);
     KNOWN_TYPES.add(TextField.class);
     KNOWN_TYPES.add(TrieField.class);

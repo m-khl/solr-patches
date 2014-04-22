@@ -44,7 +44,7 @@ import org.apache.lucene.util.TestUtil;
 public class TestLiveFieldValues extends LuceneTestCase {
   public void test() throws Exception {
 
-    Directory dir = newFSDirectory(TestUtil.getTempDir("livefieldupdates"));
+    Directory dir = newFSDirectory(createTempDir("livefieldupdates"));
     IndexWriterConfig iwc = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
 
     final IndexWriter w = new IndexWriter(dir, iwc);
@@ -79,7 +79,7 @@ public class TestLiveFieldValues extends LuceneTestCase {
     }
 
     final CountDownLatch startingGun = new CountDownLatch(1);
-    List<Thread> threads = new ArrayList<Thread>();
+    List<Thread> threads = new ArrayList<>();
 
     final int iters = atLeast(1000);
     final int idCount = TestUtil.nextInt(random(), 100, 10000);
@@ -96,7 +96,7 @@ public class TestLiveFieldValues extends LuceneTestCase {
           @Override
           public void run() {
             try {
-              Map<String,Integer> values = new HashMap<String,Integer>();
+              Map<String,Integer> values = new HashMap<>();
               List<String> allIDs = Collections.synchronizedList(new ArrayList<String>());
 
               startingGun.await();
@@ -170,7 +170,7 @@ public class TestLiveFieldValues extends LuceneTestCase {
 
     rt.close();
     mgr.close();
-    w.close();
+    w.shutdown();
     dir.close();
   }
 }

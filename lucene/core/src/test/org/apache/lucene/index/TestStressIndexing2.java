@@ -66,7 +66,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
     dw.writer.commit();
     verifyEquals(random(), reader, dir, "id");
     reader.close();
-    dw.writer.close();
+    dw.writer.shutdown();
     dir.close();
   }
   
@@ -145,7 +145,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
   }
   
   public DocsAndWriter indexRandomIWReader(int nThreads, int iterations, int range, Directory dir) throws IOException, InterruptedException {
-    Map<String,Document> docs = new HashMap<String,Document>();
+    Map<String,Document> docs = new HashMap<>();
     IndexWriter w = RandomIndexWriter.mockIndexWriter(dir, newIndexWriterConfig(
         TEST_VERSION_CURRENT, new MockAnalyzer(random())).setOpenMode(OpenMode.CREATE).setRAMBufferSizeMB(
             0.1).setMaxBufferedDocs(maxBufferedDocs).setMergePolicy(newLogMergePolicy()), new YieldTestPoint());
@@ -178,7 +178,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
     }
 
     // w.forceMerge(1);
-    //w.close();    
+    //w.shutdown();    
 
     for (int i=0; i<threads.length; i++) {
       IndexingThread th = threads[i];
@@ -196,7 +196,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
   
   public Map<String,Document> indexRandom(int nThreads, int iterations, int range, Directory dir, int maxThreadStates,
                                           boolean doReaderPooling) throws IOException, InterruptedException {
-    Map<String,Document> docs = new HashMap<String,Document>();
+    Map<String,Document> docs = new HashMap<>();
     IndexWriter w = RandomIndexWriter.mockIndexWriter(dir, newIndexWriterConfig(
         TEST_VERSION_CURRENT, new MockAnalyzer(random())).setOpenMode(OpenMode.CREATE)
              .setRAMBufferSizeMB(0.1).setMaxBufferedDocs(maxBufferedDocs).setIndexerThreadPool(new ThreadAffinityDocumentsWriterThreadPool(maxThreadStates))
@@ -223,7 +223,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
     }
 
     //w.forceMerge(1);
-    w.close();    
+    w.shutdown();    
 
     for (int i=0; i<threads.length; i++) {
       IndexingThread th = threads[i];
@@ -246,7 +246,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
     Iterator<Document> iter = docs.values().iterator();
     while (iter.hasNext()) {
       Document d = iter.next();
-      ArrayList<Field> fields = new ArrayList<Field>();
+      ArrayList<Field> fields = new ArrayList<>();
       fields.addAll(d.getFields());
       // put fields in same order each time
       Collections.sort(fields, fieldNameComparator);
@@ -259,7 +259,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
       // System.out.println("indexing "+d1);
     }
     
-    w.close();
+    w.shutdown();
   }
   
   public void verifyEquals(Random r, DirectoryReader r1, Directory dir2, String idField) throws Throwable {
@@ -690,7 +690,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
     int base;
     int range;
     int iterations;
-    Map<String,Document> docs = new HashMap<String,Document>();  
+    Map<String,Document> docs = new HashMap<>();
     Random r;
 
     public int nextInt(int lim) {
@@ -768,7 +768,7 @@ public class TestStressIndexing2 extends LuceneTestCase {
       customType1.setTokenized(false);
       customType1.setOmitNorms(true);
       
-      ArrayList<Field> fields = new ArrayList<Field>();      
+      ArrayList<Field> fields = new ArrayList<>();
       String idString = getIdString();
       Field idField =  newField("id", idString, customType1);
       fields.add(idField);

@@ -17,13 +17,15 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
+import static org.apache.lucene.index.SortedSetDocValues.NO_MORE_ORDS;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map.Entry;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.CountDownLatch;
@@ -55,10 +57,7 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefHash;
-import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
-
-import static org.apache.lucene.index.SortedSetDocValues.NO_MORE_ORDS;
 
 /**
  * Abstract class to do basic tests for a docvalues format.
@@ -68,23 +67,21 @@ import static org.apache.lucene.index.SortedSetDocValues.NO_MORE_ORDS;
  * test passes, then all Lucene/Solr tests should also pass.  Ie,
  * if there is some bug in a given DocValuesFormat that this
  * test fails to catch then this test needs to be improved! */
-public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
-  
-  /** Returns the codec to run tests against */
-  protected abstract Codec getCodec();
-  
-  private Codec savedCodec;
-  
-  public void setUp() throws Exception {
-    super.setUp();
-    // set the default codec, so adding test cases to this isn't fragile
-    savedCodec = Codec.getDefault();
-    Codec.setDefault(getCodec());
-  }
-  
-  public void tearDown() throws Exception {
-    Codec.setDefault(savedCodec); // restore
-    super.tearDown();
+public abstract class BaseDocValuesFormatTestCase extends BaseIndexFileFormatTestCase {
+
+  @Override
+  protected void addRandomFields(Document doc) {
+    if (usually()) {
+      doc.add(new NumericDocValuesField("ndv", random().nextInt(1 << 12)));
+      doc.add(new BinaryDocValuesField("bdv", new BytesRef(TestUtil.randomSimpleString(random()))));
+      doc.add(new SortedDocValuesField("sdv", new BytesRef(TestUtil.randomSimpleString(random(), 2))));
+    }
+    if (defaultCodecSupportsSortedSet()) {
+      final int numValues = random().nextInt(5);
+      for (int i = 0; i < numValues; ++i) {
+        doc.add(new SortedSetDocValuesField("ssdv", new BytesRef(TestUtil.randomSimpleString(random(), 2))));
+      }
+    }
   }
 
   public void testOneNumber() throws IOException {
@@ -96,7 +93,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(newTextField("fieldname", text, Field.Store.YES));
     doc.add(new NumericDocValuesField("dv", 5));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -128,7 +125,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(newTextField("fieldname", text, Field.Store.YES));
     doc.add(new FloatDocValuesField("dv", 5.7f));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -161,7 +158,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new NumericDocValuesField("dv1", 5));
     doc.add(new NumericDocValuesField("dv2", 17));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -196,7 +193,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new BinaryDocValuesField("dv1", new BytesRef(longTerm)));
     doc.add(new BinaryDocValuesField("dv2", new BytesRef(text)));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -234,7 +231,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new NumericDocValuesField("dv1", 5));
     doc.add(new BinaryDocValuesField("dv2", new BytesRef("hello world")));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -272,7 +269,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new NumericDocValuesField("dv2", 5));
     doc.add(new BinaryDocValuesField("dv3", new BytesRef("hello world")));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -314,7 +311,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new SortedDocValuesField("dv2", new BytesRef("hello hello")));
     doc.add(new NumericDocValuesField("dv3", 5));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -359,7 +356,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new NumericDocValuesField("dv", 2));
     iwriter.addDocument(doc);
     iwriter.forceMerge(1);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -389,7 +386,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new NumericDocValuesField("dv", 99));
     iwriter.addDocument(doc);
     iwriter.forceMerge(1);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -424,7 +421,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new NumericDocValuesField("dv", Long.MAX_VALUE));
     iwriter.addDocument(doc);
     iwriter.forceMerge(1);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -451,7 +448,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new NumericDocValuesField("dv", 9062230939892376225L));
     iwriter.addDocument(doc);
     iwriter.forceMerge(1);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -476,7 +473,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(newTextField("fieldname", text, Field.Store.YES));
     doc.add(new BinaryDocValuesField("dv", new BytesRef("hello world")));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -518,7 +515,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new BinaryDocValuesField("dv", new BytesRef("hello 2")));
     iwriter.addDocument(doc);
     iwriter.forceMerge(1);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -553,7 +550,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(newTextField("fieldname", text, Field.Store.YES));
     doc.add(new SortedDocValuesField("dv", new BytesRef("hello world")));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -592,7 +589,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new SortedDocValuesField("dv", new BytesRef("hello world 2")));
     iwriter.addDocument(doc);
     iwriter.forceMerge(1);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -625,7 +622,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new SortedDocValuesField("dv", new BytesRef("hello world 1")));
     iwriter.addDocument(doc);
     iwriter.forceMerge(1);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -662,7 +659,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new SortedDocValuesField("dv", new BytesRef("hello world 2")));
     iwriter.addDocument(doc);
     iwriter.forceMerge(1);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -709,7 +706,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     iwriter.forceMerge(1);
     
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.close();
+    iwriter.shutdown();
     
     SortedDocValues dv = getOnlySegmentReader(ireader).getSortedDocValues("field");
     if (defaultCodecSupportsDocsWithField()) {
@@ -737,7 +734,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     Document doc = new Document();
     doc.add(new BinaryDocValuesField("dv", new BytesRef("hello\nworld\r1")));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -763,7 +760,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     iwriter.addDocument(doc);
     // 2nd doc missing the DV field
     iwriter.addDocument(new Document());
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -802,7 +799,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     iwriter.forceMerge(1);
     
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.close();
+    iwriter.shutdown();
 
     SortedDocValues dv = getOnlySegmentReader(ireader).getSortedDocValues("field");
     assertEquals(3, dv.getValueCount());
@@ -866,7 +863,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new SortedDocValuesField("dv", new BytesRef("")));
     iwriter.addDocument(doc);
     iwriter.forceMerge(1);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -896,7 +893,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new BinaryDocValuesField("dv", new BytesRef("")));
     iwriter.addDocument(doc);
     iwriter.forceMerge(1);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -925,7 +922,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     random().nextBytes(bytes);
     doc.add(new BinaryDocValuesField("dv", b));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -952,7 +949,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     random().nextBytes(bytes);
     doc.add(new SortedDocValuesField("dv", b));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -975,7 +972,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     Document doc = new Document();
     doc.add(new BinaryDocValuesField("dv", new BytesRef("boo!")));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -1001,7 +998,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     Document doc = new Document();
     doc.add(new SortedDocValuesField("dv", new BytesRef("boo!")));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -1030,7 +1027,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc = new Document();
     doc.add(new BinaryDocValuesField("dv", new BytesRef("bar!")));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -1063,7 +1060,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc = new Document();
     doc.add(new SortedDocValuesField("dv", new BytesRef("bar!")));
     iwriter.addDocument(doc);
-    iwriter.close();
+    iwriter.shutdown();
     
     // Now search the index:
     IndexReader ireader = DirectoryReader.open(directory); // read-only=true
@@ -1101,7 +1098,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     writer.commit();
     writer.forceMerge(1, true);
 
-    writer.close(true);
+    writer.shutdown();
 
     DirectoryReader reader = DirectoryReader.open(dir);
     assertEquals(1, reader.leaves().size());
@@ -1138,7 +1135,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     RandomIndexWriter w = new RandomIndexWriter(random(), dir, cfg);
     int numDocs = atLeast(100);
     BytesRefHash hash = new BytesRefHash();
-    Map<String, String> docToString = new HashMap<String, String>();
+    Map<String, String> docToString = new HashMap<>();
     int maxLength = TestUtil.nextInt(random(), 1, 50);
     for (int i = 0; i < numDocs; i++) {
       Document doc = new Document();
@@ -1209,7 +1206,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     }
 
     reader.close();
-    w.close();
+    w.shutdown();
     dir.close();
   }
 
@@ -1265,7 +1262,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     // 256 values
     writer.forceMerge(numDocs / 256);
 
-    writer.close();
+    writer.shutdown();
     
     // compare
     DirectoryReader ir = DirectoryReader.open(dir);
@@ -1334,7 +1331,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     // 256 values
     writer.forceMerge(numDocs / 256);
 
-    writer.close();
+    writer.shutdown();
     
     // compare
     DirectoryReader ir = DirectoryReader.open(dir);
@@ -1449,7 +1446,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
       int id = random().nextInt(numDocs);
       writer.deleteDocuments(new Term("id", Integer.toString(id)));
     }
-    writer.close();
+    writer.shutdown();
     
     // compare
     DirectoryReader ir = DirectoryReader.open(dir);
@@ -1520,7 +1517,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
       int id = random().nextInt(numDocs);
       writer.deleteDocuments(new Term("id", Integer.toString(id)));
     }
-    writer.close();
+    writer.shutdown();
     
     // compare
     DirectoryReader ir = DirectoryReader.open(dir);
@@ -1575,7 +1572,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
       int id = random().nextInt(numDocs);
       writer.deleteDocuments(new Term("id", Integer.toString(id)));
     }
-    writer.close();
+    writer.shutdown();
     
     // compare
     DirectoryReader ir = DirectoryReader.open(dir);
@@ -1629,7 +1626,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     iwriter.addDocument(doc);
     
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.close();
+    iwriter.shutdown();
     
     SortedSetDocValues dv = getOnlySegmentReader(ireader).getSortedSetDocValues("field");
     
@@ -1656,7 +1653,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     iwriter.addDocument(doc);
     
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.close();
+    iwriter.shutdown();
     
     SortedSetDocValues dv = getOnlySegmentReader(ireader).getSortedSetDocValues("field");
     
@@ -1700,7 +1697,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     iwriter.forceMerge(1);
     
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.close();
+    iwriter.shutdown();
 
     SortedSetDocValues dv = getOnlySegmentReader(ireader).getSortedSetDocValues("field");
     assertEquals(2, dv.getValueCount());
@@ -1735,7 +1732,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     iwriter.addDocument(doc);
     
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.close();
+    iwriter.shutdown();
     
     SortedSetDocValues dv = getOnlySegmentReader(ireader).getSortedSetDocValues("field");
     
@@ -1766,7 +1763,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     iwriter.addDocument(doc);
     
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.close();
+    iwriter.shutdown();
     
     SortedSetDocValues dv = getOnlySegmentReader(ireader).getSortedSetDocValues("field");
     
@@ -1807,7 +1804,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     iwriter.forceMerge(1);
     
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.close();
+    iwriter.shutdown();
 
     SortedSetDocValues dv = getOnlySegmentReader(ireader).getSortedSetDocValues("field");
     assertEquals(3, dv.getValueCount());
@@ -1852,7 +1849,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     iwriter.addDocument(doc);
     iwriter.forceMerge(1);
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.close();
+    iwriter.shutdown();
     
     SortedSetDocValues dv = getOnlySegmentReader(ireader).getSortedSetDocValues("field");
     assertEquals(1, dv.getValueCount());
@@ -1887,7 +1884,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     iwriter.forceMerge(1);
    
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.close();
+    iwriter.shutdown();
     
     SortedSetDocValues dv = getOnlySegmentReader(ireader).getSortedSetDocValues("field");
     assertEquals(1, dv.getValueCount());
@@ -1921,7 +1918,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     
     iwriter.forceMerge(1);
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.close();
+    iwriter.shutdown();
     
     SortedSetDocValues dv = getOnlySegmentReader(ireader).getSortedSetDocValues("field");
     assertEquals(1, dv.getValueCount());
@@ -1956,7 +1953,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     iwriter.forceMerge(1);
     
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.close();
+    iwriter.shutdown();
     
     SortedSetDocValues dv = getOnlySegmentReader(ireader).getSortedSetDocValues("field");
     assertEquals(1, dv.getValueCount());
@@ -1993,7 +1990,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     iwriter.forceMerge(1);
     
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.close();
+    iwriter.shutdown();
     
     SortedSetDocValues dv = getOnlySegmentReader(ireader).getSortedSetDocValues("field");
     assertEquals(0, dv.getValueCount());
@@ -2017,7 +2014,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     iwriter.addDocument(doc);
     
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.close();
+    iwriter.shutdown();
 
     SortedSetDocValues dv = getOnlySegmentReader(ireader).getSortedSetDocValues("field");
     assertEquals(3, dv.getValueCount());
@@ -2086,7 +2083,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
       }
       int numValues = TestUtil.nextInt(random(), 0, maxValuesPerDoc);
       // create a random set of strings
-      Set<String> values = new TreeSet<String>();
+      Set<String> values = new TreeSet<>();
       for (int v = 0; v < numValues; v++) {
         values.add(TestUtil.randomSimpleString(random(), length));
       }
@@ -2097,7 +2094,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
       }
 
       // add in any order to the dv field
-      ArrayList<String> unordered = new ArrayList<String>(values);
+      ArrayList<String> unordered = new ArrayList<>(values);
       Collections.shuffle(unordered, random());
       for (String v : unordered) {
         doc.add(new SortedSetDocValuesField("dv", new BytesRef(v)));
@@ -2115,7 +2112,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
       int id = random().nextInt(numDocs);
       writer.deleteDocuments(new Term("id", Integer.toString(id)));
     }
-    writer.close();
+    writer.shutdown();
     
     // compare
     DirectoryReader ir = DirectoryReader.open(dir);
@@ -2191,7 +2188,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     // can be null for the segment if no docs actually had any SortedDocValues
     // in this case FC.getDocTermsOrds returns EMPTY
     if (actual == null) {
-      assertEquals(SortedSetDocValues.EMPTY, expected);
+      assertEquals(DocValues.EMPTY_SORTED_SET, expected);
       return;
     }
     assertEquals(expected.getValueCount(), actual.getValueCount());
@@ -2303,20 +2300,20 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
       }
       int numValues = random().nextInt(17);
       // create a random list of strings
-      List<String> values = new ArrayList<String>();
+      List<String> values = new ArrayList<>();
       for (int v = 0; v < numValues; v++) {
         values.add(TestUtil.randomSimpleString(random(), length));
       }
       
       // add in any order to the indexed field
-      ArrayList<String> unordered = new ArrayList<String>(values);
+      ArrayList<String> unordered = new ArrayList<>(values);
       Collections.shuffle(unordered, random());
       for (String v : values) {
         doc.add(newStringField("indexed", v, Field.Store.NO));
       }
 
       // add in any order to the dv field
-      ArrayList<String> unordered2 = new ArrayList<String>(values);
+      ArrayList<String> unordered2 = new ArrayList<>(values);
       Collections.shuffle(unordered2, random());
       for (String v : unordered2) {
         doc.add(new SortedSetDocValuesField("dv", new BytesRef(v)));
@@ -2355,7 +2352,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     assertEquals(ir.maxDoc(), expected, actual);
     ir.close();
     
-    writer.close();
+    writer.shutdown();
     dir.close();
   }
   
@@ -2424,7 +2421,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new StringField("id", "1", Field.Store.YES));
     iw.addDocument(doc);
     iw.forceMerge(1);
-    iw.close();
+    iw.shutdown();
     
     IndexReader ir = DirectoryReader.open(directory);
     assertEquals(1, ir.leaves().size());
@@ -2454,7 +2451,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new StringField("id", "1", Field.Store.YES));
     iw.addDocument(doc);
     iw.forceMerge(1);
-    iw.close();
+    iw.shutdown();
     
     IndexReader ir = DirectoryReader.open(directory);
     assertEquals(1, ir.leaves().size());
@@ -2488,7 +2485,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new NumericDocValuesField("dv1", 5));
     iw.addDocument(doc);
     iw.forceMerge(1);
-    iw.close();
+    iw.shutdown();
     
     IndexReader ir = DirectoryReader.open(directory);
     assertEquals(1, ir.leaves().size());
@@ -2519,7 +2516,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new StringField("id", "1", Field.Store.YES));
     iw.addDocument(doc);
     iw.forceMerge(1);
-    iw.close();
+    iw.shutdown();
     
     IndexReader ir = DirectoryReader.open(directory);
     assertEquals(1, ir.leaves().size());
@@ -2552,7 +2549,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new StringField("id", "1", Field.Store.YES));
     iw.addDocument(doc);
     iw.forceMerge(1);
-    iw.close();
+    iw.shutdown();
     
     IndexReader ir = DirectoryReader.open(directory);
     assertEquals(1, ir.leaves().size());
@@ -2589,7 +2586,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     doc.add(new BinaryDocValuesField("dv1", new BytesRef("boo")));
     iw.addDocument(doc);
     iw.forceMerge(1);
-    iw.close();
+    iw.shutdown();
     
     IndexReader ir = DirectoryReader.open(directory);
     assertEquals(1, ir.leaves().size());
@@ -2615,7 +2612,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     Analyzer analyzer = new MockAnalyzer(random());
     // FSDirectory because SimpleText will consume gobbs of
     // space when storing big binary values:
-    Directory d = newFSDirectory(TestUtil.getTempDir("hugeBinaryValues"));
+    Directory d = newFSDirectory(createTempDir("hugeBinaryValues"));
     boolean doFixed = random().nextBoolean();
     int numDocs;
     int fixedLength = 0;
@@ -2628,7 +2625,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
       numDocs = TestUtil.nextInt(random(), 100, 200);
     }
     IndexWriter w = new IndexWriter(d, newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
-    List<byte[]> docBytes = new ArrayList<byte[]>();
+    List<byte[]> docBytes = new ArrayList<>();
     long totalBytes = 0;
     for(int docID=0;docID<numDocs;docID++) {
       // we don't use RandomIndexWriter because it might add
@@ -2686,7 +2683,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
         return;
       }
     }
-    w.close();
+    w.shutdown();
 
     AtomicReader ar = SlowCompositeReaderWrapper.wrap(r);
 
@@ -2713,7 +2710,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     Analyzer analyzer = new MockAnalyzer(random());
     // FSDirectory because SimpleText will consume gobbs of
     // space when storing big binary values:
-    Directory d = newFSDirectory(TestUtil.getTempDir("hugeBinaryValues"));
+    Directory d = newFSDirectory(createTempDir("hugeBinaryValues"));
     boolean doFixed = random().nextBoolean();
     int numDocs;
     int fixedLength = 0;
@@ -2726,7 +2723,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
       numDocs = TestUtil.nextInt(random(), 100, 200);
     }
     IndexWriter w = new IndexWriter(d, newIndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
-    List<byte[]> docBytes = new ArrayList<byte[]>();
+    List<byte[]> docBytes = new ArrayList<>();
     long totalBytes = 0;
     for(int docID=0;docID<numDocs;docID++) {
       // we don't use RandomIndexWriter because it might add
@@ -2758,7 +2755,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
     }
     
     DirectoryReader r = w.getReader();
-    w.close();
+    w.shutdown();
 
     AtomicReader ar = SlowCompositeReaderWrapper.wrap(r);
 
@@ -2820,7 +2817,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
       int id = random().nextInt(numDocs);
       writer.deleteDocuments(new Term("id", Integer.toString(id)));
     }
-    writer.close();
+    writer.shutdown();
     
     // compare
     final DirectoryReader ir = DirectoryReader.open(dir);
@@ -2905,7 +2902,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
         doc.add(dvNumericField);
       }
       int numSortedSetFields = random().nextInt(3);
-      Set<String> values = new TreeSet<String>();
+      Set<String> values = new TreeSet<>();
       for (int j = 0; j < numSortedSetFields; j++) {
         values.add(TestUtil.randomSimpleString(random()));
       }
@@ -2925,7 +2922,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
       int id = random().nextInt(numDocs);
       writer.deleteDocuments(new Term("id", Integer.toString(id)));
     }
-    writer.close();
+    writer.shutdown();
     
     // compare
     final DirectoryReader ir = DirectoryReader.open(dir);
@@ -3036,7 +3033,7 @@ public abstract class BaseDocValuesFormatTestCase extends LuceneTestCase {
       doc.add(new BinaryDocValuesField("field", new BytesRef()));
       w.addDocument(doc);
       IndexReader r = w.getReader();
-      w.close();
+      w.shutdown();
 
       AtomicReader ar = SlowCompositeReaderWrapper.wrap(r);
       BinaryDocValues values = ar.getBinaryDocValues("field");

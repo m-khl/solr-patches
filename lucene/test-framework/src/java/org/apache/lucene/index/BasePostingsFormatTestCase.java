@@ -44,6 +44,8 @@ import org.apache.lucene.codecs.lucene46.Lucene46Codec;
 import org.apache.lucene.codecs.perfield.PerFieldPostingsFormat;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.FieldType;
+import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.FieldInfo.DocValuesType;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.store.Directory;
@@ -84,12 +86,7 @@ import org.junit.BeforeClass;
     they weren't indexed
 */
 
-public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
-
-  /**
-   * Returns the Codec to run tests against
-   */
-  protected abstract Codec getCodec();
+public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTestCase {
 
   private enum Option {
     // Sometimes use .advance():
@@ -341,7 +338,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
   public static void createPostings() throws IOException {
     totalPostings = 0;
     totalPayloadBytes = 0;
-    fields = new TreeMap<String,SortedMap<BytesRef,Long>>();
+    fields = new TreeMap<>();
 
     final int numFields = TestUtil.nextInt(random(), 1, 5);
     if (VERBOSE) {
@@ -362,9 +359,9 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
                                                 null, DocValuesType.NUMERIC, null);
       fieldUpto++;
 
-      SortedMap<BytesRef,Long> postings = new TreeMap<BytesRef,Long>();
+      SortedMap<BytesRef,Long> postings = new TreeMap<>();
       fields.put(field, postings);
-      Set<String> seenTerms = new HashSet<String>();
+      Set<String> seenTerms = new HashSet<>();
 
       int numTerms;
       if (random().nextInt(10) == 7) {
@@ -422,7 +419,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
       }
     }
 
-    allTerms = new ArrayList<FieldAndTerm>();
+    allTerms = new ArrayList<>();
     for(Map.Entry<String,SortedMap<BytesRef,Long>> fieldEnt : fields.entrySet()) {
       String field = fieldEnt.getKey();
       for(Map.Entry<BytesRef,Long> termEnt : fieldEnt.getValue().entrySet()) {
@@ -667,18 +664,10 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
     FieldInfo[] newFieldInfoArray = new FieldInfo[fields.size()];
     for(int fieldUpto=0;fieldUpto<fields.size();fieldUpto++) {
       FieldInfo oldFieldInfo = fieldInfos.fieldInfo(fieldUpto);
-
-      String pf = TestUtil.getPostingsFormat(codec, oldFieldInfo.name);
-      int fieldMaxIndexOption;
-      if (doesntSupportOffsets.contains(pf)) {
-        fieldMaxIndexOption = Math.min(maxIndexOptionNoOffsets, maxIndexOption);
-      } else {
-        fieldMaxIndexOption = maxIndexOption;
-      }
     
       // Randomly picked the IndexOptions to index this
       // field with:
-      IndexOptions indexOptions = IndexOptions.values()[alwaysTestMax ? fieldMaxIndexOption : random().nextInt(1+fieldMaxIndexOption)];
+      IndexOptions indexOptions = IndexOptions.values()[alwaysTestMax ? maxIndexOption : random().nextInt(1+maxIndexOption)];
       boolean doPayloads = indexOptions.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0 && allowPayloads;
 
       newFieldInfoArray[fieldUpto] = new FieldInfo(oldFieldInfo.name,
@@ -1103,8 +1092,8 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
     ThreadState threadState = new ThreadState();
 
     // Test random terms/fields:
-    List<TermState> termStates = new ArrayList<TermState>();
-    List<FieldAndTerm> termStateTerms = new ArrayList<FieldAndTerm>();
+    List<TermState> termStates = new ArrayList<>();
+    List<FieldAndTerm> termStateTerms = new ArrayList<>();
     
     Collections.shuffle(allTerms, random());
     int upto = 0;
@@ -1211,7 +1200,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
   /** Indexes all fields/terms at the specified
    *  IndexOptions, and fully tests at that IndexOptions. */
   private void testFull(IndexOptions options, boolean withPayloads) throws Exception {
-    File path = TestUtil.getTempDir("testPostingsFormat.testExact");
+    File path = createTempDir("testPostingsFormat.testExact");
     Directory dir = newFSDirectory(path);
 
     // TODO test thread safety of buildIndex too
@@ -1232,7 +1221,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
 
     fieldsProducer.close();
     dir.close();
-    TestUtil.rmDir(path);
+    TestUtil.rm(path);
   }
 
   public void testDocsOnly() throws Exception {
@@ -1264,7 +1253,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
     int iters = 5;
 
     for(int iter=0;iter<iters;iter++) {
-      File path = TestUtil.getTempDir("testPostingsFormat");
+      File path = createTempDir("testPostingsFormat");
       Directory dir = newFSDirectory(path);
 
       boolean indexPayloads = random().nextBoolean();
@@ -1281,7 +1270,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
       fieldsProducer = null;
 
       dir.close();
-      TestUtil.rmDir(path);
+      TestUtil.rm(path);
     }
   }
   
@@ -1306,7 +1295,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
     assertEquals(termsEnum.term(), new BytesRef("something"));
     assertNull(termsEnum.next());
     ir.close();
-    iw.close();
+    iw.shutdown();
     dir.close();
   }
   
@@ -1331,7 +1320,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
     assertEquals(termsEnum.term(), new BytesRef(""));
     assertNull(termsEnum.next());
     ir.close();
-    iw.close();
+    iw.shutdown();
     dir.close();
   }
   
@@ -1366,7 +1355,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
       }
     }
     ir.close();
-    iw.close();
+    iw.shutdown();
     dir.close();
   }
 
@@ -1387,7 +1376,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
     // while up to one thread flushes, and each of those
     // threads iterates over the map while the flushing
     // thread might be adding to it:
-    final Map<String,TermFreqs> termFreqs = new ConcurrentHashMap<String,TermFreqs>();
+    final Map<String,TermFreqs> termFreqs = new ConcurrentHashMap<>();
 
     final AtomicLong sumDocFreq = new AtomicLong();
     final AtomicLong sumTotalTermFreq = new AtomicLong();
@@ -1563,7 +1552,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
     }
 
     IndexReader r = w.getReader();
-    w.close();
+    w.shutdown();
 
     Terms terms = MultiFields.getTerms(r, "body");
     assertEquals(sumDocFreq.get(), terms.getSumDocFreq());
@@ -1581,5 +1570,19 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
 
     r.close();
     dir.close();
+  }
+
+  @Override
+  protected void addRandomFields(Document doc) {
+    for (IndexOptions opts : IndexOptions.values()) {
+      FieldType ft = new FieldType();
+      ft.setIndexOptions(opts);
+      ft.setIndexed(true);
+      ft.freeze();
+      final int numFields = random().nextInt(5);
+      for (int j = 0; j < numFields; ++j) {
+        doc.add(new Field("f_" + opts, TestUtil.randomSimpleString(random(), 2), ft));
+      }
+    }
   }
 }

@@ -64,7 +64,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     w.addDocument(doc);
     
     final IndexReader r = w.getReader();
-    w.close();
+    w.shutdown();
 
     final AtomicReader ar = SlowCompositeReaderWrapper.wrap(r);
     final DocTermOrds dto = new DocTermOrds(ar, ar.getLiveDocs(), "field");
@@ -95,7 +95,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     Directory dir = newDirectory();
 
     final int NUM_TERMS = atLeast(20);
-    final Set<BytesRef> terms = new HashSet<BytesRef>();
+    final Set<BytesRef> terms = new HashSet<>();
     while(terms.size() < NUM_TERMS) {
       final String s = TestUtil.randomRealisticUnicodeString(random());
       //final String s = _TestUtil.randomSimpleString(random);
@@ -120,7 +120,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     final RandomIndexWriter w = new RandomIndexWriter(random(), dir, conf);
 
     final int[][] idToOrds = new int[NUM_DOCS][];
-    final Set<Integer> ordsForDocSet = new HashSet<Integer>();
+    final Set<Integer> ordsForDocSet = new HashSet<>();
 
     for(int id=0;id<NUM_DOCS;id++) {
       Document doc = new Document();
@@ -151,7 +151,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     }
     
     final DirectoryReader r = w.getReader();
-    w.close();
+    w.shutdown();
 
     if (VERBOSE) {
       System.out.println("TEST: reader=" + r);
@@ -181,7 +181,7 @@ public class TestDocTermOrds extends LuceneTestCase {
   public void testRandomWithPrefix() throws Exception {
     Directory dir = newDirectory();
 
-    final Set<String> prefixes = new HashSet<String>();
+    final Set<String> prefixes = new HashSet<>();
     final int numPrefix = TestUtil.nextInt(random(), 2, 7);
     if (VERBOSE) {
       System.out.println("TEST: use " + numPrefix + " prefixes");
@@ -193,7 +193,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     final String[] prefixesArray = prefixes.toArray(new String[prefixes.size()]);
 
     final int NUM_TERMS = atLeast(20);
-    final Set<BytesRef> terms = new HashSet<BytesRef>();
+    final Set<BytesRef> terms = new HashSet<>();
     while(terms.size() < NUM_TERMS) {
       final String s = prefixesArray[random().nextInt(prefixesArray.length)] + TestUtil.randomRealisticUnicodeString(random());
       //final String s = prefixesArray[random.nextInt(prefixesArray.length)] + _TestUtil.randomSimpleString(random);
@@ -217,7 +217,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     final RandomIndexWriter w = new RandomIndexWriter(random(), dir, conf);
 
     final int[][] idToOrds = new int[NUM_DOCS][];
-    final Set<Integer> ordsForDocSet = new HashSet<Integer>();
+    final Set<Integer> ordsForDocSet = new HashSet<>();
 
     for(int id=0;id<NUM_DOCS;id++) {
       Document doc = new Document();
@@ -248,7 +248,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     }
     
     final DirectoryReader r = w.getReader();
-    w.close();
+    w.shutdown();
 
     if (VERBOSE) {
       System.out.println("TEST: reader=" + r);
@@ -262,7 +262,7 @@ public class TestDocTermOrds extends LuceneTestCase {
       final int[][] idToOrdsPrefix = new int[NUM_DOCS][];
       for(int id=0;id<NUM_DOCS;id++) {
         final int[] docOrds = idToOrds[id];
-        final List<Integer> newOrds = new ArrayList<Integer>();
+        final List<Integer> newOrds = new ArrayList<>();
         for(int ord : idToOrds[id]) {
           if (StringHelper.startsWith(termsArray[ord], prefixRef)) {
             newOrds.add(ord);
@@ -401,7 +401,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     v.setDocument(1);
     assertEquals(1, v.nextOrd());
     
-    iw.close();
+    iw.shutdown();
     r1.close();
     r2.close();
     dir.close();
@@ -428,7 +428,7 @@ public class TestDocTermOrds extends LuceneTestCase {
     iwriter.forceMerge(1);
     
     DirectoryReader ireader = iwriter.getReader();
-    iwriter.close();
+    iwriter.shutdown();
 
     AtomicReader ar = getOnlySegmentReader(ireader);
     SortedSetDocValues dv = FieldCache.DEFAULT.getDocTermOrds(ar, "field");

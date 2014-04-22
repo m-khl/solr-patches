@@ -21,6 +21,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -83,7 +84,7 @@ import static org.hamcrest.CoreMatchers.equalTo;
  * returning the same results for queries on some randomish indexes.
  */
 public class MemoryIndexTest extends BaseTokenStreamTestCase {
-  private Set<String> queries = new HashSet<String>();
+  private Set<String> queries = new HashSet<>();
   
   public static final int ITERATIONS = 100 * RANDOM_MULTIPLIER;
 
@@ -98,9 +99,9 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
    * read a set of queries from a resource file
    */
   private Set<String> readQueries(String resource) throws IOException {
-    Set<String> queries = new HashSet<String>();
+    Set<String> queries = new HashSet<>();
     InputStream stream = getClass().getResourceAsStream(resource);
-    BufferedReader reader = new BufferedReader(new InputStreamReader(stream, "UTF-8"));
+    BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
     String line = null;
     while ((line = reader.readLine()) != null) {
       line = line.trim();
@@ -155,7 +156,7 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
     doc.add(field1);
     doc.add(field2);
     writer.addDocument(doc);
-    writer.close();
+    writer.shutdown();
     
     memory.addField("foo", fooField.toString(), analyzer);
     memory.addField("term", termField.toString(), analyzer);
@@ -376,7 +377,7 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
   // LUCENE-3831
   public void testNullPointerException() throws IOException {
     RegexpQuery regex = new RegexpQuery(new Term("field", "worl."));
-    SpanQuery wrappedquery = new SpanMultiTermQueryWrapper<RegexpQuery>(regex);
+    SpanQuery wrappedquery = new SpanMultiTermQueryWrapper<>(regex);
         
     MemoryIndex mindex = new MemoryIndex(random().nextBoolean(),  random().nextInt(50) * 1024 * 1024);
     mindex.addField("field", new MockAnalyzer(random()).tokenStream("field", "hello there"));
@@ -388,7 +389,7 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
   // LUCENE-3831
   public void testPassesIfWrapped() throws IOException {
     RegexpQuery regex = new RegexpQuery(new Term("field", "worl."));
-    SpanQuery wrappedquery = new SpanOrQuery(new SpanMultiTermQueryWrapper<RegexpQuery>(regex));
+    SpanQuery wrappedquery = new SpanOrQuery(new SpanMultiTermQueryWrapper<>(regex));
 
     MemoryIndex mindex = new MemoryIndex(random().nextBoolean(),  random().nextInt(50) * 1024 * 1024);
     mindex.addField("field", new MockAnalyzer(random()).tokenStream("field", "hello there"));
@@ -450,7 +451,7 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
       }
       
       writer.addDocument(doc);
-      writer.close();
+      writer.shutdown();
       for (IndexableField field : doc.indexableFields()) {
           memory.addField(field.name(), ((Field)field).stringValue(), mockAnalyzer);  
       }
@@ -496,7 +497,7 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
     IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(random(), TEST_VERSION_CURRENT, mockAnalyzer));
     writer.updateDocument(new Term("id", "1"), doc);
     writer.commit();
-    writer.close();
+    writer.shutdown();
     DirectoryReader reader = DirectoryReader.open(dir);
 
     //Index document in Memory index

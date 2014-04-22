@@ -132,7 +132,7 @@ public class TestMultiFieldQueryParser extends LuceneTestCase {
   }
   
   public void testBoostsSimple() throws Exception {
-      Map<String,Float> boosts = new HashMap<String,Float>();
+      Map<String,Float> boosts = new HashMap<>();
       boosts.put("b", Float.valueOf(5));
       boosts.put("t", Float.valueOf(10));
       String[] fields = {"b", "t"};
@@ -290,7 +290,7 @@ public class TestMultiFieldQueryParser extends LuceneTestCase {
     Document doc = new Document();
     doc.add(newTextField("body", "blah the footest blah", Field.Store.NO));
     iw.addDocument(doc);
-    iw.close();
+    iw.shutdown();
     
     MultiFieldQueryParser mfqp = 
       new MultiFieldQueryParser(TEST_VERSION_CURRENT, new String[] {"body"}, analyzer);

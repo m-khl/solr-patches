@@ -43,7 +43,7 @@ public class IndexSortingTest extends SorterTestBase {
     // only read the values of the undeleted documents, since after addIndexes,
     // the deleted ones will be dropped from the index.
     Bits liveDocs = reader.getLiveDocs();
-    List<Integer> values = new ArrayList<Integer>();
+    List<Integer> values = new ArrayList<>();
     for (int i = 0; i < reader.maxDoc(); i++) {
       if (liveDocs == null || liveDocs.get(i)) {
         values.add(Integer.valueOf(reader.document(i).get(ID_FIELD)));
@@ -70,7 +70,7 @@ public class IndexSortingTest extends SorterTestBase {
     IndexWriter writer = new IndexWriter(target, newIndexWriterConfig(TEST_VERSION_CURRENT, null));
     reader = SortingAtomicReader.wrap(reader, sorter);
     writer.addIndexes(reader);
-    writer.close();
+    writer.shutdown();
     reader.close();
     dir.close();
     

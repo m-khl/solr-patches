@@ -50,7 +50,7 @@ import java.util.Map;
  * <p>
  * The default selection behavior is to mutate both those fields that don't match
  * a schema field, as well as those fields that match a schema field with a field 
- * type that uses class solr.DateField or a sub-class, including solr.TrieDateField.
+ * type that uses class solr.TrieDateField.
  * </p>
  * <p>
  * If all values are parseable as dates (or are already Date), then the field will
@@ -102,7 +102,7 @@ public class ParseDateFieldUpdateProcessorFactory extends FieldMutatingUpdatePro
   private static final String DEFAULT_TIME_ZONE_PARAM = "defaultTimeZone";
   private static final String LOCALE_PARAM = "locale";
 
-  private Map<String,DateTimeFormatter> formats = new LinkedHashMap<String,DateTimeFormatter>();
+  private Map<String,DateTimeFormatter> formats = new LinkedHashMap<>();
 
   @Override
   public UpdateRequestProcessor getInstance(SolrQueryRequest req,

@@ -27,6 +27,8 @@ import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.OfflineSorter;
 import org.apache.lucene.util.OfflineSorter.ByteSequencesReader;
 import org.apache.lucene.util.OfflineSorter.ByteSequencesWriter;
+import org.apache.lucene.util.automaton.CharacterRunAutomaton;
+import org.apache.lucene.util.automaton.RegExp;
 import org.apache.lucene.util.fst.Builder;
 import org.apache.lucene.util.fst.CharSequenceOutputs;
 import org.apache.lucene.util.fst.FST;
@@ -48,12 +50,14 @@ import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -83,17 +87,16 @@ public class Dictionary {
   private static final String UTF8_FLAG_TYPE = "UTF-8";
   private static final String LONG_FLAG_TYPE = "long";
   
+  // TODO: really for suffixes we should reverse the automaton and run them backwards
   private static final String PREFIX_CONDITION_REGEX_PATTERN = "%s.*";
   private static final String SUFFIX_CONDITION_REGEX_PATTERN = ".*%s";
 
   FST<IntsRef> prefixes;
   FST<IntsRef> suffixes;
   
-  // all Patterns used by prefixes and suffixes. these are typically re-used across
+  // all condition checks used by prefixes and suffixes. these are typically re-used across
   // many affix stripping rules. so these are deduplicated, to save RAM.
-  // TODO: maybe don't use Pattern for the condition check...
-  // TODO: when we cut over Affix to FST, just store integer index to this.
-  ArrayList<Pattern> patterns = new ArrayList<>();
+  ArrayList<CharacterRunAutomaton> patterns = new ArrayList<>();
   
   // the entries in the .dic file, mapping to their set of flags.
   // the fst output is the ordinal list for flagLookup
@@ -103,7 +106,8 @@ public class Dictionary {
   BytesRefHash flagLookup = new BytesRefHash();
   
   // the list of unique strip affixes.
-  BytesRefHash stripLookup = new BytesRefHash();
+  char[] stripData;
+  int[] stripOffsets;
   
   // 8 bytes per affix
   byte[] affixData = new byte[64];
@@ -118,6 +122,7 @@ public class Dictionary {
   
   boolean ignoreCase;
   boolean complexPrefixes;
+  boolean twoStageAffix; // if no affixes have continuation classes, no need to do 2-level affix stripping
   
   int circumfix = -1; // circumfix flag, or -1 if one is not defined
   
@@ -160,7 +165,6 @@ public class Dictionary {
     this.needsInputCleaning = ignoreCase;
     this.needsOutputCleaning = false; // set if we have an OCONV
     flagLookup.add(new BytesRef()); // no flags -> ord 0
-    stripLookup.add(new BytesRef()); // no strip -> ord 0
 
     File aff = File.createTempFile("affix", "aff", tempDir);
     OutputStream out = new BufferedOutputStream(new FileOutputStream(aff));
@@ -186,7 +190,7 @@ public class Dictionary {
       
       // read dictionary entries
       IntSequenceOutputs o = IntSequenceOutputs.getSingleton();
-      Builder<IntsRef> b = new Builder<IntsRef>(FST.INPUT_TYPE.BYTE4, o);
+      Builder<IntsRef> b = new Builder<>(FST.INPUT_TYPE.BYTE4, o);
       readDictionaryFiles(dictionaries, decoder, b);
       words = b.finish();
       aliases = null; // no longer needed
@@ -203,32 +207,16 @@ public class Dictionary {
     return lookup(words, word, offset, length);
   }
 
-  /**
-   * Looks up HunspellAffix prefixes that have an append that matches the String created from the given char array, offset and length
-   *
-   * @param word Char array to generate the String from
-   * @param offset Offset in the char array that the String starts at
-   * @param length Length from the offset that the String is
-   * @return List of HunspellAffix prefixes with an append that matches the String, or {@code null} if none are found
-   */
+  // only for testing
   IntsRef lookupPrefix(char word[], int offset, int length) {
     return lookup(prefixes, word, offset, length);
   }
 
-  /**
-   * Looks up HunspellAffix suffixes that have an append that matches the String created from the given char array, offset and length
-   *
-   * @param word Char array to generate the String from
-   * @param offset Offset in the char array that the String starts at
-   * @param length Length from the offset that the String is
-   * @return List of HunspellAffix suffixes with an append that matches the String, or {@code null} if none are found
-   */
+  // only for testing
   IntsRef lookupSuffix(char word[], int offset, int length) {
     return lookup(suffixes, word, offset, length);
   }
   
-  // TODO: this is pretty stupid, considering how the stemming algorithm works
-  // we can speed it up to be significantly faster!
   IntsRef lookup(FST<IntsRef> fst, char word[], int offset, int length) {
     if (fst == null) {
       return null;
@@ -272,6 +260,14 @@ public class Dictionary {
     TreeMap<String, List<Character>> prefixes = new TreeMap<>();
     TreeMap<String, List<Character>> suffixes = new TreeMap<>();
     Map<String,Integer> seenPatterns = new HashMap<>();
+    
+    // zero condition -> 0 ord
+    seenPatterns.put(".*", 0);
+    patterns.add(null);
+    
+    // zero strip -> 0 ord
+    Map<String,Integer> seenStrips = new LinkedHashMap<>();
+    seenStrips.put("", 0);
 
     LineNumberReader reader = new LineNumberReader(new InputStreamReader(affixStream, decoder));
     String line = null;
@@ -283,9 +279,9 @@ public class Dictionary {
       if (line.startsWith(ALIAS_KEY)) {
         parseAlias(line);
       } else if (line.startsWith(PREFIX_KEY)) {
-        parseAffix(prefixes, line, reader, PREFIX_CONDITION_REGEX_PATTERN, seenPatterns);
+        parseAffix(prefixes, line, reader, PREFIX_CONDITION_REGEX_PATTERN, seenPatterns, seenStrips);
       } else if (line.startsWith(SUFFIX_KEY)) {
-        parseAffix(suffixes, line, reader, SUFFIX_CONDITION_REGEX_PATTERN, seenPatterns);
+        parseAffix(suffixes, line, reader, SUFFIX_CONDITION_REGEX_PATTERN, seenPatterns, seenStrips);
       } else if (line.startsWith(FLAG_KEY)) {
         // Assume that the FLAG line comes before any prefix or suffixes
         // Store the strategy so it can be used when parsing the dic file
@@ -326,6 +322,22 @@ public class Dictionary {
     
     this.prefixes = affixFST(prefixes);
     this.suffixes = affixFST(suffixes);
+    
+    int totalChars = 0;
+    for (String strip : seenStrips.keySet()) {
+      totalChars += strip.length();
+    }
+    stripData = new char[totalChars];
+    stripOffsets = new int[seenStrips.size()+1];
+    int currentOffset = 0;
+    int currentIndex = 0;
+    for (String strip : seenStrips.keySet()) {
+      stripOffsets[currentIndex++] = currentOffset;
+      strip.getChars(0, strip.length(), stripData, currentOffset);
+      currentOffset += strip.length();
+    }
+    assert currentIndex == seenStrips.size();
+    stripOffsets[currentIndex] = currentOffset;
   }
   
   private FST<IntsRef> affixFST(TreeMap<String,List<Character>> affixes) throws IOException {
@@ -360,13 +372,15 @@ public class Dictionary {
                           String header,
                           LineNumberReader reader,
                           String conditionPattern,
-                          Map<String,Integer> seenPatterns) throws IOException, ParseException {
+                          Map<String,Integer> seenPatterns,
+                          Map<String,Integer> seenStrips) throws IOException, ParseException {
     
     BytesRef scratch = new BytesRef();
     StringBuilder sb = new StringBuilder();
     String args[] = header.split("\\s+");
 
     boolean crossProduct = args[2].equals("Y");
+    boolean isSuffix = conditionPattern == SUFFIX_CONDITION_REGEX_PATTERN;
     
     int numLines = Integer.parseInt(args[3]);
     affixData = ArrayUtil.grow(affixData, (currentAffix << 3) + (numLines << 3));
@@ -399,7 +413,10 @@ public class Dictionary {
         
         appendFlags = flagParsingStrategy.parseFlags(flagPart);
         Arrays.sort(appendFlags);
+        twoStageAffix = true;
       }
+      
+      // TODO: add test and fix zero-affix handling!
 
       String condition = ruleArgs.length > 4 ? ruleArgs[4] : ".";
       // at least the gascon affix file has this issue
@@ -411,7 +428,16 @@ public class Dictionary {
         condition = condition.replace("-", "\\-");
       }
 
-      String regex = String.format(Locale.ROOT, conditionPattern, condition);
+      final String regex;
+      if (".".equals(condition)) {
+        regex = ".*"; // Zero condition is indicated by dot
+      } else if (condition.equals(strip)) {
+        regex = ".*"; // TODO: optimize this better:
+                      // if we remove 'strip' from condition, we don't have to append 'strip' to check it...!
+                      // but this is complicated...
+      } else {
+        regex = String.format(Locale.ROOT, conditionPattern, condition);
+      }
       
       // deduplicate patterns
       Integer patternIndex = seenPatterns.get(regex);
@@ -421,25 +447,25 @@ public class Dictionary {
           throw new UnsupportedOperationException("Too many patterns, please report this to dev@lucene.apache.org");          
         }
         seenPatterns.put(regex, patternIndex);
-        Pattern pattern = Pattern.compile(regex);
+        CharacterRunAutomaton pattern = new CharacterRunAutomaton(new RegExp(regex, RegExp.NONE).toAutomaton());
         patterns.add(pattern);
       }
       
-      scratch.copyChars(strip);
-      int stripOrd = stripLookup.add(scratch);
-      if (stripOrd < 0) {
-        // already exists in our hash
-        stripOrd = (-stripOrd)-1;
-      } else if (stripOrd > Character.MAX_VALUE) {
-        throw new UnsupportedOperationException("Too many unique strips, please report this to dev@lucene.apache.org");
+      Integer stripOrd = seenStrips.get(strip);
+      if (stripOrd == null) {
+        stripOrd = seenStrips.size();
+        seenStrips.put(strip, stripOrd);
+        if (stripOrd > Character.MAX_VALUE) {
+          throw new UnsupportedOperationException("Too many unique strips, please report this to dev@lucene.apache.org");
+        }
       }
 
       if (appendFlags == null) {
         appendFlags = NOFLAGS;
       }
       
-      final int hashCode = encodeFlagsWithHash(scratch, appendFlags);
-      int appendFlagsOrd = flagLookup.add(scratch, hashCode);
+      encodeFlags(scratch, appendFlags);
+      int appendFlagsOrd = flagLookup.add(scratch);
       if (appendFlagsOrd < 0) {
         // already exists in our hash
         appendFlagsOrd = (-appendFlagsOrd)-1;
@@ -449,7 +475,7 @@ public class Dictionary {
       }
       
       affixWriter.writeShort((short)flag);
-      affixWriter.writeShort((short)stripOrd);
+      affixWriter.writeShort((short)stripOrd.intValue());
       // encode crossProduct into patternIndex
       int patternOrd = patternIndex.intValue() << 1 | (crossProduct ? 1 : 0);
       affixWriter.writeShort((short)patternOrd);
@@ -460,9 +486,13 @@ public class Dictionary {
         affixArg = cleaned.toString();
       }
       
+      if (isSuffix) {
+        affixArg = new StringBuilder(affixArg).reverse().toString();
+      }
+      
       List<Character> list = affixes.get(affixArg);
       if (list == null) {
-        list = new ArrayList<Character>();
+        list = new ArrayList<>();
         affixes.put(affixArg, list);
       }
       
@@ -632,7 +662,7 @@ public class Dictionary {
             int flagSep = line.lastIndexOf(FLAG_SEPARATOR);
             if (flagSep == -1) {
               CharSequence cleansed = cleanInput(line, sb);
-              writer.write(cleansed.toString().getBytes(IOUtils.CHARSET_UTF_8));
+              writer.write(cleansed.toString().getBytes(StandardCharsets.UTF_8));
             } else {
               String text = line.substring(0, flagSep);
               CharSequence cleansed = cleanInput(text, sb);
@@ -641,10 +671,10 @@ public class Dictionary {
                 sb.append(cleansed);
               }
               sb.append(line.substring(flagSep));
-              writer.write(sb.toString().getBytes(IOUtils.CHARSET_UTF_8));
+              writer.write(sb.toString().getBytes(StandardCharsets.UTF_8));
             }
           } else {
-            writer.write(line.getBytes(IOUtils.CHARSET_UTF_8));
+            writer.write(line.getBytes(StandardCharsets.UTF_8));
           }
         }
       }
@@ -735,8 +765,8 @@ public class Dictionary {
       if (cmp < 0) {
         throw new IllegalArgumentException("out of order: " + entry + " < " + currentEntry);
       } else {
-        final int hashCode = encodeFlagsWithHash(flagsScratch, wordForm);
-        int ord = flagLookup.add(flagsScratch, hashCode);
+        encodeFlags(flagsScratch, wordForm);
+        int ord = flagLookup.add(flagsScratch);
         if (ord < 0) {
           // already exists in our hash
           ord = (-ord)-1;
@@ -765,6 +795,9 @@ public class Dictionary {
   }
   
   static char[] decodeFlags(BytesRef b) {
+    if (b.length == 0) {
+      return CharsRef.EMPTY_CHARS;
+    }
     int len = b.length >>> 1;
     char flags[] = new char[len];
     int upto = 0;
@@ -775,18 +808,16 @@ public class Dictionary {
     return flags;
   }
   
-  static int encodeFlagsWithHash(BytesRef b, char flags[]) {
-    int hash = 0;
+  static void encodeFlags(BytesRef b, char flags[]) {
     int len = flags.length << 1;
     b.grow(len);
     b.length = len;
     int upto = b.offset;
     for (int i = 0; i < flags.length; i++) {
       int flag = flags[i];
-      hash = 31*hash + (b.bytes[upto++] = (byte) ((flag >> 8) & 0xff));
-      hash = 31*hash + (b.bytes[upto++] = (byte) (flag & 0xff));
+      b.bytes[upto++] = (byte) ((flag >> 8) & 0xff);
+      b.bytes[upto++] = (byte) (flag & 0xff);
     }
-    return hash;
   }
 
   private void parseAlias(String line) {
@@ -822,7 +853,11 @@ public class Dictionary {
      * @return Parsed flag
      */
     char parseFlag(String rawFlag) {
-      return parseFlags(rawFlag)[0];
+      char flags[] = parseFlags(rawFlag);
+      if (flags.length != 1) {
+        throw new IllegalArgumentException("expected only one flag, got: " + rawFlag);
+      }
+      return flags[0];
     }
 
     /**

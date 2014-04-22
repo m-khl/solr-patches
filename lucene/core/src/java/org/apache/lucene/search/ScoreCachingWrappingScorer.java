@@ -37,7 +37,7 @@ public class ScoreCachingWrappingScorer extends Scorer {
   private final Scorer scorer;
   private int curDoc = -1;
   private float curScore;
-  
+
   /** Creates a new instance by wrapping the given scorer. */
   public ScoreCachingWrappingScorer(Scorer scorer) {
     super(scorer.weight);
@@ -45,18 +45,13 @@ public class ScoreCachingWrappingScorer extends Scorer {
   }
 
   @Override
-  public boolean score(Collector collector, int max, int firstDocID) throws IOException {
-    return scorer.score(collector, max, firstDocID);
-  }
-  
-  @Override
   public float score() throws IOException {
     int doc = scorer.docID();
     if (doc != curDoc) {
       curScore = scorer.score();
       curDoc = doc;
     }
-    
+
     return curScore;
   }
 
@@ -73,11 +68,6 @@ public class ScoreCachingWrappingScorer extends Scorer {
   @Override
   public int nextDoc() throws IOException {
     return scorer.nextDoc();
-  }
-  
-  @Override
-  public void score(Collector collector) throws IOException {
-    scorer.score(collector);
   }
   
   @Override

@@ -43,7 +43,7 @@ import org.apache.lucene.util.TestUtil;
 @SuppressCodecs({"Direct", "Memory"}) // at night this makes like 200k/300k docs and will make Direct's heart beat!
 public class TestBagOfPositions extends LuceneTestCase {
   public void test() throws Exception {
-    List<String> postingsList = new ArrayList<String>();
+    List<String> postingsList = new ArrayList<>();
     int numTerms = atLeast(300);
     final int maxTermsPerDoc = TestUtil.nextInt(random(), 10, 20);
     boolean isSimpleText = "SimpleText".equals(TestUtil.getPostingsFormat("field"));
@@ -66,9 +66,9 @@ public class TestBagOfPositions extends LuceneTestCase {
     }
     Collections.shuffle(postingsList, random());
 
-    final ConcurrentLinkedQueue<String> postings = new ConcurrentLinkedQueue<String>(postingsList);
+    final ConcurrentLinkedQueue<String> postings = new ConcurrentLinkedQueue<>(postingsList);
 
-    Directory dir = newFSDirectory(TestUtil.getTempDir("bagofpositions"));
+    Directory dir = newFSDirectory(createTempDir("bagofpositions"));
 
     final RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwc);
 
@@ -87,7 +87,7 @@ public class TestBagOfPositions extends LuceneTestCase {
     if (options == 0) {
       fieldType.setIndexOptions(IndexOptions.DOCS_AND_FREQS); // we dont actually need positions
       fieldType.setStoreTermVectors(true); // but enforce term vectors when we do this so we check SOMETHING
-    } else if (options == 1 && !doesntSupportOffsets.contains(TestUtil.getPostingsFormat("field"))) {
+    } else if (options == 1) {
       fieldType.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS);
     }
     // else just positions
@@ -148,7 +148,7 @@ public class TestBagOfPositions extends LuceneTestCase {
       // from a docsAndPositionsEnum.
     }
     ir.close();
-    iw.close();
+    iw.shutdown();
     dir.close();
   }
 }

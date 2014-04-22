@@ -43,7 +43,7 @@ public class TestIndexWriterOnJRECrash extends TestNRTThreads {
   @Override
   public void setUp() throws Exception {
     super.setUp();
-    tempDir = TestUtil.getTempDir("jrecrash");
+    tempDir = createTempDir("jrecrash");
     tempDir.delete();
     tempDir.mkdir();
   }
@@ -88,7 +88,7 @@ public class TestIndexWriterOnJRECrash extends TestNRTThreads {
   
   /** fork ourselves in a new jvm. sets -Dtests.crashmode=true */
   public void forkTest() throws Exception {
-    List<String> cmd = new ArrayList<String>();
+    List<String> cmd = new ArrayList<>();
     cmd.add(System.getProperty("java.home") 
         + System.getProperty("file.separator")
         + "bin"

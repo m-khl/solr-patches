@@ -43,10 +43,8 @@ import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.TestUtil;
 
-@SuppressCodecs({"MockFixedIntBlock", "MockVariableIntBlock", "MockSep", "MockRandom"})
 public class TestPostingsHighlighterRanking extends LuceneTestCase {
   /** 
    * indexes a bunch of gibberish, and then highlights top(n).
@@ -89,7 +87,7 @@ public class TestPostingsHighlighterRanking extends LuceneTestCase {
     for (int i = 0; i < numDocs; i++) {
       checkDocument(searcher, i, maxTopN);
     }
-    iw.close();
+    iw.shutdown();
     ir.close();
     dir.close();
   }
@@ -163,7 +161,7 @@ public class TestPostingsHighlighterRanking extends LuceneTestCase {
    * instead it just collects them for asserts!
    */
   static class FakePassageFormatter extends PassageFormatter {
-    HashSet<Pair> seen = new HashSet<Pair>();
+    HashSet<Pair> seen = new HashSet<>();
     
     @Override
     public String format(Passage passages[], String content) {
@@ -264,7 +262,7 @@ public class TestPostingsHighlighterRanking extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.close();
+    iw.shutdown();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter(10000) {
@@ -303,7 +301,7 @@ public class TestPostingsHighlighterRanking extends LuceneTestCase {
     iw.addDocument(doc);
     
     IndexReader ir = iw.getReader();
-    iw.close();
+    iw.shutdown();
     
     IndexSearcher searcher = newSearcher(ir);
     PostingsHighlighter highlighter = new PostingsHighlighter(10000) {

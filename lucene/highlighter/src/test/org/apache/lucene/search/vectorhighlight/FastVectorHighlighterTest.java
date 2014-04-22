@@ -31,6 +31,7 @@ import org.apache.lucene.analysis.Token;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
+import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
@@ -38,6 +39,7 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queries.CommonTermsQuery;
 import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.PhraseQuery;
@@ -81,7 +83,7 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
     bestFragments = highlighter.getBestFragments(fieldQuery, reader, docId, "field", 30, 1);
     assertEquals("a test where <b>foo</b> is highlighed", bestFragments[0]);
     reader.close();
-    writer.close();
+    writer.shutdown();
     dir.close();
   }
   
@@ -126,7 +128,7 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
       assertEquals("first browser war it lost virtually all of its share to <b>Internet Explorer</b> Netscape was discontinued and support for all Netscape browsers", bestFragments[0]);
     }
     reader.close();
-    writer.close();
+    writer.shutdown();
     dir.close();
   }
   
@@ -254,7 +256,7 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
           bestFragments[0]);
     }
     reader.close();
-    writer.close();
+    writer.shutdown();
     dir.close();
   }
 
@@ -299,7 +301,7 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
     assertEquals( "junk junk junk junk junk junk junk junk <b>highlight words together</b> junk junk junk junk junk junk junk junk", fragment );
 
     reader.close();
-    writer.close();
+    writer.shutdown();
     dir.close();
   }
 
@@ -342,7 +344,7 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
     assertEquals("Hello this is a piece of <b>text</b> that is <b>very</b> <b>long</b> and contains too much preamble and the meat is really here which says kennedy has been shot", bestFragments[0]);
 
     reader.close();
-    writer.close();
+    writer.shutdown();
     dir.close();
   }
   
@@ -501,7 +503,70 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
     }
 
     reader.close();
-    writer.close();
+    writer.shutdown();
+    dir.close();
+  }
+  
+  public void testBooleanPhraseWithSynonym() throws IOException {
+    Directory dir = newDirectory();
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    Document doc = new Document();
+    FieldType type = new FieldType(TextField.TYPE_NOT_STORED);
+    type.setStoreTermVectorOffsets(true);
+    type.setStoreTermVectorPositions(true);
+    type.setStoreTermVectors(true);
+    type.freeze();
+    Token syn = new Token("httpwwwfacebookcom", 6, 29);
+    syn.setPositionIncrement(0);
+    CannedTokenStream ts = new CannedTokenStream(
+        new Token("test", 0, 4),
+        new Token("http", 6, 10),
+        syn,
+        new Token("www", 13, 16),
+        new Token("facebook", 17, 25),
+        new Token("com", 26, 29)
+    );
+    Field field = new Field("field", ts, type);
+    doc.add(field);
+    doc.add(new StoredField("field", "Test: http://www.facebook.com"));
+    writer.addDocument(doc);
+    FastVectorHighlighter highlighter = new FastVectorHighlighter();
+    
+    IndexReader reader = DirectoryReader.open(writer, true);
+    int docId = 0;
+    
+    // query1: match
+    PhraseQuery pq = new PhraseQuery();
+    pq.add(new Term("field", "test"));
+    pq.add(new Term("field", "http"));
+    pq.add(new Term("field", "www"));
+    pq.add(new Term("field", "facebook"));
+    pq.add(new Term("field", "com"));
+    FieldQuery fieldQuery  = highlighter.getFieldQuery(pq, reader);
+    String[] bestFragments = highlighter.getBestFragments(fieldQuery, reader, docId, "field", 54, 1);
+    assertEquals("<b>Test: http://www.facebook.com</b>", bestFragments[0]);
+    
+    // query2: match
+    PhraseQuery pq2 = new PhraseQuery();
+    pq2.add(new Term("field", "test"));
+    pq2.add(new Term("field", "httpwwwfacebookcom"));
+    pq2.add(new Term("field", "www"));
+    pq2.add(new Term("field", "facebook"));
+    pq2.add(new Term("field", "com"));
+    fieldQuery  = highlighter.getFieldQuery(pq2, reader);
+    bestFragments = highlighter.getBestFragments(fieldQuery, reader, docId, "field", 54, 1);
+    assertEquals("<b>Test: http://www.facebook.com</b>", bestFragments[0]);
+    
+    // query3: OR query1 and query2 together
+    BooleanQuery bq = new BooleanQuery();
+    bq.add(pq, BooleanClause.Occur.SHOULD);
+    bq.add(pq2, BooleanClause.Occur.SHOULD);
+    fieldQuery  = highlighter.getFieldQuery(bq, reader);
+    bestFragments = highlighter.getBestFragments(fieldQuery, reader, docId, "field", 54, 1);
+    assertEquals("<b>Test: http://www.facebook.com</b>", bestFragments[0]);
+    
+    reader.close();
+    writer.shutdown();
     dir.close();
   }
 
@@ -533,7 +598,7 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
           token( "red", 0, 0, 3 )
         ), matched ) );
 
-    final Map<String, Analyzer> fieldAnalyzers = new TreeMap<String, Analyzer>();
+    final Map<String, Analyzer> fieldAnalyzers = new TreeMap<>();
     fieldAnalyzers.put( "field", new MockAnalyzer( random(), MockTokenizer.WHITESPACE, true, MockTokenFilter.ENGLISH_STOPSET ) );
     fieldAnalyzers.put( "field_exact", new MockAnalyzer( random() ) );
     fieldAnalyzers.put( "field_super_exact", new MockAnalyzer( random(), MockTokenizer.WHITESPACE, false ) );
@@ -566,7 +631,7 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
     FieldQuery fieldQuery = new FieldQuery( query, reader, true, fieldMatch );
     String[] bestFragments;
     if ( useMatchedFields ) {
-      Set< String > matchedFields = new HashSet< String >();
+      Set< String > matchedFields = new HashSet<>();
       matchedFields.add( "field" );
       matchedFields.add( "field_exact" );
       matchedFields.add( "field_super_exact" );
@@ -583,7 +648,7 @@ public class FastVectorHighlighterTest extends LuceneTestCase {
     assertEquals( expected, bestFragments[ 0 ] );
 
     reader.close();
-    writer.close();
+    writer.shutdown();
     dir.close();
   }
 

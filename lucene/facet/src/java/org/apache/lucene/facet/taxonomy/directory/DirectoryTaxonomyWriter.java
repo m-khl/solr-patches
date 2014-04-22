@@ -340,12 +340,12 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
   public synchronized void close() throws IOException {
     if (!isClosed) {
       commit();
+      indexWriter.shutdown();
       doClose();
     }
   }
   
   private void doClose() throws IOException {
-    indexWriter.close();
     isClosed = true;
     closeResources();
   }
@@ -620,7 +620,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
 
   /** Combine original user data with the taxonomy epoch. */
   private Map<String,String> combinedCommitData(Map<String,String> commitData) {
-    Map<String,String> m = new HashMap<String, String>();
+    Map<String,String> m = new HashMap<>();
     if (commitData != null) {
       m.putAll(commitData);
     }
@@ -941,10 +941,12 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
         map[origordinal] = newordinal;
       }
       in.close();
+
       // Delete the temporary file, which is no longer needed.
       if (!tmpfile.delete()) {
         tmpfile.deleteOnExit();
       }
+
       return map;
     }
   }

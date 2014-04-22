@@ -16,6 +16,13 @@ package org.apache.solr.schema;
  * limitations under the License.
  */
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.regex.Pattern;
+
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.solr.common.SolrException;
@@ -29,13 +36,6 @@ import org.apache.solr.response.SolrQueryResponse;
 import org.junit.After;
 import org.junit.Before;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.regex.Pattern;
-
 public class TestManagedSchema extends AbstractBadConfigTestBase {
 
   private static File tmpSolrHome;
@@ -46,10 +46,7 @@ public class TestManagedSchema extends AbstractBadConfigTestBase {
   
   @Before
   private void initManagedSchemaCore() throws Exception {
-    createTempDir();
-    final String tmpSolrHomePath 
-        = TEMP_DIR + File.separator + TestManagedSchema.class.getSimpleName() + System.currentTimeMillis();
-    tmpSolrHome = new File(tmpSolrHomePath).getAbsoluteFile();
+    tmpSolrHome = createTempDir();
     tmpConfDir = new File(tmpSolrHome, confDir);
     File testHomeConfDir = new File(TEST_HOME(), confDir);
     FileUtils.copyFileToDirectory(new File(testHomeConfDir, "solrconfig-managed-schema.xml"), tmpConfDir);
@@ -69,9 +66,8 @@ public class TestManagedSchema extends AbstractBadConfigTestBase {
   }
 
   @After
-  private void deleteCoreAndTempSolrHomeDirectory() throws Exception {
+  private void afterClass() throws Exception {
     deleteCore();
-    FileUtils.deleteDirectory(tmpSolrHome);
     System.clearProperty("managed.schema.mutable");
     System.clearProperty("enable.update.log");
   }
@@ -176,7 +172,7 @@ public class TestManagedSchema extends AbstractBadConfigTestBase {
     String managedSchemaContents = FileUtils.readFileToString(managedSchemaFile, "UTF-8");
     assertFalse(managedSchemaContents.contains("\"new_field\""));
     
-    Map<String,Object> options = new HashMap<String,Object>();
+    Map<String,Object> options = new HashMap<>();
     options.put("stored", "false");
     IndexSchema oldSchema = h.getCore().getLatestSchema();
     String fieldName = "new_field";
@@ -225,7 +221,7 @@ public class TestManagedSchema extends AbstractBadConfigTestBase {
     assertU(commit());
     assertQ(req("new_field:thing1"), "//*[@numFound='0']");
 
-    Map<String,Object> options = new HashMap<String,Object>();
+    Map<String,Object> options = new HashMap<>();
     options.put("stored", "false");
     IndexSchema oldSchema = h.getCore().getLatestSchema();
     String fieldName = "new_field";
@@ -252,7 +248,7 @@ public class TestManagedSchema extends AbstractBadConfigTestBase {
     String errString = "Field 'str' already exists.";
     ignoreException(Pattern.quote(errString));
     try {
-      Map<String,Object> options = new HashMap<String,Object>();
+      Map<String,Object> options = new HashMap<>();
       IndexSchema oldSchema = h.getCore().getLatestSchema();
       String fieldName = "str";
       String fieldType = "string";
@@ -280,7 +276,7 @@ public class TestManagedSchema extends AbstractBadConfigTestBase {
     System.setProperty("managed.schema.mutable", "true");
     initCore("solrconfig-managed-schema.xml", "schema-one-field-no-dynamic-field.xml", tmpSolrHome.getPath());
 
-    Map<String,Object> options = new HashMap<String,Object>();
+    Map<String,Object> options = new HashMap<>();
     options.put("stored", "false");
     IndexSchema oldSchema = h.getCore().getLatestSchema();
     String fieldName = "new_field";
@@ -320,7 +316,7 @@ public class TestManagedSchema extends AbstractBadConfigTestBase {
     String errString = "Can't add dynamic field '*_s'.";
     ignoreException(Pattern.quote(errString));
     try {
-      Map<String,Object> options = new HashMap<String,Object>();
+      Map<String,Object> options = new HashMap<>();
       IndexSchema oldSchema = h.getCore().getLatestSchema();
       String fieldName = "*_s";
       String fieldType = "string";
@@ -356,7 +352,7 @@ public class TestManagedSchema extends AbstractBadConfigTestBase {
     assertNull("Field '" + fieldName + "' is present in the schema", 
                h.getCore().getLatestSchema().getFieldOrNull(fieldName));
 
-    Map<String,Object> options = new HashMap<String,Object>();
+    Map<String,Object> options = new HashMap<>();
     IndexSchema oldSchema = h.getCore().getLatestSchema();
     String fieldType = "string_disk";
     SchemaField newField = oldSchema.newField(fieldName, fieldType, options);
@@ -384,7 +380,7 @@ public class TestManagedSchema extends AbstractBadConfigTestBase {
     assertNull("Field '" + fieldName + "' is present in the schema",
         h.getCore().getLatestSchema().getFieldOrNull(fieldName));
 
-    Map<String,Object> options = new HashMap<String,Object>();
+    Map<String,Object> options = new HashMap<>();
     IndexSchema oldSchema = h.getCore().getLatestSchema();
     String fieldType = "text";
     SchemaField newField = oldSchema.newField(fieldName, fieldType, options);
@@ -409,7 +405,7 @@ public class TestManagedSchema extends AbstractBadConfigTestBase {
     String managedSchemaContents = FileUtils.readFileToString(managedSchemaFile, "UTF-8");
     assertFalse(managedSchemaContents.contains("\"new_field\""));
 
-    Map<String,Object> options = new HashMap<String,Object>();
+    Map<String,Object> options = new HashMap<>();
     options.put("stored", "false");
     IndexSchema oldSchema = h.getCore().getLatestSchema();
     assertEquals("str", oldSchema.getUniqueKeyField().getName());
@@ -445,7 +441,7 @@ public class TestManagedSchema extends AbstractBadConfigTestBase {
     assertNull("Field '" + fieldName + "' is present in the schema",
         h.getCore().getLatestSchema().getFieldOrNull(fieldName));
 
-    Map<String,Object> options = new HashMap<String,Object>();
+    Map<String,Object> options = new HashMap<>();
     IndexSchema oldSchema = h.getCore().getLatestSchema();
     String fieldType = "text";
     SchemaField newField = oldSchema.newField(fieldName, fieldType, options);

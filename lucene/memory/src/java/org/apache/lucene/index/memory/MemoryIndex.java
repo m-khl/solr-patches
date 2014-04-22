@@ -54,6 +54,7 @@ import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.RAMDirectory; // for javadocs
 import org.apache.lucene.util.ArrayUtil;
@@ -195,7 +196,7 @@ import org.apache.lucene.util.RecyclingIntBlockAllocator;
 public class MemoryIndex {
 
   /** info for each field: Map<String fieldName, Info field> */
-  private final HashMap<String,Info> fields = new HashMap<String,Info>();
+  private final HashMap<String,Info> fields = new HashMap<>();
   
   /** fields sorted ascending by fieldName; lazily computed on demand */
   private transient Map.Entry<String,Info>[] sortedFields; 
@@ -209,7 +210,7 @@ public class MemoryIndex {
 //  private final IntBlockPool.SliceReader postingsReader;
   private final IntBlockPool.SliceWriter postingsWriter;
   
-  private HashMap<String,FieldInfo> fieldInfos = new HashMap<String,FieldInfo>();
+  private HashMap<String,FieldInfo> fieldInfos = new HashMap<>();
 
   private Counter bytesUsed;
   
@@ -532,7 +533,7 @@ public class MemoryIndex {
     IndexSearcher searcher = createSearcher();
     try {
       final float[] scores = new float[1]; // inits to 0.0f (no match)
-      searcher.search(query, new Collector() {
+      searcher.search(query, new SimpleCollector() {
         private Scorer scorer;
 
         @Override
@@ -550,8 +551,6 @@ public class MemoryIndex {
           return true;
         }
 
-        @Override
-        public void setNextReader(AtomicReaderContext context) { }
       });
       float score = scores[0];
       return score;
@@ -792,6 +791,11 @@ public class MemoryIndex {
     @Override
     public Bits getDocsWithField(String field) throws IOException {
       return null;
+    }
+
+    @Override
+    public void checkIntegrity() throws IOException {
+      // no-op
     }
 
     private class MemoryFields extends Fields {
