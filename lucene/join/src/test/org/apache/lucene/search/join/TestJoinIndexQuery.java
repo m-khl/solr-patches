@@ -50,12 +50,14 @@ import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.queries.TermFilter;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BulkScorer;
 import org.apache.lucene.search.CachingWrapperFilter;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryWrapperFilter;
@@ -102,45 +104,42 @@ public class TestJoinIndexQuery extends LuceneTestCase {
      
       return new Weight() {
         
+        
         @Override
-        public Scorer scorer(final AtomicReaderContext context, boolean scoreDocsInOrder,
-            boolean topScorer, Bits acceptDocs) throws IOException {
-          
-          //dump("children:", context, children, acceptDocs);
-          //dump("parents:", context, parents, acceptDocs);
-          //dump(context, joinField);
+        public Scorer scorer(AtomicReaderContext context, Bits acceptDocs)
+            throws IOException {
+          throw new UnsupportedOperationException();
+        }
 
-          final DocIdSet parentDocs = parents.getDocIdSet(context, acceptDocs);
-          if(parentDocs==null){
-            return null;
-          }
-          final DocIdSetIterator parentsIter = parentDocs.iterator();
-          return new Scorer(this){
-
-            private int docID=-1;
-
+        @Override
+        public BulkScorer bulkScorer(final AtomicReaderContext context,
+            boolean scoreDocsInOrder, final Bits acceptDocs) throws IOException {
+          return new BulkScorer() {
+            
             @Override
-            public float score() throws IOException {
-              return 0;
-            }
-
-            @Override
-            public int freq() throws IOException {
-              return 0;
-            }
-
-            @Override
-            public int docID() {
-              return docID;
-            }
-
-            @Override
-            public int nextDoc() throws IOException {
-              while((docID = parentsIter.nextDoc())!=NO_MORE_DOCS && !checkChildren(context, docID, joinField, children)){
+            public boolean score(LeafCollector collector, int max) throws IOException {
+              dump("parents: ", context, parents,acceptDocs);
+              dump("children: ", context, children,acceptDocs);
+              final DocIdSet parentDocs = parents.getDocIdSet(context, acceptDocs);
+              if(parentDocs==null){
+                return false;
               }
-              return docID;
+              
+              final DocIdSetIterator parentsIter = parentDocs.iterator();
+              if(parentsIter==null){
+                return false;
+              }
+              
+              collector.setScorer(new FakeScorer());
+              int docID;
+              while((docID = parentsIter.nextDoc())!=DocIdSetIterator.NO_MORE_DOCS && docID < max){
+                if(checkChildren(context, docID, joinField, children)){
+                  collector.collect(docID);
+                }
+              }
+              return docID!=DocIdSetIterator.NO_MORE_DOCS;
             }
-
+            
             private boolean checkChildren(final AtomicReaderContext context,
                 int parentDoc, final String joinField, final Filter children)
                 throws IOException {
@@ -174,25 +173,10 @@ public class TestJoinIndexQuery extends LuceneTestCase {
               }
               return false;
             }
-
-            @Override
-            public int advance(int target) throws IOException {
-              for(docID = parentsIter.advance(target);
-                  docID!=NO_MORE_DOCS && !checkChildren(context, docID, joinField, children);
-                  docID = parentsIter.nextDoc()){
-                
-              }
-              return docID;
-            }
-
-            @Override
-            public long cost() {
-              return 0;
-            }
             
           };
         }
-        
+
         @Override
         public void normalize(float norm, float topLevelBoost) {}
         
@@ -305,6 +289,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     indexJoin(w, reader, idField, toField);
     reader.close();
     System.out.println("flushing num updates");
+    w.commit();
     w.close();
     reader = DirectoryReader.open(dir);
     
@@ -433,7 +418,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
 
   private void marryThem(IndexWriter w, IndexSearcher s, String pkField, BytesRef pk,
       String fkField, BytesRef fk) throws IOException {
-    System.out.println(pkField+":"+(pk!=null? pk.utf8ToString():pk) +" <-> "+fkField+":"+(fk!=null?fk.utf8ToString():fk));
+    // System.out.println(pkField+":"+(pk!=null? pk.utf8ToString():pk) +" <-> "+fkField+":"+(fk!=null?fk.utf8ToString():fk));
     if(fk!=null){
       putPkToFk(w,s, pkField, pk, fkField, fk, joinFieldName(pkField, fkField));
     }
