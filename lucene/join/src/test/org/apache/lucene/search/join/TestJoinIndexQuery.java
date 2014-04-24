@@ -73,6 +73,7 @@ import org.apache.lucene.store.ByteArrayDataOutput;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.GrowableByteArrayDataOutput;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.solr.schema.StrField;
@@ -118,8 +119,8 @@ public class TestJoinIndexQuery extends LuceneTestCase {
             
             @Override
             public boolean score(LeafCollector collector, int max) throws IOException {
-              dump("parents: ", context, parents,acceptDocs);
-              dump("children: ", context, children,acceptDocs);
+              //dump("parents: ", context, parents,acceptDocs);
+              //dump("children: ", context, children,acceptDocs);
               final DocIdSet parentDocs = parents.getDocIdSet(context, acceptDocs);
               if(parentDocs==null){
                 return false;
@@ -200,12 +201,11 @@ public class TestJoinIndexQuery extends LuceneTestCase {
   }
 
   final static String idField = "id";
-  private Map<Term, Long> updTracker = new LinkedHashMap<>();
   
   //@Repeat(iterations=1000)
   public void testSimple() throws Exception {
     final String toField = "productId";
-    final String joinField = joinFieldName(idField, toField);
+    final String joinField = IndexJoiner.joinFieldName(idField, toField);
 
     List<Document> docs = new ArrayList<>();
     // 0
@@ -286,7 +286,8 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     w.commit();
     System.out.println("docs are written");
     DirectoryReader reader = DirectoryReader.open(dir);
-    indexJoin(w, reader, idField, toField);
+    new IndexJoiner(w, reader, idField, toField).
+    indexJoin();
     reader.close();
     System.out.println("flushing num updates");
     w.commit();
@@ -344,127 +345,204 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     dir.close();
   }
 
-  private void verifyUpdates(IndexSearcher indexSearcher) throws IOException {
-    TreeMap<Integer, String> byDocNum = new TreeMap<>();
-    for (Entry<Term,Long> e : updTracker.entrySet()) {
-      final TopDocs search = indexSearcher.search(new TermQuery(e.getKey()),100);
-      for(int d=0;d<search.totalHits;d++){
-        for(AtomicReaderContext arc:indexSearcher.getTopReaderContext().leaves()){
-          if(search.scoreDocs[d].doc-arc.docBase<arc.reader().maxDoc() && search.scoreDocs[d].doc-arc.docBase>=0){
-            final NumericDocValues numericDocValues = arc.reader().getNumericDocValues("productId_to_id");
-            final Long act = numericDocValues.get(search.scoreDocs[d].doc-arc.docBase);
-            assertEquals("for "+search.scoreDocs[d].doc+" under "+e.getKey()+" I expect "+
-                (e.getValue()==null?"null":Long.toHexString(e.getValue())) +" but got "+ (act==null?"null":Long.toHexString(act)),act,e.getValue());
-            assertNull(byDocNum.put(search.scoreDocs[d].doc, (e.getValue()==null?"null":Long.toHexString(e.getValue()))));
+  
+  static class IndexJoiner {
+    
+    protected final IndexWriter writer;
+    private final DirectoryReader reader;
+    private final String pkField;
+    private final String fkField;
+    private final Map<Term,Long> updTracker = new LinkedHashMap<>();
+    
+    public IndexJoiner(IndexWriter w, DirectoryReader reader, String pkField,
+        String fkField) {
+      super();
+      this.writer = w;
+      this.reader = reader;
+      this.pkField = pkField;
+      this.fkField = fkField;
+    }
+    
+    private void indexJoin() throws IOException {
+      updTracker.clear();
+      try {
+        final Terms pkTerms = MultiFields.getTerms(reader, pkField);
+        final Terms fkTerms = MultiFields.getTerms(reader, fkField);
+        
+        TermsEnum fks = fkTerms.iterator(null);
+        BytesRef pk = null;
+        BytesRef fk = null;
+        boolean keepFk = false;
+        for (TermsEnum pks = pkTerms.iterator(null); (pk = pks.next()) != null;) {
+          for (; keepFk || (fk = fks.next()) != null;) {
+            if (fk == null) {
+              break;
+            }
+            final int cmp = pk.compareTo(fk);
+            if (cmp == 0) {
+              marryThem(pk, fk);
+              keepFk = false;
+              break; // move both
+            } else {
+              if (cmp < 0) {
+                marryThem(pk, null);
+                keepFk = true;
+                break; // move pk
+              } else {
+                marryThem(null, fk);
+                keepFk = false;
+                // move fk
+              }
+            }
+          }
+          // fk is over
+          if (fk == null) {
+            marryThem(pk, null);
+            keepFk = true;
           }
         }
+        if (pk == null && fk != null) {
+          while ((fk = fks.next()) != null) {
+            marryThem(null, fk);
+          }
+        }
+        // reach remain fks
+      } finally {
+        // for(Entry<Term, Long> e : updTracker.entrySet()){
+        // System.out.print(e.getKey()+" ");
+        // System.out.println(e.getValue()==null?"null":Long.toHexString(e.getValue()));
+        // }
       }
     }
-    System.out.println(byDocNum);
-  }
-
-  private void indexJoin(IndexWriter w, DirectoryReader reader, String pkField, String fkField) throws IOException {
-    updTracker.clear();
-    try{
-      final IndexSearcher s = new IndexSearcher(reader);
-      final Terms pkTerms = MultiFields.getTerms(reader, pkField);
-      final Terms fkTerms = MultiFields.getTerms(reader, fkField);
-      
-      TermsEnum fks = fkTerms.iterator(null);
-      BytesRef pk=null;
-      BytesRef fk=null;
-      boolean keepFk = false;
-      for(TermsEnum pks = pkTerms.iterator(null);(pk=pks.next())!=null;){
-        for(;keepFk || (fk=fks.next())!=null;){
-          if(fk==null){
-            break;
-          }
-          final int cmp = pk.compareTo(fk);
-          if(cmp==0){
-            marryThem(w,s, pkField,pk, fkField,fk );
-            keepFk = false;
-            break; // move both
-          }else{
-            if(cmp<0){
-              marryThem(w,s, pkField,pk, fkField,null );
-              keepFk=true;
-              break; // move pk
-            }else{
-              marryThem(w,s, pkField,null, fkField,fk );
-              keepFk = false;
-              // move fk
+    
+    private void marryThem(BytesRef pk, BytesRef fk) throws IOException {
+      // System.out.println(pkField+":"+(pk!=null? pk.utf8ToString():pk)
+      // +" <-> "+fkField+":"+(fk!=null?fk.utf8ToString():fk));
+      if (fk != null) {
+        putPkToFk(pkField, pk, fkField, fk);
+      }
+      if (pk != null) {
+        putPkToFk(fkField, fk, pkField, pk);
+      }
+    }
+    
+    protected String joinFieldName() {
+      return joinFieldName(pkField, fkField);
+    }
+    
+    private void verifyUpdates(IndexSearcher indexSearcher) throws IOException {
+      TreeMap<Integer,String> byDocNum = new TreeMap<>();
+      for (Entry<Term,Long> e : updTracker.entrySet()) {
+        final TopDocs search = indexSearcher.search(new TermQuery(e.getKey()),
+            100);
+        for (int d = 0; d < search.totalHits; d++) {
+          for (AtomicReaderContext arc : indexSearcher.getTopReaderContext()
+              .leaves()) {
+            if (search.scoreDocs[d].doc - arc.docBase < arc.reader().maxDoc()
+                && search.scoreDocs[d].doc - arc.docBase >= 0) {
+              final NumericDocValues numericDocValues = arc.reader()
+                  .getNumericDocValues("productId_to_id");
+              final Long act = numericDocValues.get(search.scoreDocs[d].doc
+                  - arc.docBase);
+              assertEquals(
+                  "for "
+                      + search.scoreDocs[d].doc
+                      + " under "
+                      + e.getKey()
+                      + " I expect "
+                      + (e.getValue() == null ? "null" : Long.toHexString(e
+                          .getValue())) + " but got "
+                      + (act == null ? "null" : Long.toHexString(act)), act,
+                  e.getValue());
+              assertNull(byDocNum.put(
+                  search.scoreDocs[d].doc,
+                  (e.getValue() == null ? "null" : Long.toHexString(e
+                      .getValue()))));
             }
           }
         }
-        // fk is over
-        if(fk==null){
-          marryThem(w,s, pkField,pk, fkField,null );
-          keepFk = true;
-        }
       }
-      if(pk==null && fk!=null){
-        while((fk=fks.next())!=null){
-          marryThem(w,s, pkField,null, fkField,fk );
-        }
+      System.out.println(byDocNum);
+    }
+    
+    private void putPkToFk(String pkField, final BytesRef pk, String fkField,
+        final BytesRef fk) throws IOException {
+      Long refs;
+      if (pk == null) { // write missing
+        refs = null;
+        // System.out.println("skipping to write"+pkField+":"+
+        // (pk==null? null:pk.utf8ToString())+" into "+fkField+":"+
+        // (fk==null? null:fk.utf8ToString()));
+        return;
+      } else {
+        DocsEnum termDocsEnum = MultiFields.getTermDocsEnum(reader,
+            MultiFields.getLiveDocs(reader), pkField, pk, DocsEnum.FLAG_NONE);
+        
+        writeRelation(fkField, fk, termDocsEnum);
       }
-      // reach remain fks
-    }finally{
-      //for(Entry<Term, Long> e : updTracker.entrySet()){
-      //  System.out.print(e.getKey()+" ");
-      //  System.out.println(e.getValue()==null?"null":Long.toHexString(e.getValue()));
-      //}
     }
-  }
-
-  private void marryThem(IndexWriter w, IndexSearcher s, String pkField, BytesRef pk,
-      String fkField, BytesRef fk) throws IOException {
-    // System.out.println(pkField+":"+(pk!=null? pk.utf8ToString():pk) +" <-> "+fkField+":"+(fk!=null?fk.utf8ToString():fk));
-    if(fk!=null){
-      putPkToFk(w,s, pkField, pk, fkField, fk, joinFieldName(pkField, fkField));
-    }
-    if(pk!=null){
-      putPkToFk(w,s, fkField, fk, pkField, pk, joinFieldName(pkField, fkField));
-    }
-  }
-
-  private String joinFieldName(String pkField, String fkField) {
-    return fkField+"_to_"+pkField;
-  }
-
-  private void putPkToFk(IndexWriter w, IndexSearcher s, String pkField,
-      final BytesRef pk, String fkField, final BytesRef fk, final String fk_to_pk_field) throws IOException {
-    Long refs;
-    if(pk==null){ // write missing
-      refs = null;
-      //System.out.println("skipping to write"+pkField+":"+
-      //    (pk==null? null:pk.utf8ToString())+" into "+fkField+":"+
-      //    (fk==null? null:fk.utf8ToString()));
-      return;
-    }else{
+    
+    protected void writeRelation(String fkField, final BytesRef fk,
+        DocsEnum referredDocs) throws IOException {
+      Long refs;
       int pkDoc;
       int prev = 0;
       byte eight[] = new byte[8];
       eight[0] = 0;
-      ByteArrayDataOutput out = new ByteArrayDataOutput(eight,1,7);
-      for( DocsEnum termDocsEnum = MultiFields.getTermDocsEnum(s.getIndexReader(), 
-          MultiFields.getLiveDocs(s.getIndexReader()), pkField, pk);
-          (pkDoc =termDocsEnum.nextDoc())!=DocIdSetIterator.NO_MORE_DOCS;){
-        out.writeVInt(pkDoc-prev);
-        prev=pkDoc;
+      ByteArrayDataOutput out = new ByteArrayDataOutput(eight, 1, 7);
+      for (; (pkDoc = referredDocs.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS;) {
+        out.writeVInt(pkDoc - prev);
+        prev = pkDoc;
         eight[0]++;
       }
       final ByteArrayDataInput in = new ByteArrayDataInput(eight);
       refs = in.readLong();
+      final Term referrers = copy(fkField, fk);
+      writer.updateNumericDocValue(referrers, joinFieldName(), refs);
+      
+      final String hexString = refs == null ? null : Long.toHexString(refs);
+      assert updTracker.put(referrers, refs) == null : " replace "
+          + updTracker.get(referrers) + " to " + hexString + " by " + referrers;
     }
-    BytesRef fkTerm = new BytesRef();
-    fkTerm.copyBytes(fk);
-    final Term referrers = new Term(fkField,fkTerm);
-    w.updateNumericDocValue(referrers, fk_to_pk_field, refs);
+
+    protected Term copy(String fkField, final BytesRef fk) {
+      BytesRef fkTerm = new BytesRef();
+      fkTerm.copyBytes(fk);
+      final Term referrers = new Term(fkField, fkTerm);
+      return referrers;
+    }
     
-    final String hexString = refs==null? null: Long.toHexString(refs);
-    assert updTracker .put(referrers, refs)==null:" replace "+updTracker.get(referrers)+" to "+hexString+" by "+referrers;
+    private static String joinFieldName(String pkField, String fkField) {
+      return fkField + "_to_" + pkField;
+    }
   }
 
+  static class BinaryIndexJoiner extends IndexJoiner{
+
+    public BinaryIndexJoiner(IndexWriter w, DirectoryReader reader,
+        String pkField, String fkField) {
+      super(w, reader, pkField, fkField);
+    }
+    
+    @Override
+    protected void writeRelation(String fkField, BytesRef fk,
+        DocsEnum referredDocs) throws IOException {
+      
+      final Term referrers = copy(fkField, fk);
+      final GrowableByteArrayDataOutput out = new GrowableByteArrayDataOutput(10);
+      {
+        int pkDoc;
+        int prev = 0;
+        for (; (pkDoc = referredDocs.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS;) {
+          out.writeVInt(pkDoc - prev);
+          prev = pkDoc;
+        }
+      }
+      writer.updateBinaryDocValue(referrers, joinFieldName(),  new BytesRef(out.bytes, 0, out.length));
+      
+    }
+  }
+ 
   static void assertIds(IndexSearcher indexSearcher, TopDocs rez, String ... ids) throws IOException{
     Map<String, Integer> act = new HashMap<>();
     for(ScoreDoc sd:rez.scoreDocs){
