@@ -20,7 +20,10 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.lucene.index.AtomicReaderContext;
@@ -201,13 +204,22 @@ public class ScoreJoinQParserPlugin extends QParserPlugin {
   }
 
   public static final String NAME = "scorejoin";
-
+  final static Map<String, ScoreMode> lowercase = new HashMap<String, ScoreMode>(){
+    {
+      for(ScoreMode s : ScoreMode.values()){
+        put(s.name().toLowerCase(), s);
+        put(s.name(), s);
+      }
+    }
+  };
+  // TODO extract param
+  private final static boolean multipleValuesPerDocument = true;
+  
   @Override
   public void init(NamedList args) {
   }
   
-  // TODO extract param
-  final static boolean multipleValuesPerDocument = true;
+
 
   @Override
   public QParser createParser(String qstr, SolrParams localParams, SolrParams params, SolrQueryRequest req) {
@@ -217,9 +229,7 @@ public class ScoreJoinQParserPlugin extends QParserPlugin {
         final String fromField = getParam("from");
         String fromIndex = getParam("fromIndex");
         final String toField = getParam("to");
-        String score = getParam("score");
-        final ScoreMode scoreMode = // TODO lowercase
-            (score==null || score.equals("")) ? ScoreMode.None: ScoreMode.valueOf(score);
+        final ScoreMode scoreMode = parseScore();
         String v = localParams.get("v");
         final Query fromQuery;
         long fromCoreOpenTime = 0;
@@ -265,6 +275,17 @@ public class ScoreJoinQParserPlugin extends QParserPlugin {
         } catch (IOException e) {
           throw new RuntimeException(e);
         }
+      }
+
+      private ScoreMode parseScore() {
+        
+        String score = getParam("score");
+        final ScoreMode scoreMode =
+            (score==null || score.equals("")) ? ScoreMode.None: lowercase.get(score);
+        if(scoreMode==null){
+          throw new IllegalArgumentException("Unable to parse ScoreMode from: "+score);
+        }
+        return scoreMode;
       }
     };
   }

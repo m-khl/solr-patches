@@ -17,6 +17,9 @@ package org.apache.solr;
  * limitations under the License.
  */
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 
 import org.apache.lucene.search.join.ScoreMode;
@@ -26,6 +29,8 @@ import org.apache.solr.search.QParserPlugin;
 import org.apache.solr.search.ScoreJoinQParserPlugin;
 import org.apache.solr.search.SolrCache;
 import org.junit.BeforeClass;
+
+import com.carrotsearch.randomizedtesting.annotations.Repeat;
 
 public class TestScoreJoinQPScore extends SolrTestCaseJ4 {
 
@@ -164,34 +169,19 @@ public class TestScoreJoinQPScore extends SolrTestCaseJ4 {
     SolrCache cache = (SolrCache) h.getCore().getInfoRegistry()
         .get("queryResultCache");
     {
-    final NamedList statPre = cache.getStatistics();
-
-    assertJQ(req("q","{!scorejoin from=movieId_s to=id score=Avg}title:movie", "fl","id")
-        ,"/response=={'numFound':2,'start':0,'docs':[{'id':'4'},{'id':'1'}]}" );
-    
-    assertEquals("it lookups", 1,
-        delta("lookups", cache.getStatistics(), statPre));
-    final long mayHit = delta("hits", cache.getStatistics(), statPre);
-    assertTrue("it may hit", 0==mayHit || 1==mayHit);
-    assertEquals("or insert on cold", 1,
-        delta("inserts", cache.getStatistics(), statPre)+mayHit);
+      final NamedList statPre = cache.getStatistics();
+      h.query(req("q","{!scorejoin from=movieId_s to=id score=Avg}title:first", "fl","id", "omitHeader", "true"));
+      assertHitOrInsert(cache, statPre);
     }
     
     {
       final NamedList statPre = cache.getStatistics();
-
-      assertJQ(req("q","{!scorejoin from=movieId_s to=id score=Avg}title:movie", "fl","id")
-          ,"/response=={'numFound':2,'start':0,'docs':[{'id':'4'},{'id':'1'}]}" );
-      
-      assertEquals("it lookups", 1,
-          delta("lookups", cache.getStatistics(), statPre));
-      assertEquals("it hits",1, delta("hits", cache.getStatistics(), statPre));
-      assertEquals("it doesn't insert", 0,
-          delta("inserts", cache.getStatistics(), statPre));
+      h.query(req("q","{!scorejoin from=movieId_s to=id score=Avg}title:first", "fl","id", "omitHeader", "true") );
+      assertHit(cache, statPre);
     }
     
     {
-      final NamedList statPre = cache.getStatistics();
+      NamedList statPre = cache.getStatistics();
 
       Random r = random();
       boolean changed = false;
@@ -200,18 +190,66 @@ public class TestScoreJoinQPScore extends SolrTestCaseJ4 {
       changed |= x;
       String to = (x=r.nextBoolean()) ? "movieId_s" : "id";
       changed |= x;
-      String score = (x=r.nextBoolean()) ? new ScoreMode[]{ScoreMode.Max,ScoreMode.None, ScoreMode.Total}[r.nextInt(3)].name():"Avg";
+      String score = (x=r.nextBoolean()) ? not(ScoreMode.Avg).name():"Avg";
       changed |= x;
-      String q = changed?"title:movie":"title:random";
-      h.query(req("q","{!scorejoin from="+from+" to="+to+" score="+score+"}"+q, "fl","id")
+      String q = changed?"title:first":(r.nextBoolean() ? "title:first^67":"title:night");
+      final String resp = h.query(req("q","{!scorejoin from="+from+" to="+to+" score="+score+"}"+q, "fl","id", "omitHeader", "true")
           );
+      assertInsert(cache, statPre);
       
-      assertEquals("it lookups", 1,
-          delta("lookups", cache.getStatistics(), statPre));
-      assertEquals("it doesn't hit",0, delta("hits", cache.getStatistics(), statPre));
-      assertEquals("it inserts", 1,
-          delta("inserts", cache.getStatistics(), statPre));
+      statPre = cache.getStatistics();
+      final String repeat = h.query(req("q","{!scorejoin from="+from+" to="+to+" score="+score.toLowerCase()+
+                                                                            "}"+q, "fl","id", "omitHeader", "true")
+          );
+      assertHit(cache, statPre);
+      
+      assertEquals("lowercase should change anything",resp, repeat);
+      
+      try{
+        h.query(req("q","{!scorejoin from="+from+" to="+to+" score="+score.substring(0, score.length()-1)+
+                                                                                "}"+q, "fl","id", "omitHeader", "true")
+            );
+        fail("excpecting exception");
+      }catch(IllegalArgumentException e){
+        assert e.getMessage().contains("ScoreMode");
+      }
     }
+    // this queries are not overlap, with other in this test case. 
+    // however it might be better to extract this method into the separate suite
+    // for a while let's nuke a cache content, in case of repetitions
+    cache.clear();
+  }
+
+  private ScoreMode not(ScoreMode s) {
+    Random r = random();
+    final List<ScoreMode> l = new ArrayList(Arrays.asList(ScoreMode.values()));
+    l.remove(s);
+    return l.get(r.nextInt(l.size()));
+  }
+
+  private void assertInsert(SolrCache cache, final NamedList statPre) {
+    assertEquals("it lookups", 1,
+        delta("lookups", cache.getStatistics(), statPre));
+    assertEquals("it doesn't hit",0, delta("hits", cache.getStatistics(), statPre));
+    assertEquals("it inserts", 1,
+        delta("inserts", cache.getStatistics(), statPre));
+  }
+
+  private void assertHit(SolrCache cache, final NamedList statPre) {
+    assertEquals("it lookups", 1,
+        delta("lookups", cache.getStatistics(), statPre));
+    assertEquals("it hits",1, delta("hits", cache.getStatistics(), statPre));
+    assertEquals("it doesn't insert", 0,
+        delta("inserts", cache.getStatistics(), statPre));
+  }
+
+  private void assertHitOrInsert(SolrCache cache, final NamedList statPre) {
+    assertEquals("it lookups", 1,
+        delta("lookups", cache.getStatistics(), statPre));
+    final long mayHit = delta("hits", cache.getStatistics(), statPre);
+    assertTrue("it may hit", 0==mayHit || 1==mayHit);
+    assertEquals("or insert on cold", 1,
+        delta("inserts", cache.getStatistics(), statPre)+mayHit);
   }
   
   private long delta(String key, NamedList a, NamedList b) {
