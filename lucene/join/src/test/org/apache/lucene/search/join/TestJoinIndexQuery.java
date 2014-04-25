@@ -32,11 +32,13 @@ import java.util.Set;
 import java.util.TreeMap;
 
 import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.document.BinaryDocValuesField;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.IndexWriter;
@@ -84,7 +86,76 @@ import com.carrotsearch.randomizedtesting.annotations.Seed;
 @Repeat(iterations=1000)
 public class TestJoinIndexQuery extends LuceneTestCase {
 
-  static final class DVJoinQuery extends Query {
+  static abstract  class DVJoinQuery extends Query {
+    abstract class DVJoinWeight extends Weight {
+      abstract class DVBulkScorer extends BulkScorer {
+        private final AtomicReaderContext context;
+        private final Bits acceptDocs;
+        
+        DVBulkScorer(AtomicReaderContext context, Bits acceptDocs) {
+          this.context = context;
+          this.acceptDocs = acceptDocs;
+        }
+        
+        @Override
+        public boolean score(LeafCollector collector, int max) throws IOException {
+          //dump("parents: ", context, parents,acceptDocs);
+          //dump("children: ", context, children,acceptDocs);
+          final DocIdSet parentDocs = parents.getDocIdSet(context, acceptDocs);
+          if(parentDocs==null){
+            return false;
+          }
+          
+          final DocIdSetIterator parentsIter = parentDocs.iterator();
+          if(parentsIter==null){
+            return false;
+          }
+          
+          collector.setScorer(new FakeScorer());
+          int docID;
+          while((docID = parentsIter.nextDoc())!=DocIdSetIterator.NO_MORE_DOCS && docID < max){
+            if(checkChildren(context, docID, joinField, children)){
+              collector.collect(docID);
+            }
+          }
+          return docID!=DocIdSetIterator.NO_MORE_DOCS;
+        }
+        
+        protected abstract boolean checkChildren(final AtomicReaderContext context,
+            int parentDoc, final String joinField, final Filter children)
+            throws IOException ;
+      }
+      
+      @Override
+      public Scorer scorer(AtomicReaderContext context, Bits acceptDocs)
+          throws IOException {
+        throw new UnsupportedOperationException();
+      }
+      
+      @Override
+      public abstract BulkScorer bulkScorer(final AtomicReaderContext context,
+          boolean scoreDocsInOrder, final Bits acceptDocs) throws IOException ;
+      
+      @Override
+      public void normalize(float norm, float topLevelBoost) {}
+      
+      @Override
+      public float getValueForNormalization() throws IOException {
+        return 0;
+      }
+      
+      @Override
+      public Query getQuery() {
+        return DVJoinQuery.this;
+      }
+      
+      @Override
+      public Explanation explain(AtomicReaderContext context, int doc)
+          throws IOException {
+        return null;
+      }
+    }
+
     private final Filter parents;
     private final String joinField;
     private final Filter children;
@@ -101,58 +172,34 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     }
     
     @Override
-    public Weight createWeight(IndexSearcher searcher) throws IOException {
-     
-      return new Weight() {
-        
-        
-        @Override
-        public Scorer scorer(AtomicReaderContext context, Bits acceptDocs)
-            throws IOException {
-          throw new UnsupportedOperationException();
-        }
+    public abstract Weight createWeight(IndexSearcher searcher) throws IOException;
+  }
+  
+  static final class BinDVJoinQuery extends DVJoinQuery {
 
+    public BinDVJoinQuery(Filter parents, Filter children, String joinField) {
+      super(parents, children, joinField);
+    }
+    
+    @Override
+    public Weight createWeight(IndexSearcher searcher) throws IOException {
+      return new DVJoinWeight(){
         @Override
-        public BulkScorer bulkScorer(final AtomicReaderContext context,
-            boolean scoreDocsInOrder, final Bits acceptDocs) throws IOException {
-          return new BulkScorer() {
-            
+        public BulkScorer bulkScorer(AtomicReaderContext context,
+            boolean scoreDocsInOrder, Bits acceptDocs) throws IOException {
+          return new DVBulkScorer(context, acceptDocs){
             @Override
-            public boolean score(LeafCollector collector, int max) throws IOException {
-              //dump("parents: ", context, parents,acceptDocs);
-              //dump("children: ", context, children,acceptDocs);
-              final DocIdSet parentDocs = parents.getDocIdSet(context, acceptDocs);
-              if(parentDocs==null){
-                return false;
-              }
-              
-              final DocIdSetIterator parentsIter = parentDocs.iterator();
-              if(parentsIter==null){
-                return false;
-              }
-              
-              collector.setScorer(new FakeScorer());
-              int docID;
-              while((docID = parentsIter.nextDoc())!=DocIdSetIterator.NO_MORE_DOCS && docID < max){
-                if(checkChildren(context, docID, joinField, children)){
-                  collector.collect(docID);
-                }
-              }
-              return docID!=DocIdSetIterator.NO_MORE_DOCS;
-            }
-            
-            private boolean checkChildren(final AtomicReaderContext context,
-                int parentDoc, final String joinField, final Filter children)
+            protected boolean checkChildren(AtomicReaderContext context,
+                int parentDoc, String joinField, Filter children)
                 throws IOException {
-              final NumericDocValues numericDocValues = context.reader().getNumericDocValues(joinField);
-              final long childRefs = numericDocValues.get(parentDoc);
-              final byte[] bytes = new byte[8];
-              final ByteArrayDataOutput o = new ByteArrayDataOutput(bytes);
-              o.writeLong(childRefs);
-              final ByteArrayDataInput inp = new ByteArrayDataInput(bytes);
-              final byte cnt = inp.readByte();
+              final BinaryDocValues numericDocValues = context.reader().getBinaryDocValues(joinField);
+              final BytesRef bytes = new BytesRef();
+              numericDocValues.get(parentDoc, bytes);
+              
+              final ByteArrayDataInput inp = new ByteArrayDataInput(bytes.bytes, bytes.offset, bytes.length);
+              
               int prev=0;
-              for(int i=0;i<cnt;i++){
+              for(;!inp.eof();){
                 final int referrer = inp.readVInt()+prev;
                 prev = referrer;
                 assert context.parent.isTopLevel;
@@ -174,27 +221,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
               }
               return false;
             }
-            
           };
-        }
-
-        @Override
-        public void normalize(float norm, float topLevelBoost) {}
-        
-        @Override
-        public float getValueForNormalization() throws IOException {
-          return 0;
-        }
-        
-        @Override
-        public Query getQuery() {
-          return null;
-        }
-        
-        @Override
-        public Explanation explain(AtomicReaderContext context, int doc)
-            throws IOException {
-          return null;
         }
       };
     }
@@ -214,7 +241,6 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     doc.add(newStringField("name", "name1", Field.Store.YES));
     doc.add(newStringField(idField, "1", Field.Store.YES));
     doc.add(newStringField("type", "parent", Field.Store.YES));
-    doc.add(new NumericDocValuesField(joinField, -1));
     docs.add(doc);
 
     // 1
@@ -223,7 +249,6 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     doc.add(newStringField(idField, "2", Field.Store.YES));
     doc.add(newStringField(toField, "1", Field.Store.YES));
     doc.add(newStringField("type", "child", Field.Store.YES));
-    doc.add(new NumericDocValuesField(joinField, -1));
     docs.add(doc);
 
     // 2
@@ -232,7 +257,6 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     doc.add(newStringField(idField, "3", Field.Store.YES));
     doc.add(newStringField(toField, "1", Field.Store.YES));
     doc.add(newStringField("type", "child", Field.Store.YES));
-    doc.add(new NumericDocValuesField(joinField, -1));
     docs.add(doc);
 
     // 3
@@ -241,7 +265,6 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     doc.add(newStringField("name", "name2", Field.Store.YES));
     doc.add(newStringField(idField, "4", Field.Store.YES));
     doc.add(newStringField("type", "parent", Field.Store.YES));
-    doc.add(new NumericDocValuesField(joinField, -1));
     docs.add(doc);
 
     // 4
@@ -250,7 +273,6 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     doc.add(newStringField(idField, "5", Field.Store.YES));
     doc.add(newStringField(toField, "4", Field.Store.YES));
     doc.add(newStringField("type", "child", Field.Store.YES));
-    doc.add(new NumericDocValuesField(joinField, -1));
     docs.add(doc);
     // 5
     doc = new Document();
@@ -258,8 +280,10 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     doc.add(newStringField(idField, "6", Field.Store.YES));
     doc.add(newStringField(toField, "4", Field.Store.YES));
     doc.add(newStringField("type", "child", Field.Store.YES));
-    doc.add(new NumericDocValuesField(joinField, -1));
     docs.add(doc);
+    for(Document d : docs){
+      d.add(binDv(joinField));
+    }
     Collections.shuffle(docs, random());
 
     Directory dir = newDirectory();
@@ -286,7 +310,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     w.commit();
     System.out.println("docs are written");
     DirectoryReader reader = DirectoryReader.open(dir);
-    new IndexJoiner(w, reader, idField, toField).
+    new BinaryIndexJoiner(w, reader, idField, toField).
     indexJoin();
     reader.close();
     System.out.println("flushing num updates");
@@ -315,19 +339,19 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     if(random().nextBoolean()){
       children = new CachingWrapperFilter(children);
     }
-    Query dvJoinQuery = new DVJoinQuery(parents, children, joinField);
+    Query dvJoinQuery = new BinDVJoinQuery(parents, children, joinField);
     result = indexSearcher.search(dvJoinQuery, 10);
     assertIds(indexSearcher, result, "1", "4");
     assertEquals(2, result.totalHits);
     
-    Query dvPtoChJoinQuery = new DVJoinQuery(new TermFilter(new Term("type", "child")), //parents,
+    Query dvPtoChJoinQuery = new BinDVJoinQuery(new TermFilter(new Term("type", "child")), //parents,
                                             new TermFilter(new Term("name", "name2")), joinField);
     result = indexSearcher.search(dvPtoChJoinQuery, 10);
     assertIds(indexSearcher, result, "5", "6");
     assertEquals(2, result.totalHits);
     
     joinQuery =  //JoinUtil.createJoinQuery(idField, false, toField, new TermQuery(new Term("name", "name1")), indexSearcher, ScoreMode.None);
-        new DVJoinQuery(new TermFilter(new Term("type", "child")), //parents,
+        new BinDVJoinQuery(new TermFilter(new Term("type", "child")), //parents,
             new TermFilter(new Term("name", "name1")), joinField);
     result = indexSearcher.search(joinQuery, 10);
     assertEquals(2, result.totalHits);
@@ -335,7 +359,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
 
     // Search for offer
     joinQuery = //JoinUtil.createJoinQuery(toField, false, idField, new TermQuery(new Term("id", "5")), indexSearcher, ScoreMode.None);
-        new DVJoinQuery(new TermFilter(new Term("type", "parent")), //parents,
+        new BinDVJoinQuery(new TermFilter(new Term("type", "parent")), //parents,
             new TermFilter(new Term("id", "5")), joinField);
     result = indexSearcher.search(joinQuery, 10);
     assertEquals(1, result.totalHits);
@@ -345,8 +369,16 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     dir.close();
   }
 
+  private Field dv(final String joinField) {
+    return new NumericDocValuesField(joinField, -1);
+  }
   
-  static class IndexJoiner {
+  private Field binDv(final String joinField) {
+    return new BinaryDocValuesField(joinField, new BytesRef("0"));
+  }
+
+  
+  static abstract  class IndexJoiner {
     
     protected final IndexWriter writer;
     private final DirectoryReader reader;
@@ -363,7 +395,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
       this.fkField = fkField;
     }
     
-    private void indexJoin() throws IOException {
+    void indexJoin() throws IOException {
       updTracker.clear();
       try {
         final Terms pkTerms = MultiFields.getTerms(reader, pkField);
