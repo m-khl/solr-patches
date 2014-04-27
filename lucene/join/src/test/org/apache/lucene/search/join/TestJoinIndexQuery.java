@@ -54,6 +54,7 @@ import org.apache.lucene.index.LogDocMergePolicy;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.RandomIndexWriter;
+import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.Term;
@@ -251,8 +252,11 @@ public class TestJoinIndexQuery extends LuceneTestCase {
               for(;!inp.eof();){
                 final int referrer = inp.readVInt()+prev;
                 prev = referrer;
-                for(AtomicReaderContext arc:context.isTopLevel? context.leaves() : context.parent.leaves()){
-                  if(referrer-arc.docBase<arc.reader().maxDoc() && referrer-arc.docBase>=0){
+                final List<AtomicReaderContext> leaves = ReaderUtil.getTopLevelContext(context).leaves();
+                // TODO use first docs array method instead. reuse arc between referrers 
+                final AtomicReaderContext arc = leaves.get(ReaderUtil.subIndex(referrer, leaves));
+                  assert (referrer-arc.docBase<arc.reader().maxDoc() && referrer-arc.docBase>=0);
+                  
                     final DocIdSet childrenDocIdSet = children.getDocIdSet(arc, arc.reader().getLiveDocs());
                     if(childrenDocIdSet!=null){
                       final DocIdSetIterator disi = childrenDocIdSet.iterator();
@@ -264,9 +268,6 @@ public class TestJoinIndexQuery extends LuceneTestCase {
                           return true;
                         }
                       }
-                    }
-                    break;
-                  }
                 }
               }
               return false;
