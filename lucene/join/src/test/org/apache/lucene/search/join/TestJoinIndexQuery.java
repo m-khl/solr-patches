@@ -21,31 +21,41 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.Map.Entry;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
 
 import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.BinaryDocValuesField;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.LogDocMergePolicy;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.NumericDocValues;
+import org.apache.lucene.index.RandomIndexWriter;
+import org.apache.lucene.index.SlowCompositeReaderWrapper;
+import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
@@ -57,6 +67,7 @@ import org.apache.lucene.search.CachingWrapperFilter;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Explanation;
+import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.LeafCollector;
@@ -65,25 +76,34 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TermRangeFilter;
 import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.store.ByteArrayDataInput;
 import org.apache.lucene.store.ByteArrayDataOutput;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.GrowableByteArrayDataOutput;
+import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.TestUtil;
+import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
+import org.apache.lucene.util.fst.NoOutputs;
 import org.apache.solr.schema.StrField;
+import org.junit.Ignore;
+import org.junit.Test;
 
 import com.carrotsearch.randomizedtesting.annotations.Repeat;
 import com.carrotsearch.randomizedtesting.annotations.Seed;
 @SuppressCodecs({"Lucene40","Lucene41","Lucene42","Lucene45"})
-@Repeat(iterations=1000)
+//@Repeat(iterations=1000)
 public class TestJoinIndexQuery extends LuceneTestCase {
 
   static abstract  class DVJoinQuery extends Query {
@@ -173,6 +193,35 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     
     @Override
     public abstract Weight createWeight(IndexSearcher searcher) throws IOException;
+
+    @Override
+    public int hashCode() {
+      final int prime = 31;
+      int result = super.hashCode();
+      result = prime * result + ((children == null) ? 0 : children.hashCode());
+      result = prime * result
+          + ((joinField == null) ? 0 : joinField.hashCode());
+      result = prime * result + ((parents == null) ? 0 : parents.hashCode());
+      return result;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) return true;
+      if (!super.equals(obj)) return false;
+      if (getClass() != obj.getClass()) return false;
+      DVJoinQuery other = (DVJoinQuery) obj;
+      if (children == null) {
+        if (other.children != null) return false;
+      } else if (!children.equals(other.children)) return false;
+      if (joinField == null) {
+        if (other.joinField != null) return false;
+      } else if (!joinField.equals(other.joinField)) return false;
+      if (parents == null) {
+        if (other.parents != null) return false;
+      } else if (!parents.equals(other.parents)) return false;
+      return true;
+    }
   }
   
   static final class BinDVJoinQuery extends DVJoinQuery {
@@ -202,17 +251,18 @@ public class TestJoinIndexQuery extends LuceneTestCase {
               for(;!inp.eof();){
                 final int referrer = inp.readVInt()+prev;
                 prev = referrer;
-                assert context.parent.isTopLevel;
-                for(AtomicReaderContext arc:context.parent.leaves()){
+                for(AtomicReaderContext arc:context.isTopLevel? context.leaves() : context.parent.leaves()){
                   if(referrer-arc.docBase<arc.reader().maxDoc() && referrer-arc.docBase>=0){
                     final DocIdSet childrenDocIdSet = children.getDocIdSet(arc, arc.reader().getLiveDocs());
                     if(childrenDocIdSet!=null){
                       final DocIdSetIterator disi = childrenDocIdSet.iterator();
-                      final int advanced = disi.advance(referrer-arc.docBase);
-                      if(advanced==referrer
-                          -arc.docBase
-                          ){
-                        return true;
+                      if(disi!=null){
+                        final int advanced = disi.advance(referrer-arc.docBase);
+                        if(advanced==referrer
+                            -arc.docBase
+                            ){
+                          return true;
+                        }
                       }
                     }
                     break;
@@ -287,9 +337,9 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     Collections.shuffle(docs, random());
 
     Directory dir = newDirectory();
-    System.out.println(dir);
+    //System.out.println(dir);
     IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
-    conf.setInfoStream(System.out);
+    // conf.setInfoStream(System.out);
     // make sure random config doesn't flush on us
     conf.setMaxBufferedDocs(10);
     conf.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
@@ -440,16 +490,20 @@ public class TestJoinIndexQuery extends LuceneTestCase {
         }
         // reach remain fks
       } finally {
-        // for(Entry<Term, Long> e : updTracker.entrySet()){
-        // System.out.print(e.getKey()+" ");
-        // System.out.println(e.getValue()==null?"null":Long.toHexString(e.getValue()));
-        // }
+        if (VERBOSE) {
+           for(Entry<Term, Long> e : updTracker.entrySet()){
+           System.out.print(e.getKey()+" ");
+           System.out.println(e.getValue()==null?"null":Long.toHexString(e.getValue()));
+           }
+        }
       }
     }
     
     private void marryThem(BytesRef pk, BytesRef fk) throws IOException {
-      // System.out.println(pkField+":"+(pk!=null? pk.utf8ToString():pk)
-      // +" <-> "+fkField+":"+(fk!=null?fk.utf8ToString():fk));
+      if (VERBOSE) {
+        System.out.println(pkField+":"+(pk!=null? pk.utf8ToString():pk)
+         +" <-> "+fkField+":"+(fk!=null?fk.utf8ToString():fk));
+      }
       if (fk != null) {
         putPkToFk(pkField, pk, fkField, fk);
       }
@@ -473,7 +527,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
             if (search.scoreDocs[d].doc - arc.docBase < arc.reader().maxDoc()
                 && search.scoreDocs[d].doc - arc.docBase >= 0) {
               final NumericDocValues numericDocValues = arc.reader()
-                  .getNumericDocValues("productId_to_id");
+                  .getNumericDocValues(joinFieldName());
               final Long act = numericDocValues.get(search.scoreDocs[d].doc
                   - arc.docBase);
               assertEquals(
@@ -588,39 +642,633 @@ public class TestJoinIndexQuery extends LuceneTestCase {
 
   private static void dump(String label,
       final AtomicReaderContext context, final Filter aFilter, Bits acceptDocs) throws IOException {
-    System.out.println(label+aFilter);
-    final DocIdSet docIdSet = aFilter.getDocIdSet(context, acceptDocs);
-    if(docIdSet!=null){
-      int doc;
-      for(DocIdSetIterator iter = docIdSet.iterator();(doc=iter.nextDoc())!=DocIdSetIterator.NO_MORE_DOCS;){
-        System.out.print(doc);
-        System.out.print(", ");
+    if (VERBOSE) {
+      System.out.println(label+aFilter);
+      final DocIdSet docIdSet = aFilter.getDocIdSet(context, acceptDocs);
+      if(docIdSet!=null){
+        int doc;
+        for(DocIdSetIterator iter = docIdSet.iterator();(doc=iter.nextDoc())!=DocIdSetIterator.NO_MORE_DOCS;){
+          System.out.print(doc);
+          System.out.print(", ");
+        }
+        System.out.println();
       }
-      System.out.println();
     }
   }
 
   private static void dump(final AtomicReaderContext context,
       final String joinFieldName) throws IOException {
-    final NumericDocValues numericDocValues = context.reader().getNumericDocValues(joinFieldName);
-    System.out.println("dumping: "+joinFieldName);
-    for(int i=0;i<context.reader().maxDoc();i++){
-      final long childRefs = numericDocValues.get(i);
-      System.out.print("["+(i+context.docBase)+"]=");
-      {
-        final byte[] bytes = new byte[8];
-        final ByteArrayDataOutput o = new ByteArrayDataOutput(bytes);
-        o.writeLong(childRefs);
-        final ByteArrayDataInput inp = new ByteArrayDataInput(bytes);
-        final byte cnt = inp.readByte();
-        int prev=0;
-        for(int r=0;r<cnt;r++){
-          final int referrer = inp.readVInt()+prev;
-          System.out.print(referrer+",");
-          prev = referrer;
+    if (VERBOSE) {
+      final NumericDocValues numericDocValues = context.reader().getNumericDocValues(joinFieldName);
+      System.out.println("dumping: "+joinFieldName);
+      for(int i=0;i<context.reader().maxDoc();i++){
+        final long childRefs = numericDocValues.get(i);
+        System.out.print("["+(i+context.docBase)+"]=");
+        {
+          final byte[] bytes = new byte[8];
+          final ByteArrayDataOutput o = new ByteArrayDataOutput(bytes);
+          o.writeLong(childRefs);
+          final ByteArrayDataInput inp = new ByteArrayDataInput(bytes);
+          final byte cnt = inp.readByte();
+          int prev=0;
+          for(int r=0;r<cnt;r++){
+            final int referrer = inp.readVInt()+prev;
+            System.out.print(referrer+",");
+            prev = referrer;
+          }
         }
+        System.out.println();
       }
-      System.out.println();
     }
   }
+  
+  
+  @Test
+ // @Slow
+  public void testSingleValueRandomJoin() throws Exception {
+    int maxIndexIter = TestUtil.nextInt(random(), 6, 12);
+    int maxSearchIter = TestUtil.nextInt(random(), 13, 26);
+    executeRandomJoin(false, maxIndexIter, maxSearchIter, TestUtil.nextInt(random(), 87, 764)
+        );
+  }
+
+  @Test
+  @Slow
+  @Ignore
+  // This test really takes more time, that is why the number of iterations are smaller.
+  public void testMultiValueRandomJoin() throws Exception {
+    int maxIndexIter = TestUtil.nextInt(random(), 3, 6);
+    int maxSearchIter = TestUtil.nextInt(random(), 6, 12);
+    executeRandomJoin(true, maxIndexIter, maxSearchIter, TestUtil.nextInt(random(), 11, 57));
+  }
+
+  private void executeRandomJoin(boolean multipleValuesPerDocument, int maxIndexIter, int maxSearchIter, int numberOfDocumentsToIndex) throws Exception {
+    for (int indexIter = 1; indexIter <= maxIndexIter; indexIter++) {
+      if (VERBOSE) {
+        System.out.println("indexIter=" + indexIter);
+      }
+      Directory dir = newDirectory();
+      final IndexWriterConfig indexWriterConfig = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.KEYWORD, false));
+      indexWriterConfig.setInfoStream(InfoStream.NO_OUTPUT);
+      RandomIndexWriter w = new RandomIndexWriter(
+          random(),
+          dir,
+          indexWriterConfig.setMergePolicy(newLogMergePolicy())
+      );
+      final boolean scoreDocsInOrder = TestJoinUtil.random().nextBoolean();
+      IndexIterationContext context = createContext(numberOfDocumentsToIndex, w, multipleValuesPerDocument, scoreDocsInOrder);
+/*
+ *     w.commit();
+    System.out.println("docs are written");
+    DirectoryReader reader = DirectoryReader.open(dir);
+
+    reader.close();
+    System.out.println("flushing num updates");
+    w.commit();
+    w.close();
+    reader = DirectoryReader.open(dir);
+ * */
+      w.commit();
+      DirectoryReader topLevelReader = w.getReader();
+      
+      new BinaryIndexJoiner(w.w, topLevelReader, "to", "from").
+                          indexJoin();
+      topLevelReader.close();
+      w.commit();
+      
+      topLevelReader = w.getReader();
+      
+    //  w.close();
+      
+      w.shutdown();
+      for (int searchIter = 1; searchIter <= maxSearchIter; searchIter++) {
+        if (VERBOSE) {
+          System.out.println("searchIter=" + searchIter);
+        }
+        IndexSearcher indexSearcher = newSearcher(topLevelReader);
+
+        int r = random().nextInt(context.randomUniqueValues.length);
+        boolean from = context.randomFrom[r];
+        String randomValue = context.randomUniqueValues[r];
+        FixedBitSet expectedResult = createExpectedResult(randomValue, from, indexSearcher.getIndexReader(), context);
+
+        final Query actualQuery = new TermQuery(new Term("value", randomValue));
+        if (VERBOSE) {
+          System.out.println("actualQuery=" + actualQuery);
+        }
+        final ScoreMode scoreMode = ScoreMode.None;//ScoreMode.values()[random().nextInt(ScoreMode.values().length)];
+        if (VERBOSE) {
+          System.out.println("scoreMode=" + scoreMode);
+        }
+
+        /*
+    joinQuery =  //JoinUtil.createJoinQuery(idField, false, toField, new TermQuery(new Term("name", "name1")), indexSearcher, ScoreMode.None);
+        new BinDVJoinQuery(new TermFilter(new Term("type", "child")), //parents,
+            new TermFilter(new Term("name", "name1")), joinField);
+    result = indexSearcher.search(joinQuery, 10);
+    assertEquals(2, result.totalHits);
+    assertIds(indexSearcher, result, "2", "3");
+
+    // Search for offer
+    joinQuery = //JoinUtil.createJoinQuery(toField, false, idField, new TermQuery(new Term("id", "5")), indexSearcher, ScoreMode.None);
+        new BinDVJoinQuery(new TermFilter(new Term("type", "parent")), //parents,
+            new TermFilter(new Term("id", "5")), joinField);
+    result = indexSearcher.search(joinQuery, 10);
+    assertEquals(1, result.totalHits);
+    assertIds(indexSearcher, result, "4");
+         * */
+        final Query joinQuery;
+        if (from) {
+          //joinQuery = JoinUtil.createJoinQuery("from", multipleValuesPerDocument, "to", actualQuery, indexSearcher, scoreMode);
+          joinQuery =  new BinDVJoinQuery(new TermFilter(new Term("type", "to")),
+                      new QueryWrapperFilter(actualQuery), IndexJoiner.joinFieldName( "to", "from"));
+        } else {
+          //joinQuery = JoinUtil.createJoinQuery("to", multipleValuesPerDocument, "from", actualQuery, indexSearcher, scoreMode);
+          joinQuery =  new BinDVJoinQuery(new TermFilter(new Term("type", "from")),
+              new QueryWrapperFilter(actualQuery), IndexJoiner.joinFieldName( "to", "from"));
+        }
+        if (VERBOSE) {
+          System.out.println("joinQuery=" + joinQuery);
+        }
+
+        // Need to know all documents that have matches. TopDocs doesn't give me that and then I'd be also testing TopDocsCollector...
+        final FixedBitSet actualResult = new FixedBitSet(indexSearcher.getIndexReader().maxDoc());
+        final TopScoreDocCollector topScoreDocCollector = TopScoreDocCollector.create(10, false);
+        indexSearcher.search(joinQuery//, new TermFilter(new Term("type", from ? "to":"from"))
+              , new SimpleCollector() {
+
+          int docBase;
+
+          @Override
+          public void collect(int doc) throws IOException {
+            actualResult.set(doc + docBase);
+            topScoreDocCollector.collect(doc);
+          }
+
+          @Override
+          protected void doSetNextReader(AtomicReaderContext context) throws IOException {
+            docBase = context.docBase;
+            topScoreDocCollector.getLeafCollector(context);
+          }
+
+          @Override
+          public void setScorer(Scorer scorer) throws IOException {
+            topScoreDocCollector.setScorer(scorer);
+          }
+
+          @Override
+          public boolean acceptsDocsOutOfOrder() {
+            return scoreDocsInOrder;
+          }
+        }
+        );
+        // Asserting bit set...
+        if (VERBOSE) {
+          System.out.println("expected cardinality:" + expectedResult.cardinality());
+          DocIdSetIterator iterator = expectedResult.iterator();
+          for (int doc = iterator.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = iterator.nextDoc()) {
+            System.out.println(String.format(Locale.ROOT, "Expected doc[%d] with id value %s", doc, indexSearcher.doc(doc).get("id")));
+          }
+          System.out.println("actual cardinality:" + actualResult.cardinality());
+          iterator = actualResult.iterator();
+          for (int doc = iterator.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = iterator.nextDoc()) {
+            System.out.println(String.format(Locale.ROOT, "Actual doc[%d] with id value %s", doc, indexSearcher.doc(doc).get("id")));
+          }
+        }
+        assertEquals(expectedResult, actualResult);
+
+        // Asserting TopDocs...
+        TopDocs expectedTopDocs = createExpectedTopDocs(randomValue, from, scoreMode, context);
+        TopDocs actualTopDocs = topScoreDocCollector.topDocs();
+        assertEquals(expectedTopDocs.totalHits, actualTopDocs.totalHits);
+        assertEquals(expectedTopDocs.scoreDocs.length, actualTopDocs.scoreDocs.length);
+        if (scoreMode == ScoreMode.None) {
+          continue;
+        }
+
+        assertEquals(expectedTopDocs.getMaxScore(), actualTopDocs.getMaxScore(), 0.0f);
+        for (int i = 0; i < expectedTopDocs.scoreDocs.length; i++) {
+          if (VERBOSE) {
+            System.out.printf(Locale.ENGLISH, "Expected doc: %d | Actual doc: %d\n", expectedTopDocs.scoreDocs[i].doc, actualTopDocs.scoreDocs[i].doc);
+            System.out.printf(Locale.ENGLISH, "Expected score: %f | Actual score: %f\n", expectedTopDocs.scoreDocs[i].score, actualTopDocs.scoreDocs[i].score);
+          }
+          assertEquals(expectedTopDocs.scoreDocs[i].doc, actualTopDocs.scoreDocs[i].doc);
+          assertEquals(expectedTopDocs.scoreDocs[i].score, actualTopDocs.scoreDocs[i].score, 0.0f);
+          Explanation explanation = indexSearcher.explain(joinQuery, expectedTopDocs.scoreDocs[i].doc);
+          assertEquals(expectedTopDocs.scoreDocs[i].score, explanation.getValue(), 0.0f);
+        }
+      }
+      topLevelReader.close();
+      dir.close();
+    }
+  }
+
+  private IndexIterationContext createContext(int nDocs, RandomIndexWriter writer, boolean multipleValuesPerDocument, boolean scoreDocsInOrder) throws IOException {
+    return createContext(nDocs, writer, writer, multipleValuesPerDocument, scoreDocsInOrder);
+  }
+
+  private IndexIterationContext createContext(int nDocs, RandomIndexWriter fromWriter, RandomIndexWriter toWriter, boolean multipleValuesPerDocument, boolean scoreDocsInOrder) throws IOException {
+    IndexIterationContext context = new IndexIterationContext();
+    int numRandomValues = nDocs / 2;
+    context.randomUniqueValues = new String[numRandomValues];
+    Set<String> trackSet = new HashSet<>();
+    context.randomFrom = new boolean[numRandomValues];
+    for (int i = 0; i < numRandomValues; i++) {
+      String uniqueRandomValue;
+      do {
+        uniqueRandomValue = TestUtil.randomRealisticUnicodeString(random());
+//        uniqueRandomValue = _TestUtil.randomSimpleString(random);
+      } while ("".equals(uniqueRandomValue) || trackSet.contains(uniqueRandomValue));
+      // Generate unique values and empty strings aren't allowed.
+      trackSet.add(uniqueRandomValue);
+      context.randomFrom[i] = random().nextBoolean();
+      context.randomUniqueValues[i] = uniqueRandomValue;
+    }
+
+    RandomDoc[] docs = new RandomDoc[nDocs];
+    for (int i = 0; i < nDocs; i++) {
+      String id = Integer.toString(i);
+      int randomI = random().nextInt(context.randomUniqueValues.length);
+      String value = context.randomUniqueValues[randomI];
+      Document document = new Document();
+      document.add(newTextField(random(), "id", id, Field.Store.YES));
+      document.add(newTextField(random(), "value", value, Field.Store.YES));
+
+      boolean from = context.randomFrom[randomI];
+      int numberOfLinkValues = multipleValuesPerDocument ? 2 + random().nextInt(10) : 1;
+      docs[i] = new RandomDoc(id, numberOfLinkValues, value, from);
+      for (int j = 0; j < numberOfLinkValues; j++) {
+        String linkValue = context.randomUniqueValues[random().nextInt(context.randomUniqueValues.length)];
+        docs[i].linkValues.add(linkValue);
+        if (from) {
+          if (!context.fromDocuments.containsKey(linkValue)) {
+            context.fromDocuments.put(linkValue, new ArrayList<RandomDoc>());
+          }
+          if (!context.randomValueFromDocs.containsKey(value)) {
+            context.randomValueFromDocs.put(value, new ArrayList<RandomDoc>());
+          }
+
+          context.fromDocuments.get(linkValue).add(docs[i]);
+          context.randomValueFromDocs.get(value).add(docs[i]);
+          document.add(newTextField(random(), "from", linkValue, Field.Store.NO));
+          document.add(newStringField(random(), "type", "from", Field.Store.NO));
+        } else {
+          if (!context.toDocuments.containsKey(linkValue)) {
+            context.toDocuments.put(linkValue, new ArrayList<RandomDoc>());
+          }
+          if (!context.randomValueToDocs.containsKey(value)) {
+            context.randomValueToDocs.put(value, new ArrayList<RandomDoc>());
+          }
+
+          context.toDocuments.get(linkValue).add(docs[i]);
+          context.randomValueToDocs.get(value).add(docs[i]);
+          document.add(newTextField(random(), "to", linkValue, Field.Store.NO));
+          document.add(newStringField(random(), "type", "to", Field.Store.NO));
+        }
+      }
+
+      document.add(new BinaryDocValuesField(IndexJoiner.joinFieldName( "to", "from"), new BytesRef((char)-1)));
+      final RandomIndexWriter w;
+      if (from) {
+        w = fromWriter;
+      } else {
+        w = toWriter;
+      }
+
+      w.addDocument(document);
+      if (random().nextInt(10) == 4) {
+        w.commit();
+      }
+      if (VERBOSE) {
+        System.out.println("Added document[" + docs[i].id + "]: " + document);
+      }
+    }
+
+    // Pre-compute all possible hits for all unique random values. On top of this also compute all possible score for
+    // any ScoreMode.
+    IndexSearcher fromSearcher = newSearcher(fromWriter.getReader());
+    IndexSearcher toSearcher = newSearcher(toWriter.getReader());
+    for (int i = 0; i < context.randomUniqueValues.length; i++) {
+      String uniqueRandomValue = context.randomUniqueValues[i];
+      final String fromField;
+      final String toField;
+      final Map<String, Map<Integer, JoinScore>> queryVals;
+      if (context.randomFrom[i]) {
+        fromField = "from";
+        toField = "to";
+        queryVals = context.fromHitsToJoinScore;
+      } else {
+        fromField = "to";
+        toField = "from";
+        queryVals = context.toHitsToJoinScore;
+      }
+      final Map<BytesRef, JoinScore> joinValueToJoinScores = new HashMap<>();
+      if (multipleValuesPerDocument) {
+        fromSearcher.search(new TermQuery(new Term("value", uniqueRandomValue)), new SimpleCollector() {
+
+          private Scorer scorer;
+          private SortedSetDocValues docTermOrds;
+          final BytesRef joinValue = new BytesRef();
+
+          @Override
+          public void collect(int doc) throws IOException {
+            docTermOrds.setDocument(doc);
+            long ord;
+            while ((ord = docTermOrds.nextOrd()) != SortedSetDocValues.NO_MORE_ORDS) {
+              docTermOrds.lookupOrd(ord, joinValue);
+              JoinScore joinScore = joinValueToJoinScores.get(joinValue);
+              if (joinScore == null) {
+                joinValueToJoinScores.put(BytesRef.deepCopyOf(joinValue), joinScore = new JoinScore());
+              }
+              joinScore.addScore(scorer.score());
+            }
+          }
+
+          @Override
+          protected void doSetNextReader(AtomicReaderContext context) throws IOException {
+            docTermOrds = FieldCache.DEFAULT.getDocTermOrds(context.reader(), fromField);
+          }
+
+          @Override
+          public void setScorer(Scorer scorer) {
+            this.scorer = scorer;
+          }
+
+          @Override
+          public boolean acceptsDocsOutOfOrder() {
+            return false;
+          }
+        });
+      } else {
+        fromSearcher.search(new TermQuery(new Term("value", uniqueRandomValue)), new SimpleCollector() {
+
+          private Scorer scorer;
+          private BinaryDocValues terms;
+          private Bits docsWithField;
+          private final BytesRef spare = new BytesRef();
+
+          @Override
+          public void collect(int doc) throws IOException {
+            terms.get(doc, spare);
+            BytesRef joinValue = spare;
+            if (joinValue.length == 0 && !docsWithField.get(doc)) {
+              return;
+            }
+
+            JoinScore joinScore = joinValueToJoinScores.get(joinValue);
+            if (joinScore == null) {
+              joinValueToJoinScores.put(BytesRef.deepCopyOf(joinValue), joinScore = new JoinScore());
+            }
+            joinScore.addScore(scorer.score());
+          }
+
+          @Override
+          protected void doSetNextReader(AtomicReaderContext context) throws IOException {
+            terms = FieldCache.DEFAULT.getTerms(context.reader(), fromField, true);
+            docsWithField = FieldCache.DEFAULT.getDocsWithField(context.reader(), fromField);
+          }
+
+          @Override
+          public void setScorer(Scorer scorer) {
+            this.scorer = scorer;
+          }
+
+          @Override
+          public boolean acceptsDocsOutOfOrder() {
+            return false;
+          }
+        });
+      }
+
+      final Map<Integer, JoinScore> docToJoinScore = new HashMap<>();
+      if (multipleValuesPerDocument) {
+        if (scoreDocsInOrder) {
+          AtomicReader slowCompositeReader = SlowCompositeReaderWrapper.wrap(toSearcher.getIndexReader());
+          Terms terms = slowCompositeReader.terms(toField);
+          if (terms != null) {
+            DocsEnum docsEnum = null;
+            TermsEnum termsEnum = null;
+            SortedSet<BytesRef> joinValues = new TreeSet<>(BytesRef.getUTF8SortedAsUnicodeComparator());
+            joinValues.addAll(joinValueToJoinScores.keySet());
+            for (BytesRef joinValue : joinValues) {
+              termsEnum = terms.iterator(termsEnum);
+              if (termsEnum.seekExact(joinValue)) {
+                docsEnum = termsEnum.docs(slowCompositeReader.getLiveDocs(), docsEnum, DocsEnum.FLAG_NONE);
+                JoinScore joinScore = joinValueToJoinScores.get(joinValue);
+
+                for (int doc = docsEnum.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = docsEnum.nextDoc()) {
+                  // First encountered join value determines the score.
+                  // Something to keep in mind for many-to-many relations.
+                  if (!docToJoinScore.containsKey(doc)) {
+                    docToJoinScore.put(doc, joinScore);
+                  }
+                }
+              }
+            }
+          }
+        } else {
+          toSearcher.search(new MatchAllDocsQuery(), new SimpleCollector() {
+
+            private SortedSetDocValues docTermOrds;
+            private final BytesRef scratch = new BytesRef();
+            private int docBase;
+
+            @Override
+            public void collect(int doc) throws IOException {
+              docTermOrds.setDocument(doc);
+              long ord;
+              while ((ord = docTermOrds.nextOrd()) != SortedSetDocValues.NO_MORE_ORDS) {
+                docTermOrds.lookupOrd(ord, scratch);
+                JoinScore joinScore = joinValueToJoinScores.get(scratch);
+                if (joinScore == null) {
+                  continue;
+                }
+                Integer basedDoc = docBase + doc;
+                // First encountered join value determines the score.
+                // Something to keep in mind for many-to-many relations.
+                if (!docToJoinScore.containsKey(basedDoc)) {
+                  docToJoinScore.put(basedDoc, joinScore);
+                }
+              }
+            }
+
+            @Override
+            protected void doSetNextReader(AtomicReaderContext context) throws IOException {
+              docBase = context.docBase;
+              docTermOrds = FieldCache.DEFAULT.getDocTermOrds(context.reader(), toField);
+            }
+
+            @Override
+            public boolean acceptsDocsOutOfOrder() {return false;}
+            @Override
+            public void setScorer(Scorer scorer) {}
+          });
+        }
+      } else {
+        toSearcher.search(new MatchAllDocsQuery(), new SimpleCollector() {
+
+          private BinaryDocValues terms;
+          private int docBase;
+          private final BytesRef spare = new BytesRef();
+
+          @Override
+          public void collect(int doc) {
+            terms.get(doc, spare);
+            JoinScore joinScore = joinValueToJoinScores.get(spare);
+            if (joinScore == null) {
+              return;
+            }
+            docToJoinScore.put(docBase + doc, joinScore);
+          }
+
+          @Override
+          protected void doSetNextReader(AtomicReaderContext context) throws IOException {
+            terms = FieldCache.DEFAULT.getTerms(context.reader(), toField, false);
+            docBase = context.docBase;
+          }
+
+          @Override
+          public boolean acceptsDocsOutOfOrder() {return false;}
+          @Override
+          public void setScorer(Scorer scorer) {}
+        });
+      }
+      queryVals.put(uniqueRandomValue, docToJoinScore);
+    }
+
+    fromSearcher.getIndexReader().close();
+    toSearcher.getIndexReader().close();
+
+    return context;
+  }
+
+  private TopDocs createExpectedTopDocs(String queryValue,
+                                        final boolean from,
+                                        final ScoreMode scoreMode,
+                                        IndexIterationContext context) {
+
+    Map<Integer, JoinScore> hitsToJoinScores;
+    if (from) {
+      hitsToJoinScores = context.fromHitsToJoinScore.get(queryValue);
+    } else {
+      hitsToJoinScores = context.toHitsToJoinScore.get(queryValue);
+    }
+    List<Map.Entry<Integer,JoinScore>> hits = new ArrayList<>(hitsToJoinScores.entrySet());
+    Collections.sort(hits, new Comparator<Map.Entry<Integer, JoinScore>>() {
+
+      @Override
+      public int compare(Map.Entry<Integer, JoinScore> hit1, Map.Entry<Integer, JoinScore> hit2) {
+        float score1 = hit1.getValue().score(scoreMode);
+        float score2 = hit2.getValue().score(scoreMode);
+
+        int cmp = Float.compare(score2, score1);
+        if (cmp != 0) {
+          return cmp;
+        }
+        return hit1.getKey() - hit2.getKey();
+      }
+
+    });
+    ScoreDoc[] scoreDocs = new ScoreDoc[Math.min(10, hits.size())];
+    for (int i = 0; i < scoreDocs.length; i++) {
+      Map.Entry<Integer,JoinScore> hit = hits.get(i);
+      scoreDocs[i] = new ScoreDoc(hit.getKey(), hit.getValue().score(scoreMode));
+    }
+    return new TopDocs(hits.size(), scoreDocs, hits.isEmpty() ? Float.NaN : hits.get(0).getValue().score(scoreMode));
+  }
+
+  private FixedBitSet createExpectedResult(String queryValue, boolean from, IndexReader topLevelReader, IndexIterationContext context) throws IOException {
+    final Map<String, List<RandomDoc>> randomValueDocs;
+    final Map<String, List<RandomDoc>> linkValueDocuments;
+    if (from) {
+      randomValueDocs = context.randomValueFromDocs;
+      linkValueDocuments = context.toDocuments;
+    } else {
+      randomValueDocs = context.randomValueToDocs;
+      linkValueDocuments = context.fromDocuments;
+    }
+
+    FixedBitSet expectedResult = new FixedBitSet(topLevelReader.maxDoc());
+    List<RandomDoc> matchingDocs = randomValueDocs.get(queryValue);
+    if (matchingDocs == null) {
+      return new FixedBitSet(topLevelReader.maxDoc());
+    }
+
+    for (RandomDoc matchingDoc : matchingDocs) {
+      for (String linkValue : matchingDoc.linkValues) {
+        List<RandomDoc> otherMatchingDocs = linkValueDocuments.get(linkValue);
+        if (otherMatchingDocs == null) {
+          continue;
+        }
+
+        for (RandomDoc otherSideDoc : otherMatchingDocs) {
+          DocsEnum docsEnum = MultiFields.getTermDocsEnum(topLevelReader, MultiFields.getLiveDocs(topLevelReader), "id", new BytesRef(otherSideDoc.id), 0);
+          assert docsEnum != null;
+          int doc = docsEnum.nextDoc();
+          expectedResult.set(doc);
+        }
+      }
+    }
+    return expectedResult;
+  }
+
+  private static class IndexIterationContext {
+
+    String[] randomUniqueValues;
+    boolean[] randomFrom;
+    Map<String, List<RandomDoc>> fromDocuments = new HashMap<>();
+    Map<String, List<RandomDoc>> toDocuments = new HashMap<>();
+    Map<String, List<RandomDoc>> randomValueFromDocs = new HashMap<>();
+    Map<String, List<RandomDoc>> randomValueToDocs = new HashMap<>();
+
+    Map<String, Map<Integer, JoinScore>> fromHitsToJoinScore = new HashMap<>();
+    Map<String, Map<Integer, JoinScore>> toHitsToJoinScore = new HashMap<>();
+
+  }
+
+  private static class RandomDoc {
+
+    final String id;
+    final List<String> linkValues;
+    final String value;
+    final boolean from;
+
+    private RandomDoc(String id, int numberOfLinkValues, String value, boolean from) {
+      this.id = id;
+      this.from = from;
+      linkValues = new ArrayList<>(numberOfLinkValues);
+      this.value = value;
+    }
+  }
+
+  private static class JoinScore {
+
+    float maxScore;
+    float total;
+    int count;
+
+    void addScore(float score) {
+      total += score;
+      if (score > maxScore) {
+        maxScore = score;
+      }
+      count++;
+    }
+
+    float score(ScoreMode mode) {
+      switch (mode) {
+        case None:
+          return 1.0f;
+        case Total:
+          return total;
+        case Avg:
+          return total / count;
+        case Max:
+          return maxScore;
+      }
+      throw new IllegalArgumentException("Unsupported ScoreMode: " + mode);
+    }
+
+  }
+
 }
