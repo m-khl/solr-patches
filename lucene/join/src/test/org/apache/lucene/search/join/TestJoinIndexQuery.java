@@ -46,8 +46,10 @@ import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.LogDocMergePolicy;
@@ -317,15 +319,36 @@ public class TestJoinIndexQuery extends LuceneTestCase {
 
   static final class BulkDVJoinQuery extends DVJoinQuery{
 
-    private static final int heapMaxSize = 100000; // TODO test the shorter heap
+    private final int heapMaxSize;
 
     public BulkDVJoinQuery(Filter parents, Filter children, String joinField) {
+      this(parents, children, joinField, 10000);
+    }
+    
+    BulkDVJoinQuery(Filter parents, Filter children, String joinField, int perSegHeapSize) {
       super(parents, children, joinField);
+      heapMaxSize = perSegHeapSize;
     }
     
     @Override
-    public Weight createWeight(IndexSearcher searcher) throws IOException {
+    public Weight createWeight(final IndexSearcher searcher) throws IOException {
       return new DVJoinWeight() {
+        
+        
+        private final List<AtomicReaderContext> childCtxs;
+        private final int[] childCtxDocBases//almost
+        ;
+
+        {
+          final IndexReaderContext top = searcher.getTopReaderContext();
+          childCtxs = top.leaves();
+          childCtxDocBases = new int[childCtxs.size()+1];
+          for (int i = 0; i < childCtxs.size(); i++) {
+            AtomicReaderContext context = childCtxs.get(i);
+            childCtxDocBases[i] = context.docBase;
+          }
+          childCtxDocBases[childCtxs.size()] = top.reader().maxDoc();
+        }
         
         @Override
         public BulkScorer bulkScorer(final AtomicReaderContext context,
@@ -334,7 +357,9 @@ public class TestJoinIndexQuery extends LuceneTestCase {
            
           return new DVBulkScorer(context, acceptDocs){
             
-            // migrate to scentiel objs to make it faster
+            // don't think that migration to sentinel objs to make it faster
+            // unfortunately we can reuse the heap across segments, due to multithread search;
+            // but why not otherwise?
             private final PriorityQueue<Relation> heap = new PriorityQueue<Relation>(heapMaxSize) {
               
               @Override
@@ -342,7 +367,11 @@ public class TestJoinIndexQuery extends LuceneTestCase {
                 return a.docID() < b.docID();
               }
             };
+
+            private AtomicReaderContext childCtx;
+            private DocIdSetIterator childCtxIter;
             
+            // TODO reuse heap across segments, add multithread test
             
             @Override
             public boolean score(LeafCollector collector, int max)
@@ -373,69 +402,98 @@ public class TestJoinIndexQuery extends LuceneTestCase {
                   heap.add(rel);
                   
                   if(heap.size() >= heapMaxSize){
-                    flush(heap, collector);
+                    flush( collector);
                   }
                 }
-                
-                //if(checkChildren(context, docID, joinField, children)){
-                //  collector.collect(docID);
-                //}
               }
-              flush(heap, collector);
+              flush( collector);
               return docID!=DocIdSetIterator.NO_MORE_DOCS;
             }
             
-            private void flush(PriorityQueue<Relation> h,
-                LeafCollector collector) throws IOException {
-              // extract leaves to score() above
-              final List<AtomicReaderContext> leaves = ReaderUtil.getTopLevelContext(context).leaves();
-              // TODO use first docs array method instead. reuse arc between referrers 
+            private void flush(LeafCollector collector) throws IOException {
               
-              int leafNum=-1;
-              AtomicReaderContext leaf = null;
-              DocIdSetIterator leafIter = null;
-              for(;h.size()>0;){
-                final Relation rel = h.top();
-                // TODO keep ctx also and check its' boundary
-                final int ln = ReaderUtil.subIndex(rel.docID(), leaves);
-                if(leafNum!=ln){
-                  leaf = leaves.get(ln);
-                  leafNum = ln;
-                  final DocIdSet childrenDocIdSet = children.getDocIdSet(leaf, leaf.reader().getLiveDocs());
-                  if(childrenDocIdSet!=null){
-                    leafIter = childrenDocIdSet.iterator();
-                  }else{
-                    leafIter = null;
-                  }
-                }
-                if(leafIter!=null){// there are matches on children 
-                  final int localDoc = rel.docID()-leaf.docBase;
-                  final int advanced ;
-                  if(leafIter.docID()==localDoc){
-                    advanced = localDoc;
-                  }else{
-                    if(localDoc > leafIter.docID()){
-                      advanced = leafIter.advance(localDoc);
-                    }else{ // TODO refactor me
-                      advanced = leafIter.docID();
-                    }
-                  }
-                  
-                  if(localDoc==advanced){
-                    collector.collect(rel.parentID);
-                    // we don't care this relation anymore
-                    h.pop();
-                    continue;
-                  }
-                }// whether, any miss match, spin top rel
-                if(rel.nextDoc()==DocIdSetIterator.NO_MORE_DOCS){
-                  h.pop();
-                }else{// spin
-                  h.updateTop();
+              for(;heap.size()>0;){ // i wonder why this leapfrog is so ugly?
+                setChildCtxTo(heap.top().docID());
+                if(childCtxIter==null || !advanceLeafIter(collector)){// there are matches on children 
+                  final int childDoc = childCtxIter==null || childCtxIter.docID()==DocIdSetIterator.NO_MORE_DOCS 
+                      ? childCtx.docBase + childCtx.reader().maxDoc(): childCtx.docBase + childCtxIter.docID();
+                  advanceHeap( childDoc);
                 }
               }
             }
 
+            /** spins the top relation and the heap afterwards until top of the heap greater or equal to the given docnum that  */
+            private void advanceHeap(int tillDoc) throws IOException {
+              Relation rel = heap.top();
+              assert tillDoc>rel.docID():"otherwise for what the "+tillDoc+" you advance "+rel.docID();
+              // whether, any miss match, spin top rel
+              while(rel.advance(tillDoc)==DocIdSetIterator.NO_MORE_DOCS){
+                heap.pop();
+                if(heap.size()>0){
+                  rel = heap.top();
+                  if(rel.docID()>=tillDoc){
+                    return;
+                  }
+                }else{
+                  return;
+                }
+              }
+              // spin
+              heap.updateTop();
+            }
+
+            boolean advanceLeafIter(
+                LeafCollector collector)
+                throws IOException {
+              final Relation rel = heap.top();
+              final int localDoc = rel.docID()-childCtx.docBase;
+              if(localDoc >= childCtxIter.docID()){
+                if(localDoc == childCtxIter.docID() || localDoc==childCtxIter.advance(localDoc)){
+                  collector.collect(rel.parentID);
+                  // we don't care this relation anymore 
+                  heap.pop();
+                  return true;
+                }
+              }
+              return false;
+            }
+
+            private void setChildCtxTo(final int docID) throws IOException {
+              assert childCtx==null || docID>=childCtx.docBase : "in fact we've never search backward, but what's the "+
+                      docID+" prev ctx ["+childCtx.docBase + ".."+(childCtx.docBase+childCtx.reader().maxDoc())+"]";
+              
+              if(childCtx == null || /*docID<childCtx.docBase ^asserted above^ ||*/ 
+                       docID >= (childCtx.docBase+childCtx.reader().maxDoc()) ){
+                final int ln = nextSegmentFor(docID, childCtx==null ? 0:childCtx.ord +1);
+                
+                childCtx = childCtxs.get(ln);
+                final DocIdSet childrenDocIdSet = children.getDocIdSet(childCtx, childCtx.reader().getLiveDocs());
+                childCtxIter = childrenDocIdSet!=null ? childrenDocIdSet.iterator() : null;
+              }
+            }
+            
+            // it's a copypaste from ReaderUtil, TODO contrib it back
+            private int nextSegmentFor(final int docID, int startFrom) {
+              // searcher/reader for doc n:
+              int size = childCtxDocBases.length;
+              int lo = startFrom; // search starts array
+              int hi = size - 1; // for first element less than n, return its index
+              while (hi >= lo) {
+                int mid = (lo + hi) >>> 1;
+                int midValue = childCtxDocBases[mid];
+                if (docID < midValue)
+                  hi = mid - 1;
+                else if (docID > midValue)
+                  lo = mid + 1;
+                else { // found a match
+                  while (mid + 1 < size && childCtxDocBases[mid + 1] == midValue) {
+                    mid++; // scan to last match
+                  }
+                  return mid;
+                }
+              }
+              return hi;
+            }
             @Override
             protected boolean checkChildren(AtomicReaderContext context, int parentDoc,
                 String joinField, Filter children) throws IOException {
