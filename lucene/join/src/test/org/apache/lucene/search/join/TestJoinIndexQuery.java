@@ -59,6 +59,7 @@ import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.index.SortedSetDocValues;
+import org.apache.lucene.index.StoredDocument;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
@@ -377,9 +378,9 @@ public class TestJoinIndexQuery extends LuceneTestCase {
             @Override
             public boolean score(LeafCollector collector, int max)
                 throws IOException {
-              dump("parents ["+context.docBase+".."+(context.docBase+context.reader().maxDoc())+ "]: "
+              dump("parents ["+context.docBase+".."+(context.docBase+context.reader().maxDoc())+ "): "
                   , context, parents,acceptDocs);
-              //dump("children: ", context, children,acceptDocs);
+              dump("children: ", context, children,acceptDocs);
               final DocIdSet parentDocs = parents.getDocIdSet(context, acceptDocs);
               if(parentDocs==null){
                 return false;
@@ -439,7 +440,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
                   return;
                 }
               }
-              // spin
+              // TODO spin more
               heap.updateTop();
             }
 
@@ -455,7 +456,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
                   heap.pop();
                   return true;
                 }
-              }
+              } 
               return false;
             }
 
@@ -478,9 +479,14 @@ public class TestJoinIndexQuery extends LuceneTestCase {
                   System.out.println("setting segment for "+docID+" =>  ["+childCtx.docBase + ".."+(childCtx.docBase+childCtx.reader().maxDoc())+"]");
                 }
               }else{ // lets's check iter position
-                if(childCtxIter!=null && childCtxIter.docID()>docID && childrenDocIdSet!=null ){ 
+                int localDocExp = docID-childCtx.docBase;
+                assert localDocExp >=0: "but "+localDocExp;
+                if(childCtxIter!=null && childCtxIter.docID()>localDocExp && childrenDocIdSet!=null ){ 
                // child iter is already behind top of the heap, we need to rewind 
-                  childCtxIter = childrenDocIdSet.iterator();
+                  childCtxIter = childrenDocIdSet.iterator(); 
+                  if(childCtxIter!=null && childCtxIter.nextDoc()==DocIdSetIterator.NO_MORE_DOCS){
+                    childCtxIter = null;
+                  }
                 }
               }
               
@@ -580,6 +586,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     doc.add(newStringField(toField, "4", Field.Store.YES));
     doc.add(newStringField("type", "child", Field.Store.YES));
     docs.add(doc);
+    
     for(Document d : docs){
       d.add(binDv(joinField));
     }
@@ -594,11 +601,17 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     conf.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
     conf.setMergePolicy(new LogDocMergePolicy());
     IndexWriter w = new IndexWriter(dir, conf);
-
+    w.deleteAll();
     for(Document d:docs){
       w.addDocument(d);
+      //if(VERBOSE){
+      //  System.out.println(d);
+      //}
       if(usually()){
         w.commit();
+        //if(VERBOSE){
+        //  System.out.println("commit");
+        //}
       }
     }
     
@@ -643,6 +656,11 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     assertIds(indexSearcher, result, "1", "4");
     assertEquals(2, result.totalHits);
     
+    Query juPtoChJoinQuery = JoinUtil.createJoinQuery(idField, false, toField, new TermQuery(new Term("name", "name2")), indexSearcher, ScoreMode.None);
+    result = indexSearcher.search(juPtoChJoinQuery, 10);
+    assertIds(indexSearcher, result, "5", "6");
+    assertEquals(2, result.totalHits);
+    
     Query dvPtoChJoinQuery = new BulkDVJoinQuery(new TermFilter(new Term("type", "child")), //parents,
                                             new TermFilter(new Term("name", "name2")), joinField);
     result = indexSearcher.search(dvPtoChJoinQuery, 10);
@@ -668,12 +686,185 @@ public class TestJoinIndexQuery extends LuceneTestCase {
     dir.close();
   }
 
+  public void testMultivalue() throws Exception {
+    final String toField = "productId";
+    final String joinField = IndexJoiner.joinFieldName(idField, toField);
+
+    List<Document> docs = new ArrayList<>();
+    // 0
+    Document doc = new Document();
+    doc.add(newStringField("description", "random text", Field.Store.YES));
+    doc.add(newStringField("name", "name1", Field.Store.YES));
+    doc.add(newStringField(idField, "1", Field.Store.YES));
+    doc.add(newStringField("type", "parent", Field.Store.YES));
+    docs.add(doc);
+
+    // 1
+    doc = new Document();
+    doc.add(newStringField("price", "10.0", Field.Store.YES));
+    doc.add(newStringField(idField, "2", Field.Store.YES));
+    doc.add(newStringField(toField, "1", Field.Store.YES));
+    doc.add(newStringField("type", "child", Field.Store.YES));
+    docs.add(doc);
+
+    // 2
+    doc = new Document();
+    doc.add(newStringField("price", "20.0", Field.Store.YES));
+    doc.add(newStringField(idField, "3", Field.Store.YES));
+    doc.add(newStringField(toField, "1", Field.Store.YES));
+    doc.add(newStringField("type", "child", Field.Store.YES));
+    docs.add(doc);
+
+    // 3
+    doc = new Document();
+    doc.add(newStringField("description", "more random text", Field.Store.YES));
+    doc.add(newStringField("name", "name2", Field.Store.YES));
+    doc.add(newStringField(idField, "4", Field.Store.YES));
+    doc.add(newStringField("type", "parent", Field.Store.YES));
+    docs.add(doc);
+
+    // 4
+    doc = new Document();
+    doc.add(newStringField("price", "10.0", Field.Store.YES));
+    doc.add(newStringField(idField, "5", Field.Store.YES));
+    doc.add(newStringField(toField, "4", Field.Store.YES));
+    doc.add(newStringField("type", "child", Field.Store.YES));
+    docs.add(doc);
+    // 5
+    doc = new Document();
+    doc.add(newStringField("price", "20.0", Field.Store.YES));
+    doc.add(newStringField(idField, "6", Field.Store.YES));
+    doc.add(newStringField(toField, "4", Field.Store.YES));
+    doc.add(newStringField("type", "child", Field.Store.YES));
+    docs.add(doc);
+    
+    doc = new Document();
+    doc.add(newStringField("price", "20.0", Field.Store.YES));
+    doc.add(newStringField(idField, "7", Field.Store.YES));
+    doc.add(newStringField(toField, "4", Field.Store.YES));
+    doc.add(newStringField(toField, "1", Field.Store.YES));
+    doc.add(newStringField("type", "child", Field.Store.YES));
+    docs.add(doc);
+    
+    // 0
+    doc = new Document();
+    doc.add(newStringField("description", "random text", Field.Store.YES));
+    doc.add(newStringField("name", "name1", Field.Store.YES));
+    doc.add(newStringField(idField, "9", Field.Store.YES));
+    doc.add(newStringField("type", "parent", Field.Store.YES));
+    docs.add(doc);
+    
+    for(Document d : docs){
+      d.add(binDv(joinField));
+    }
+    Collections.shuffle(docs, random());
+
+    Directory dir = newDirectory();
+    //System.out.println(dir);
+    IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    // conf.setInfoStream(System.out);
+    // make sure random config doesn't flush on us
+    conf.setMaxBufferedDocs(10);
+    conf.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
+    conf.setMergePolicy(new LogDocMergePolicy());
+    IndexWriter w = new IndexWriter(dir, conf);
+
+    w.deleteAll();
+    for(Document d:docs){
+      w.addDocument(d);
+      //if(VERBOSE){
+      //  System.out.println(d);
+      //}
+      if(usually()){
+        w.commit();
+        //if(VERBOSE){
+        //  System.out.println("commit");
+        //}
+      }
+    }
+    
+    //for(Document d:docs){
+    //  System.out.println(d);
+    //}
+    
+    w.commit();
+    System.out.println("docs are written");
+    DirectoryReader reader = DirectoryReader.open(dir);
+    new BinaryIndexJoiner(w, reader, idField, toField).
+    indexJoin();
+    reader.close();
+    System.out.println("flushing num updates");
+    w.commit();
+    w.close();
+    reader = DirectoryReader.open(dir);
+    
+    IndexSearcher indexSearcher = new IndexSearcher(reader);
+    
+    dumpIndex(indexSearcher, "id", toField, joinField);
+    
+    {// simple child -> parent
+      Query joinQuery = new BulkDVJoinQuery(new TermFilter(new Term("type", "parent")), //parents,
+          new TermFilter(new Term("id", "5")), joinField);
+      TopDocs result = indexSearcher.search(joinQuery, 10);
+      assertEquals(1, result.totalHits);
+      assertIds(indexSearcher, result, "4");
+    }
+    { // single value child -> parent
+      TopDocs result = indexSearcher.search(
+          JoinUtil.createJoinQuery(toField, false, idField, new TermQuery(new Term("id", "7")), indexSearcher, ScoreMode.None), 10);
+      final String found = indexSearcher.doc(result.scoreDocs[0].doc).getValues("id")[0];
+      assertTrue("but "+found, found.equals("1") || found.equals("4"));
+      assertEquals("but "+result.totalHits,1,result.totalHits);
+    }
+    { // multi value child -> parent
+      TopDocs result = indexSearcher.search(
+          JoinUtil.createJoinQuery(toField, true, idField, new TermQuery(new Term("id", "7")), indexSearcher, ScoreMode.None), 10);
+      assertEquals(2, result.totalHits);
+      assertIds(indexSearcher, result, "1","4");
+    }
+    {
+      Query joinQuery = new BulkDVJoinQuery(new TermFilter(new Term("type", "parent")), //parents,
+          new TermFilter(new Term("id", "7")), joinField);
+      TopDocs result = indexSearcher.search(joinQuery, 10);
+      assertIds(indexSearcher, result, "1","4");
+      assertEquals(2, result.totalHits);
+    }
+    indexSearcher.getIndexReader().close();
+    dir.close();
+    
+  }
+
+  private void dumpIndex(IndexSearcher indexSearcher, String pk,
+      final String fk, final String joinField) throws IOException {
+    if(VERBOSE){
+      System.out.println("[d#]\t"+ "id"+
+          "\t"+fk+
+              "\t "+joinField);
+      for(AtomicReaderContext arc : indexSearcher.getTopReaderContext().leaves()){
+        final BinaryDocValues bdv = arc.reader().getBinaryDocValues(joinField);
+        for(int d=0;d<arc.reader().maxDoc();d++){
+          if(arc.reader().getLiveDocs()==null || arc.reader().getLiveDocs().get(d)){
+            int gd = d+arc.docBase;
+            final StoredDocument fields = indexSearcher.doc(gd);
+            final BytesRef dv = new BytesRef();
+            bdv.get(d, dv);
+            System.out.println("["+gd+"]\t"+ Arrays.toString(fields.getValues(pk))+
+                                       "\t"+ Arrays.toString(fields.getValues(fk))+
+                                           "\t"+dv
+                              );
+          }
+        }
+        System.out.println("---");
+      }
+    }
+  }
+  
   private Field dv(final String joinField) {
     return new NumericDocValuesField(joinField, -1);
   }
   
   private Field binDv(final String joinField) {
-    return new BinaryDocValuesField(joinField, new BytesRef("0"));
+    return new BinaryDocValuesField(joinField, new BytesRef());
   }
 
   
@@ -804,7 +995,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
         final BytesRef fk) throws IOException {
       Long refs;
       if (pk == null) { // write missing
-        refs = null;
+        refs = null;// TODO sort out the hell with childfree (at least), for now fixing by empty default
         // System.out.println("skipping to write"+pkField+":"+
         // (pk==null? null:pk.utf8ToString())+" into "+fkField+":"+
         // (fk==null? null:fk.utf8ToString()));
@@ -873,8 +1064,11 @@ public class TestJoinIndexQuery extends LuceneTestCase {
           prev = pkDoc;
         }
       }
-      writer.updateBinaryDocValue(referrers, joinFieldName(),  new BytesRef(out.bytes, 0, out.length));
-      
+      final BytesRef br = new BytesRef(out.bytes, 0, out.length);
+      writer.updateBinaryDocValue(referrers, joinFieldName(),  br);
+      if(VERBOSE){
+        System.out.println(referrers+" = "+ br);
+      }
     }
   }
  
@@ -896,7 +1090,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
       final DocIdSet docIdSet = aFilter.getDocIdSet(context, acceptDocs);
       if(docIdSet!=null){
         int doc;
-        for(DocIdSetIterator iter = docIdSet.iterator();(doc=iter.nextDoc())!=DocIdSetIterator.NO_MORE_DOCS;){
+        for(DocIdSetIterator iter = docIdSet.iterator();iter!=null && (doc=iter.nextDoc())!=DocIdSetIterator.NO_MORE_DOCS;){
           System.out.print(doc);
           System.out.print(", ");
         }
@@ -942,8 +1136,8 @@ public class TestJoinIndexQuery extends LuceneTestCase {
   }
 
   @Test
-  @Slow
-  @Ignore
+  //@Slow
+  //@Ignore
   // This test really takes more time, that is why the number of iterations are smaller.
   public void testMultiValueRandomJoin() throws Exception {
     int maxIndexIter = TestUtil.nextInt(random(), 3, 6);
@@ -982,7 +1176,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
       w.shutdown();
       for (int searchIter = 1; searchIter <= maxSearchIter; searchIter++) {
         if (VERBOSE) {
-          System.out.println("searchIter=" + searchIter);
+          System.out.println("searchIter=" + searchIter +" indexIter=" + indexIter);
         }
         IndexSearcher indexSearcher = newSearcher(topLevelReader);
 
