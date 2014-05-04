@@ -428,20 +428,14 @@ public class TestJoinIndexQuery extends LuceneTestCase {
             private void advanceHeap(int tillDoc) throws IOException {
               Relation rel = heap.top();
               assert tillDoc>rel.docID():"otherwise for what the "+tillDoc+" you advance "+rel.docID();
-              // whether, any miss match, spin top rel
-              while(rel.advance(tillDoc)==DocIdSetIterator.NO_MORE_DOCS){
-                heap.pop();
-                if(heap.size()>0){
-                  rel = heap.top();
-                  if(rel.docID()>=tillDoc){
-                    return;
-                  }
+              while(heap.size()>0 && tillDoc>(rel=heap.top()).docID()){
+                // whether, any miss match, spin top rel
+                if(rel.advance(tillDoc)==DocIdSetIterator.NO_MORE_DOCS){
+                  heap.pop();
                 }else{
-                  return;
+                  heap.updateTop();
                 }
               }
-              // TODO spin more
-              heap.updateTop();
             }
 
             boolean advanceLeafIter(
