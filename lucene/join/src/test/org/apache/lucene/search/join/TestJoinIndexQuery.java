@@ -339,7 +339,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
         private final int[] childCtxDocBases//almost
         ;
 
-        {
+        { // TODO contrib it back to ReaderUtil
           final IndexReaderContext top = searcher.getTopReaderContext();
           childCtxs = top.leaves();
           childCtxDocBases = new int[childCtxs.size()+1];
@@ -369,7 +369,8 @@ public class TestJoinIndexQuery extends LuceneTestCase {
             };
 
             private AtomicReaderContext childCtx;
-            private DocIdSetIterator childCtxIter;
+            private DocIdSetIterator childCtxIter; 
+            private DocIdSet childrenDocIdSet; 
             
             // TODO reuse heap across segments, add multithread test
             
@@ -459,17 +460,32 @@ public class TestJoinIndexQuery extends LuceneTestCase {
             }
 
             private void setChildCtxTo(final int docID) throws IOException {
-              assert childCtx==null || docID>=childCtx.docBase : "in fact we've never search backward, but what's the "+
-                      docID+" prev ctx ["+childCtx.docBase + ".."+(childCtx.docBase+childCtx.reader().maxDoc())+"]";
               
-              if(childCtx == null || /*docID<childCtx.docBase ^asserted above^ ||*/ 
+              if(childCtx == null || docID<childCtx.docBase || 
                        docID >= (childCtx.docBase+childCtx.reader().maxDoc()) ){
-                final int ln = nextSegmentFor(docID, childCtx==null ? 0:childCtx.ord +1);
+                
+                final int startSegment = (childCtx==null || docID< childCtx.docBase ) ? 0 : childCtx.ord +1;
+                final int ln = nextSegmentFor(docID, startSegment);
                 
                 childCtx = childCtxs.get(ln);
-                final DocIdSet childrenDocIdSet = children.getDocIdSet(childCtx, childCtx.reader().getLiveDocs());
+                childrenDocIdSet = children.getDocIdSet(childCtx, childCtx.reader().getLiveDocs());
                 childCtxIter = childrenDocIdSet!=null ? childrenDocIdSet.iterator() : null;
+                if(childCtxIter!=null && childCtxIter.nextDoc()==DocIdSetIterator.NO_MORE_DOCS){
+                  childCtxIter = null;
+                }
+                
+                if(VERBOSE){
+                  System.out.println("setting segment for "+docID+" =>  ["+childCtx.docBase + ".."+(childCtx.docBase+childCtx.reader().maxDoc())+"]");
+                }
+              }else{ // lets's check iter position
+                if(childCtxIter!=null && childCtxIter.docID()>docID && childrenDocIdSet!=null ){ 
+               // child iter is already behind top of the heap, we need to rewind 
+                  childCtxIter = childrenDocIdSet.iterator();
+                }
               }
+              
+              assert docID>=childCtx.docBase && docID < (childCtx.docBase+childCtx.reader().maxDoc()):
+                  docID+" in  ["+childCtx.docBase + ".."+(childCtx.docBase+childCtx.reader().maxDoc())+"]"; 
             }
             
             // it's a copypaste from ReaderUtil, TODO contrib it back
@@ -984,16 +1000,19 @@ public class TestJoinIndexQuery extends LuceneTestCase {
           System.out.println("scoreMode=" + scoreMode);
         }
 
+        int heapSize = (1+random().nextInt(10)) * (rarely() ? 1000 : 1);
         final Query joinQuery;
         if (from) {
           //joinQuery = JoinUtil.createJoinQuery("from", multipleValuesPerDocument, "to", actualQuery, indexSearcher, scoreMode);
           
           joinQuery =  new BulkDVJoinQuery(new TermFilter(new Term("type", "to")),
-                      new QueryWrapperFilter(actualQuery), IndexJoiner.joinFieldName( "to", "from"));
+                      new QueryWrapperFilter(actualQuery), IndexJoiner.joinFieldName( "to", "from"),
+                      heapSize);
         } else {
           //joinQuery = JoinUtil.createJoinQuery("to", multipleValuesPerDocument, "from", actualQuery, indexSearcher, scoreMode);
           joinQuery =  new BulkDVJoinQuery(new TermFilter(new Term("type", "from")),
-              new QueryWrapperFilter(actualQuery), IndexJoiner.joinFieldName( "to", "from"));
+              new QueryWrapperFilter(actualQuery), IndexJoiner.joinFieldName( "to", "from"),
+              heapSize);
         }
         if (VERBOSE) {
           System.out.println("joinQuery=" + joinQuery);
