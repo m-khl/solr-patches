@@ -111,6 +111,17 @@ import com.carrotsearch.randomizedtesting.annotations.Seed;
 //@Repeat(iterations=1000)
 public class TestJoinIndexQuery extends LuceneTestCase {
 
+  private final static DocIdSet empty = new DocIdSet() {
+    @Override
+    public DocIdSetIterator iterator() throws IOException {
+      return DocIdSetIterator.empty();
+    }
+  };
+  
+  // this is very dangerous stuff, cause it has state
+  // we will never show it to anyone, but just has it as a marker
+  private final static DocIdSetIterator emptyIter = DocIdSetIterator.empty();
+  
   static class Relation extends DocIdSetIterator {
     
     int curDoc=-1;
@@ -373,7 +384,13 @@ public class TestJoinIndexQuery extends LuceneTestCase {
             private DocIdSetIterator childCtxIter; 
             private DocIdSet childrenDocIdSet; 
             
-            // TODO reuse heap across segments, add multithread test
+            private final DocIdSetIterator leafDocIdSetIters[] = new DocIdSetIterator[childCtxs.size()]; 
+            private final DocIdSet leafDocIdSets[] = new DocIdSet[childCtxs.size()];
+
+            
+            // -TODO- reuse heap across segments, add multithread test
+            // it occurs like not really possibe - cause collectors are not notified for end of searching loop
+            //
             
             @Override
             public boolean score(LeafCollector collector, int max)
@@ -463,12 +480,8 @@ public class TestJoinIndexQuery extends LuceneTestCase {
                 final int ln = nextSegmentFor(docID, startSegment);
                 
                 childCtx = childCtxs.get(ln);
-                childrenDocIdSet = children.getDocIdSet(childCtx, childCtx.reader().getLiveDocs());
-                childCtxIter = childrenDocIdSet!=null ? childrenDocIdSet.iterator() : null;
-                if(childCtxIter!=null && childCtxIter.nextDoc()==DocIdSetIterator.NO_MORE_DOCS){
-                  childCtxIter = null;
-                }
-                
+                childrenDocIdSet = getDocIdSetCached(ln);
+                childCtxIter = getDocIdSetIterCached(ln);
                 if(VERBOSE){
                   System.out.println("setting segment for "+docID+" =>  ["+childCtx.docBase + ".."+(childCtx.docBase+childCtx.reader().maxDoc())+"]");
                 }
@@ -477,15 +490,34 @@ public class TestJoinIndexQuery extends LuceneTestCase {
                 assert localDocExp >=0: "but "+localDocExp;
                 if(childCtxIter!=null && childCtxIter.docID()>localDocExp && childrenDocIdSet!=null ){ 
                // child iter is already behind top of the heap, we need to rewind 
-                  childCtxIter = childrenDocIdSet.iterator(); 
-                  if(childCtxIter!=null && childCtxIter.nextDoc()==DocIdSetIterator.NO_MORE_DOCS){
-                    childCtxIter = null;
-                  }
+                  leafDocIdSetIters[childCtx.ord] = null; 
+                  childCtxIter = getDocIdSetIterCached(childCtx.ord);
                 }
               }
               
               assert docID>=childCtx.docBase && docID < (childCtx.docBase+childCtx.reader().maxDoc()):
                   docID+" in  ["+childCtx.docBase + ".."+(childCtx.docBase+childCtx.reader().maxDoc())+"]"; 
+            }
+
+            private DocIdSetIterator getDocIdSetIterCached(int ln) throws IOException {
+              if(leafDocIdSetIters[ln]==null){
+                DocIdSet docIdSet = getDocIdSetCached(ln);
+                leafDocIdSetIters[ln] = docIdSet!=null ? docIdSet.iterator() : null;
+                if(leafDocIdSetIters[ln]==null || leafDocIdSetIters[ln].nextDoc()==DocIdSetIterator.NO_MORE_DOCS){
+                  leafDocIdSetIters[ln] = emptyIter;
+                }
+              }
+              return (leafDocIdSetIters[ln] == emptyIter) ? null : leafDocIdSetIters[ln];
+                
+            }
+
+            private DocIdSet getDocIdSetCached(final int ln) throws IOException {
+              if(leafDocIdSets[ln]==null){
+                final AtomicReaderContext arc = childCtxs.get(ln);
+                final DocIdSet docIdSet = children.getDocIdSet(arc, arc.reader().getLiveDocs());
+                leafDocIdSets[ln] = docIdSet==null ? empty : docIdSet;
+              } // or we might be beneficial from using those null objs
+              return leafDocIdSets[ln]==empty  ? null : leafDocIdSets[ln];
             }
             
             // it's a copypaste from ReaderUtil, TODO contrib it back
