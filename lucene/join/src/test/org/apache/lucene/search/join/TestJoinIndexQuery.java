@@ -161,8 +161,8 @@ public class TestJoinIndexQuery extends LuceneTestCase {
   static abstract  class DVJoinQuery extends Query {
     abstract class DVJoinWeight extends Weight {
       abstract class DVBulkScorer extends BulkScorer {
-        private final AtomicReaderContext context;
-        private final Bits acceptDocs;
+        protected final AtomicReaderContext context;
+        protected final Bits acceptDocs;
         
         DVBulkScorer(AtomicReaderContext context, Bits acceptDocs) {
           this.context = context;
@@ -363,8 +363,8 @@ public class TestJoinIndexQuery extends LuceneTestCase {
         }
         
         @Override
-        public BulkScorer bulkScorer(final AtomicReaderContext context,
-            boolean scoreDocsInOrder, final Bits acceptDocs) throws IOException {
+        public BulkScorer bulkScorer(AtomicReaderContext context,
+            boolean scoreDocsInOrder, Bits acceptDocs) throws IOException {
            assert !scoreDocsInOrder;
            
           return new DVBulkScorer(context, acceptDocs){
