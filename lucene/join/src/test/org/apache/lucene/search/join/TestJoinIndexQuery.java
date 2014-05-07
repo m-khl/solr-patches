@@ -111,17 +111,6 @@ import com.carrotsearch.randomizedtesting.annotations.Seed;
 //@Repeat(iterations=1000)
 public class TestJoinIndexQuery extends LuceneTestCase {
 
-  private final static DocIdSet empty = new DocIdSet() {
-    @Override
-    public DocIdSetIterator iterator() throws IOException {
-      return DocIdSetIterator.empty();
-    }
-  };
-  
-  // this is very dangerous stuff, cause it has state
-  // we will never show it to anyone, but just has it as a marker
-  private final static DocIdSetIterator emptyIter = DocIdSetIterator.empty();
-  
   static class Relation extends DocIdSetIterator {
     
     int curDoc=-1;
@@ -161,8 +150,8 @@ public class TestJoinIndexQuery extends LuceneTestCase {
   static abstract  class DVJoinQuery extends Query {
     abstract class DVJoinWeight extends Weight {
       abstract class DVBulkScorer extends BulkScorer {
-        protected final AtomicReaderContext context;
-        protected final Bits acceptDocs;
+        private final AtomicReaderContext context;
+        private final Bits acceptDocs;
         
         DVBulkScorer(AtomicReaderContext context, Bits acceptDocs) {
           this.context = context;
@@ -363,8 +352,8 @@ public class TestJoinIndexQuery extends LuceneTestCase {
         }
         
         @Override
-        public BulkScorer bulkScorer(AtomicReaderContext context,
-            boolean scoreDocsInOrder, Bits acceptDocs) throws IOException {
+        public BulkScorer bulkScorer(final AtomicReaderContext context,
+            boolean scoreDocsInOrder, final Bits acceptDocs) throws IOException {
            assert !scoreDocsInOrder;
            
           return new DVBulkScorer(context, acceptDocs){
@@ -384,13 +373,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
             private DocIdSetIterator childCtxIter; 
             private DocIdSet childrenDocIdSet; 
             
-            private final DocIdSetIterator leafDocIdSetIters[] = new DocIdSetIterator[childCtxs.size()]; 
-            private final DocIdSet leafDocIdSets[] = new DocIdSet[childCtxs.size()];
-
-            
-            // -TODO- reuse heap across segments, add multithread test
-            // it occurs like not really possibe - cause collectors are not notified for end of searching loop
-            //
+            // TODO reuse heap across segments, add multithread test
             
             @Override
             public boolean score(LeafCollector collector, int max)
@@ -480,8 +463,12 @@ public class TestJoinIndexQuery extends LuceneTestCase {
                 final int ln = nextSegmentFor(docID, startSegment);
                 
                 childCtx = childCtxs.get(ln);
-                childrenDocIdSet = getDocIdSetCached(ln);
-                childCtxIter = getDocIdSetIterCached(ln);
+                childrenDocIdSet = children.getDocIdSet(childCtx, childCtx.reader().getLiveDocs());
+                childCtxIter = childrenDocIdSet!=null ? childrenDocIdSet.iterator() : null;
+                if(childCtxIter!=null && childCtxIter.nextDoc()==DocIdSetIterator.NO_MORE_DOCS){
+                  childCtxIter = null;
+                }
+                
                 if(VERBOSE){
                   System.out.println("setting segment for "+docID+" =>  ["+childCtx.docBase + ".."+(childCtx.docBase+childCtx.reader().maxDoc())+"]");
                 }
@@ -490,34 +477,15 @@ public class TestJoinIndexQuery extends LuceneTestCase {
                 assert localDocExp >=0: "but "+localDocExp;
                 if(childCtxIter!=null && childCtxIter.docID()>localDocExp && childrenDocIdSet!=null ){ 
                // child iter is already behind top of the heap, we need to rewind 
-                  leafDocIdSetIters[childCtx.ord] = null; 
-                  childCtxIter = getDocIdSetIterCached(childCtx.ord);
+                  childCtxIter = childrenDocIdSet.iterator(); 
+                  if(childCtxIter!=null && childCtxIter.nextDoc()==DocIdSetIterator.NO_MORE_DOCS){
+                    childCtxIter = null;
+                  }
                 }
               }
               
               assert docID>=childCtx.docBase && docID < (childCtx.docBase+childCtx.reader().maxDoc()):
                   docID+" in  ["+childCtx.docBase + ".."+(childCtx.docBase+childCtx.reader().maxDoc())+"]"; 
-            }
-
-            private DocIdSetIterator getDocIdSetIterCached(int ln) throws IOException {
-              if(leafDocIdSetIters[ln]==null){
-                DocIdSet docIdSet = getDocIdSetCached(ln);
-                leafDocIdSetIters[ln] = docIdSet!=null ? docIdSet.iterator() : null;
-                if(leafDocIdSetIters[ln]==null || leafDocIdSetIters[ln].nextDoc()==DocIdSetIterator.NO_MORE_DOCS){
-                  leafDocIdSetIters[ln] = emptyIter;
-                }
-              }
-              return (leafDocIdSetIters[ln] == emptyIter) ? null : leafDocIdSetIters[ln];
-                
-            }
-
-            private DocIdSet getDocIdSetCached(final int ln) throws IOException {
-              if(leafDocIdSets[ln]==null){
-                final AtomicReaderContext arc = childCtxs.get(ln);
-                final DocIdSet docIdSet = children.getDocIdSet(arc, arc.reader().getLiveDocs());
-                leafDocIdSets[ln] = docIdSet==null ? empty : docIdSet;
-              } // or we might be beneficial from using those null objs
-              return leafDocIdSets[ln]==empty  ? null : leafDocIdSets[ln];
             }
             
             // it's a copypaste from ReaderUtil, TODO contrib it back
