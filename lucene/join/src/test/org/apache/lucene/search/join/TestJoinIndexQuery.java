@@ -68,6 +68,7 @@ import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.BulkScorer;
 import org.apache.lucene.search.CachingWrapperFilter;
+import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Explanation;
@@ -150,8 +151,8 @@ public class TestJoinIndexQuery extends LuceneTestCase {
   static abstract  class DVJoinQuery extends Query {
     abstract class DVJoinWeight extends Weight {
       abstract class DVBulkScorer extends BulkScorer {
-        private final AtomicReaderContext context;
-        private final Bits acceptDocs;
+        protected final AtomicReaderContext context;
+        protected final Bits acceptDocs;
         
         DVBulkScorer(AtomicReaderContext context, Bits acceptDocs) {
           this.context = context;
@@ -352,8 +353,8 @@ public class TestJoinIndexQuery extends LuceneTestCase {
         }
         
         @Override
-        public BulkScorer bulkScorer(final AtomicReaderContext context,
-            boolean scoreDocsInOrder, final Bits acceptDocs) throws IOException {
+        public BulkScorer bulkScorer(AtomicReaderContext context,
+            boolean scoreDocsInOrder, Bits acceptDocs) throws IOException {
            assert !scoreDocsInOrder;
            
           return new DVBulkScorer(context, acceptDocs){
@@ -415,14 +416,18 @@ public class TestJoinIndexQuery extends LuceneTestCase {
             private void flush(LeafCollector collector) throws IOException {
               
               for(;heap.size()>0;){ // i wonder why this leapfrog is so ugly?
-                setChildCtxTo(heap.top().docID());
-                if(childCtxIter==null || !advanceLeafIter(collector)){// there are matches on children 
+                if( advanceLeafIter(heap.top().docID())){// there are matches on children 
+                  collector.collect(heap.top().parentID);
+                  // we don't care this relation anymore 
+                  heap.pop();
+                }else{
                   final int childDoc = childCtxIter==null || childCtxIter.docID()==DocIdSetIterator.NO_MORE_DOCS 
                       ? childCtx.docBase + childCtx.reader().maxDoc(): childCtx.docBase + childCtxIter.docID();
                   advanceHeap( childDoc);
                 }
               }
             }
+            
 
             /** spins the top relation and the heap afterwards until top of the heap greater or equal to the given docnum that  */
             private void advanceHeap(int tillDoc) throws IOException {
@@ -439,22 +444,30 @@ public class TestJoinIndexQuery extends LuceneTestCase {
             }
 
             boolean advanceLeafIter(
-                LeafCollector collector)
+                int globalDoc)
                 throws IOException {
-              final Relation rel = heap.top();
-              final int localDoc = rel.docID()-childCtx.docBase;
+              
+              if(!setChildCtxTo(heap.top().docID())){
+                return false;
+              }
+              
+              final int localDoc = globalDoc-childCtx.docBase;
               if(localDoc >= childCtxIter.docID()){
-                if(localDoc == childCtxIter.docID() || localDoc==childCtxIter.advance(localDoc)){
+                if(localDoc > childCtxIter.docID()){//advance lazily
+                  childCtxIter.advance(localDoc);
+                }
+               /* if(localDoc == childCtxIter.docID()){
                   collector.collect(rel.parentID);
                   // we don't care this relation anymore 
                   heap.pop();
                   return true;
-                }
+                }*/
               } 
-              return false;
+//              return false;
+              return childCtxIter.docID() +childCtx.docBase ==heap.top().docID() ; 
             }
 
-            private void setChildCtxTo(final int docID) throws IOException {
+            private boolean setChildCtxTo(final int docID) throws IOException {
               
               if(childCtx == null || docID<childCtx.docBase || 
                        docID >= (childCtx.docBase+childCtx.reader().maxDoc()) ){
@@ -486,6 +499,7 @@ public class TestJoinIndexQuery extends LuceneTestCase {
               
               assert docID>=childCtx.docBase && docID < (childCtx.docBase+childCtx.reader().maxDoc()):
                   docID+" in  ["+childCtx.docBase + ".."+(childCtx.docBase+childCtx.reader().maxDoc())+"]"; 
+              return childCtxIter!=null;
             }
             
             // it's a copypaste from ReaderUtil, TODO contrib it back
