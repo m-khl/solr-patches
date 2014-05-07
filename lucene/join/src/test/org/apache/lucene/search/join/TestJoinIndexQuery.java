@@ -416,20 +416,20 @@ public class TestJoinIndexQuery extends LuceneTestCase {
             private void flush(LeafCollector collector) throws IOException {
               
               for(;heap.size()>0;){ // i wonder why this leapfrog is so ugly?
-                if( advanceLeafIter(heap.top().docID())){// there are matches on children 
+                int leafDoc=advanceLeafIter(heap.top().docID());
+                if(leafDoc==heap.top().docID() ){// there are matches on children 
                   collector.collect(heap.top().parentID);
                   // we don't care this relation anymore 
                   heap.pop();
                 }else{
-                  final int childDoc = childCtxIter==null || childCtxIter.docID()==DocIdSetIterator.NO_MORE_DOCS 
-                      ? childCtx.docBase + childCtx.reader().maxDoc(): childCtx.docBase + childCtxIter.docID();
-                  advanceHeap( childDoc);
+                  advanceHeap( leafDoc);
                 }
               }
             }
             
 
-            /** spins the top relation and the heap afterwards until top of the heap greater or equal to the given docnum that  */
+            /** spins the top relation and the heap afterwards until top of the heap greater or equal to the given docnum that  
+             */
             private void advanceHeap(int tillDoc) throws IOException {
               Relation rel = heap.top();
               assert tillDoc>rel.docID():"otherwise for what the "+tillDoc+" you advance "+rel.docID();
@@ -443,12 +443,16 @@ public class TestJoinIndexQuery extends LuceneTestCase {
               }
             }
 
-            boolean advanceLeafIter(
+            int advanceLeafIter(
                 int globalDoc)
                 throws IOException {
+              // I'm fail fast - kill me
+              if(childCtxIter!=null && childCtx!=null && childCtx.docBase + childCtxIter.docID()==globalDoc){
+                return childCtx.docBase + childCtxIter.docID();
+              }
               
               if(!setChildCtxTo(heap.top().docID())){
-                return false;
+                return childCtx.docBase + childCtx.reader().maxDoc();
               }
               
               final int localDoc = globalDoc-childCtx.docBase;
@@ -456,15 +460,9 @@ public class TestJoinIndexQuery extends LuceneTestCase {
                 if(localDoc > childCtxIter.docID()){//advance lazily
                   childCtxIter.advance(localDoc);
                 }
-               /* if(localDoc == childCtxIter.docID()){
-                  collector.collect(rel.parentID);
-                  // we don't care this relation anymore 
-                  heap.pop();
-                  return true;
-                }*/
               } 
-//              return false;
-              return childCtxIter.docID() +childCtx.docBase ==heap.top().docID() ; 
+              return childCtxIter.docID()==DocIdSetIterator.NO_MORE_DOCS ? childCtx.docBase + childCtx.reader().maxDoc()
+                  :childCtxIter.docID() +childCtx.docBase ; 
             }
 
             private boolean setChildCtxTo(final int docID) throws IOException {
