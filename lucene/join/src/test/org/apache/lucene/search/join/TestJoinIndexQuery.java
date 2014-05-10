@@ -20,6 +20,7 @@ package org.apache.lucene.search.join;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -370,11 +371,8 @@ public class TestJoinIndexQuery extends LuceneTestCase {
               }
             };
 
-            private AtomicReaderContext childCtx;
-            private DocIdSetIterator childCtxIter; 
-            private DocIdSet childrenDocIdSet; 
             
-            // TODO reuse heap across segments, add multithread test
+            // TODO reuse heap across segments 
             
             @Override
             public boolean score(LeafCollector collector, int max)
@@ -416,8 +414,9 @@ public class TestJoinIndexQuery extends LuceneTestCase {
             private void flush(LeafCollector collector) throws IOException {
               
               for(;heap.size()>0;){ // i wonder why this leapfrog is so ugly?
-                int leafDoc=advanceLeafIter(heap.top().docID());
-                if(leafDoc==heap.top().docID() ){// there are matches on children 
+                final int heapTop = heap.top().docID();
+                int leafDoc=advanceLeafIter(heapTop);
+                if(leafDoc==heapTop ){// there are matches on children 
                   collector.collect(heap.top().parentID);
                   // we don't care this relation anymore 
                   heap.pop();
@@ -443,61 +442,95 @@ public class TestJoinIndexQuery extends LuceneTestCase {
               }
             }
 
+            BitSet untouched = new BitSet(childCtxs.size()){{
+              set(0, childCtxs.size(), true);
+            }};
+            
+            int [] segmentStarts = new int [childCtxs.size()];
+            {
+              for(int i=0;i<segmentStarts.length;i++){
+                segmentStarts[i]=DocIdSetIterator.NO_MORE_DOCS;
+              }
+            }
+            DocIdSet childDocsets[] = new DocIdSet[childCtxs.size()];
+            DocIdSetIterator childDocsetIters[]  = new DocIdSetIterator[childCtxs.size()];
+            int currentChildSegment = -1;
+            
+            
             int advanceLeafIter(
                 int globalDoc)
                 throws IOException {
-              // I'm fail fast - kill me
-              if(childCtxIter!=null && childCtx!=null && childCtx.docBase + childCtxIter.docID()==globalDoc){
-                return childCtx.docBase + childCtxIter.docID();
-              }
               
-              if(!setChildCtxTo(heap.top().docID())){
-                return childCtx.docBase + childCtx.reader().maxDoc();
+              int possibleMatch = setChildCtxTo(globalDoc);
+              if(possibleMatch!= globalDoc){
+                assert possibleMatch > globalDoc;
+                return possibleMatch;
               }
-              
-              final int localDoc = globalDoc-childCtx.docBase;
-              if(localDoc >= childCtxIter.docID()){
-                if(localDoc > childCtxIter.docID()){//advance lazily
-                  childCtxIter.advance(localDoc);
-                }
-              } 
-              return childCtxIter.docID()==DocIdSetIterator.NO_MORE_DOCS ? childCtx.docBase + childCtx.reader().maxDoc()
-                  :childCtxIter.docID() +childCtx.docBase ; 
+              // advance heap to the first doc at the child segment
+              final int localTarget = globalDoc-childCtxs.get(currentChildSegment).docBase;
+
+              // other wise lazily advance the child segment iter
+                  if(localTarget >= childDocsetIters[currentChildSegment].docID()){
+                    if(localTarget > childDocsetIters[currentChildSegment].docID()){//advance lazily
+                      childDocsetIters[currentChildSegment].advance(localTarget);
+                    }
+                  }
+      
+                  DocIdSetIterator iter = childDocsetIters[currentChildSegment];
+                  return iter.docID()==DocIdSetIterator.NO_MORE_DOCS ? nextSegment(currentChildSegment)
+                        :iter.docID() + childCtxs.get(currentChildSegment).docBase;   
             }
 
-            private boolean setChildCtxTo(final int docID) throws IOException {
+            private int nextSegment(int s) {
+              return childCtxs.get(s).docBase+childCtxs.get(s).reader().maxDoc();
+            }
+
+            private int setChildCtxTo(final int docID) throws IOException {
+              // stay at the same segment
+              if(currentChildSegment < 0 || docID< childCtxs.get(currentChildSegment).docBase ||
+                  docID >= (childCtxs.get(currentChildSegment).docBase+childCtxs.get(currentChildSegment).reader().maxDoc()))
+              {
+                final int startSegment = (currentChildSegment < 0 || docID< childCtxs.get(currentChildSegment).docBase ) ? 0 : currentChildSegment +1;
+                currentChildSegment = nextSegmentFor(docID, startSegment);
+                initChildSegment(currentChildSegment);
+              }
+              assert docID>= childCtxs.get(currentChildSegment).docBase ||
+                  docID < (childCtxs.get(currentChildSegment).docBase+childCtxs.get(currentChildSegment).reader().maxDoc());
               
-              if(childCtx == null || docID<childCtx.docBase || 
-                       docID >= (childCtx.docBase+childCtx.reader().maxDoc()) ){
-                
-                final int startSegment = (childCtx==null || docID< childCtx.docBase ) ? 0 : childCtx.ord +1;
-                final int ln = nextSegmentFor(docID, startSegment);
-                
-                childCtx = childCtxs.get(ln);
-                childrenDocIdSet = children.getDocIdSet(childCtx, childCtx.reader().getLiveDocs());
-                childCtxIter = childrenDocIdSet!=null ? childrenDocIdSet.iterator() : null;
-                if(childCtxIter!=null && childCtxIter.nextDoc()==DocIdSetIterator.NO_MORE_DOCS){
-                  childCtxIter = null;
+              final int localTarget = docID-childCtxs.get(currentChildSegment).docBase;
+              final boolean matchIsPossible = segmentStarts[currentChildSegment]!=DocIdSetIterator.NO_MORE_DOCS ;
+                  //&& segmentStarts[currentChildSegment]<=localTarget;
+              
+              if(matchIsPossible){
+                // do we need reset or not?
+                if(segmentStarts[currentChildSegment]>localTarget){
+                  return segmentStarts[currentChildSegment]+childCtxs.get(currentChildSegment).docBase;
+                }else{
+                  if((childDocsetIters[currentChildSegment].docID() > localTarget)){
+                    //reset iter
+                     childDocsetIters[currentChildSegment] = childDocsets[currentChildSegment].iterator();
+                     //childDocsetIters[currentChildSegment].nextDoc();// TODO ohr'lly?
+                  }
+                  return docID;
                 }
-                
-                if(VERBOSE){
-                  System.out.println("setting segment for "+docID+" =>  ["+childCtx.docBase + ".."+(childCtx.docBase+childCtx.reader().maxDoc())+"]");
-                }
-              }else{ // lets's check iter position
-                int localDocExp = docID-childCtx.docBase;
-                assert localDocExp >=0: "but "+localDocExp;
-                if(childCtxIter!=null && childCtxIter.docID()>localDocExp && childrenDocIdSet!=null ){ 
-               // child iter is already behind top of the heap, we need to rewind 
-                  childCtxIter = childrenDocIdSet.iterator(); 
-                  if(childCtxIter!=null && childCtxIter.nextDoc()==DocIdSetIterator.NO_MORE_DOCS){
-                    childCtxIter = null;
+              } else{
+                return nextSegment(currentChildSegment);
+              }
+            }
+
+            private void initChildSegment(final int segment) throws IOException {
+              if(untouched.get(segment)){
+                //childDocsets
+                AtomicReaderContext ctx = childCtxs.get(segment);
+                childDocsets[segment] = children.getDocIdSet(ctx, ctx.reader().getLiveDocs());
+                if(childDocsets[segment] != null){
+                  childDocsetIters[segment] = childDocsets[segment].iterator();
+                  if(childDocsetIters[segment]!=null){
+                    segmentStarts[segment]=childDocsetIters[segment].nextDoc();
                   }
                 }
+                untouched.set(segment, false);
               }
-              
-              assert docID>=childCtx.docBase && docID < (childCtx.docBase+childCtx.reader().maxDoc()):
-                  docID+" in  ["+childCtx.docBase + ".."+(childCtx.docBase+childCtx.reader().maxDoc())+"]"; 
-              return childCtxIter!=null;
             }
             
             // it's a copypaste from ReaderUtil, TODO contrib it back
